@@ -1,0 +1,29 @@
+version: 1.0
+# Backtest defaults are deliberately conservative. They do not guarantee results.
+start_date: "2024-10-01"
+end_date: "2026-09-30"
+initial_cash: 1000000
+benchmark: "000300.SH"
+warmup_bars: 260
+max_positions: 5
+max_holding_days: 20
+risk_per_trade: 0.005
+max_single_position: 0.10
+max_total_position: 0.50
+min_score: 75
+entry_timing: next_open
+exit_timing: next_open
+commission_rate: 0.0003
+commission_min: 5
+stamp_tax_rate_sell: 0.0005
+transfer_fee_rate: 0.00001
+slippage_bps: 5
+block_open_at_limit: true
+sector_mode: historical_or_neutral
+position_round_lot: 100
+decision_engine: deterministic
+universe_source: file_or_mcp
+universe_file: data/backtest/universe.txt
+max_universe: 500
+cache: true
+report_title: "A股 Agent 两年回测"

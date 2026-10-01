@@ -1,0 +1,2 @@
+[console_scripts]
+a-share-agent = a_share_agent.cli:main

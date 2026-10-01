@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-Share Agent Backtest Report",
+  "type": "object",
+  "required": ["run_id", "settings", "metrics", "monthly_returns", "trades", "coverage", "data_quality", "methodology"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "settings": {"type": "object"},
+    "metrics": {"type": "object"},
+    "monthly_returns": {"type": "array"},
+    "trades": {"type": "array"},
+    "rejections": {"type": "array"},
+    "coverage": {"type": "object"},
+    "data_quality": {"type": "object"},
+    "methodology": {"type": "object"}
+  }
+}
