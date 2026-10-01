@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Scheduled Run Context",
+  "type": "object",
+  "required": [
+    "run_id",
+    "mode",
+    "phase",
+    "exchange_timezone",
+    "as_of"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "research",
+        "backtest",
+        "paper",
+        "live_proposal"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "RECOVERY_SYNC",
+        "PREOPEN_PRECHECK",
+        "PREOPEN_CONTEXT",
+        "OPEN_AUCTION_OBSERVE",
+        "OPEN_AUCTION_FREEZE",
+        "OPEN_RECONCILE",
+        "OPEN_STABILIZE",
+        "ENTRY_WINDOW_AM",
+        "MORNING_MONITOR",
+        "MORNING_CLOSE_PROTECT",
+        "MIDDAY_REVIEW",
+        "PM_PRECHECK",
+        "PM_STABILIZE",
+        "ENTRY_WINDOW_PM",
+        "LATE_SESSION_MANAGE",
+        "CLOSE_AUCTION_FREEZE",
+        "CLOSE_RECONCILE",
+        "EOD_UNIVERSE_SCAN",
+        "EOD_DEEP_DIVE",
+        "NIGHT_EVENT_CHECK",
+        "DAILY_REVIEW",
+        "AUDIT_FINALIZE"
+      ]
+    },
+    "exchange_timezone": {
+      "const": "Asia/Shanghai"
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "allowed_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbidden_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state_version": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "previous_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

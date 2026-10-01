@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Controlled Change Proposal",
+  "type": "object",
+  "required": [
+    "proposal_id",
+    "created_at",
+    "target",
+    "hypothesis",
+    "evidence_scope",
+    "required_tests",
+    "status",
+    "production_effect"
+  ],
+  "properties": {
+    "proposal_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "hypothesis": {
+      "type": "string"
+    },
+    "proposed_change": {
+      "type": [
+        "object",
+        "string",
+        "null"
+      ]
+    },
+    "evidence_scope": {
+      "type": "object"
+    },
+    "required_tests": {
+      "type": "array",
+      "minItems": 1
+    },
+    "status": {
+      "enum": [
+        "hypothesis",
+        "testing",
+        "paper_shadow",
+        "approved",
+        "rejected",
+        "rolled_back"
+      ]
+    },
+    "production_effect": {
+      "const": false
+    }
+  },
+  "additionalProperties": true
+}

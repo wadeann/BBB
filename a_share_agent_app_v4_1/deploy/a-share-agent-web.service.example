@@ -1,0 +1,26 @@
+[Unit]
+Description=A-Share Agent Read-Only Web Workbench
+After=network-online.target a-share-agent-worker.service
+Wants=network-online.target a-share-agent-worker.service
+
+[Service]
+Type=simple
+User=a-share
+Group=a-share
+WorkingDirectory=/opt/a-share-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/a-share-agent/.venv/bin/a-share-agent --root /opt/a-share-agent --backend production web --host 127.0.0.1 --port 8000 --log-level info
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/a-share-agent/data
+
+[Install]
+WantedBy=multi-user.target

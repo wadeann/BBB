@@ -1,0 +1,78 @@
+version: 5.0.0
+timezone: Asia/Shanghai
+
+logging:
+  enabled: true
+  source_of_truth: append_only_jsonl
+  index: sqlite
+  flush_policy: per_event
+  fsync_critical_events: true
+  retain_days: 3650
+  compress_snapshots_after_days: 7
+  redact_secrets: true
+  store_llm_prompt: true
+  store_llm_response: true
+  store_mcp_raw_response: true
+  store_account_identifiers: hashed
+
+paths:
+  root: data/audit
+  daily_events: "{root}/{yyyy}/{mm}/{dd}/events.jsonl"
+  daily_manifest: "{root}/{yyyy}/{mm}/{dd}/manifest.json"
+  snapshots: "{root}/{yyyy}/{mm}/{dd}/snapshots"
+  prompts: "{root}/{yyyy}/{mm}/{dd}/prompts"
+  reviews: "{root}/{yyyy}/{mm}/{dd}/reviews"
+  index_db: "{root}/audit_index.sqlite"
+
+hash_chain:
+  enabled: true
+  algorithm: sha256
+  fields:
+    - previous_event_hash
+    - event_hash
+  canonical_json: true
+
+critical_event_types:
+  - SIGNAL_DECISION
+  - RISK_RESULT
+  - INTENT_REGISTERED
+  - ORDER_REQUEST
+  - EXECUTION_RECEIPT
+  - POSITION_SNAPSHOT
+  - DAILY_REVIEW
+  - CHANGE_PROPOSAL
+  - SYSTEM_ERROR
+
+candidate_logging:
+  universe_screen_compact: true
+  deep_dive_full_payload: true
+  rejected_candidates_keep_reason: true
+  max_inline_payload_kb: 64
+  large_payload_storage: snapshot_by_hash
+
+replay:
+  exact_replay_enabled: true
+  counterfactual_replay_enabled: true
+  counterfactual_can_execute_orders: false
+  require_snapshot_hash_match: true
+
+retention:
+  event_log: 3650
+  orders_and_trades: 3650
+  daily_reviews: 3650
+  prompts_and_responses: 1825
+  raw_market_snapshots: 730
+  health_and_debug_logs: 180
+
+privacy_security:
+  never_log:
+    - api_key
+    - access_token
+    - refresh_token
+    - password
+    - cookie
+    - broker_secret
+  hash_fields:
+    - account_id
+    - shareholder_account
+  redact_news_credentials: true

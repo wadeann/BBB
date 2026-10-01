@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Audit Event v5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "event_type", "event_time", "trade_date",
+    "phase", "run_id", "trace_id", "producer", "status",
+    "previous_event_hash", "event_hash"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"type": "string", "minLength": 1},
+    "event_time": {"type": "string", "format": "date-time"},
+    "trade_date": {"type": "string", "format": "date"},
+    "phase": {"type": "string"},
+    "run_id": {"type": "string", "minLength": 1},
+    "trace_id": {"type": "string", "minLength": 1},
+    "message_id": {"type": ["string", "null"]},
+    "parent_event_id": {"type": ["string", "null"]},
+    "intent_id": {"type": ["string", "null"]},
+    "symbol": {"type": ["string", "null"]},
+    "strategy_id": {"type": ["string", "null"]},
+    "strategy_version": {"type": ["string", "null"]},
+    "config_hash": {"type": ["string", "null"]},
+    "prompt_hash": {"type": ["string", "null"]},
+    "model_id": {"type": ["string", "null"]},
+    "code_version": {"type": ["string", "null"]},
+    "producer": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string"},
+        "id": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "status": {"enum": ["ok", "warning", "error", "reject", "skipped"]},
+    "source_refs": {"type": "array", "items": {"type": "string"}},
+    "payload": {"type": ["object", "array", "string", "number", "boolean", "null"]},
+    "payload_ref": {"type": ["string", "null"]},
+    "payload_sha256": {"type": ["string", "null"]},
+    "error_code": {"type": ["string", "null"]},
+    "previous_event_hash": {"type": ["string", "null"]},
+    "event_hash": {"type": "string", "minLength": 32}
+  }
+}

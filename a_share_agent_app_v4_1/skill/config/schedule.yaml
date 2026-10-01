@@ -1,0 +1,69 @@
+version: 5.0.0
+timezone: Asia/Shanghai
+runtime_session_source: mcp_intel_trading_sessions
+runtime_calendar_source: mcp_intel_is_trading_day
+
+# Runtime MCP session data overrides these static defaults.
+exchange_defaults:
+  open_auction_start: "09:15:00"
+  open_auction_end: "09:25:00"
+  continuous_am_start: "09:30:00"
+  continuous_am_end: "11:30:00"
+  continuous_pm_start: "13:00:00"
+  continuous_pm_end: "14:57:00"
+  close_auction_start: "14:57:00"
+  close_auction_end: "15:00:00"
+  open_no_cancel_start: "09:20:00"
+  close_no_cancel_start: "14:57:00"
+
+strategy_safety_windows:
+  preopen_precheck: ["08:45:00", "09:00:00"]
+  preopen_context: ["09:00:00", "09:15:00"]
+  open_auction_observe: ["09:15:00", "09:19:30"]
+  open_auction_freeze: ["09:19:30", "09:25:00"]
+  open_reconcile: ["09:25:00", "09:30:00"]
+  open_stabilize: ["09:30:00", "09:35:00"]
+  entry_window_am: ["09:35:00", "10:30:00"]
+  morning_monitor: ["10:30:00", "11:20:00"]
+  morning_close_protect: ["11:20:00", "11:30:00"]
+  midday_review: ["11:30:00", "12:45:00"]
+  pm_precheck: ["12:45:00", "13:00:00"]
+  pm_stabilize: ["13:00:00", "13:05:00"]
+  entry_window_pm: ["13:05:00", "14:30:00"]
+  late_session_manage: ["14:30:00", "14:56:30"]
+  close_auction_freeze: ["14:56:30", "15:00:00"]
+  close_reconcile: ["15:00:00", "15:15:00"]
+  eod_universe_scan: ["15:15:00", "16:15:00"]
+  eod_deep_dive: ["16:15:00", "17:00:00"]
+  night_event_check: ["20:30:00", "21:00:00"]
+  daily_review: ["21:00:00", "21:30:00"]
+  audit_finalize: ["21:30:00", "21:40:00"]
+
+execution_policy:
+  open_stabilization_minutes: 5
+  pm_stabilization_minutes: 5
+  freeze_before_open_no_cancel_seconds: 30
+  freeze_before_close_auction_seconds: 30
+  allow_new_entry_during_open_auction: false
+  allow_new_entry_during_close_auction: false
+  allow_morning_close_entry: false
+  allow_unconfirmed_daily_close_signal_entry: false
+  one_entry_per_symbol_per_day: true
+  reentry_after_stop_same_day: false
+  max_new_positions_per_day: 4
+  max_new_positions_per_phase: 2
+  min_minutes_between_same_symbol_intents: 30
+
+polling:
+  llm_strategy_refresh_minutes: 10
+  market_context_refresh_minutes: 15
+  positions_refresh_minutes: 5
+  pending_orders_refresh_minutes: 2
+  # High-frequency stop/order safety should be handled outside the LLM loop.
+  deterministic_risk_watchdog_required_for_fast_stops: true
+
+candidate_flow:
+  eod_deep_dive_cap: 200
+  next_day_grade_a_cap: 20
+  intraday_active_candidate_cap: 30
+  no_full_market_deep_rescan_intraday: true

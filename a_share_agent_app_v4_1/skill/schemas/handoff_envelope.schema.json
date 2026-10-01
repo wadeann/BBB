@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Handoff Envelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "message_type",
+    "message_id",
+    "run_id",
+    "trace_id",
+    "idempotency_key",
+    "phase",
+    "as_of",
+    "data_cutoff",
+    "freshness_seconds",
+    "producer",
+    "payload",
+    "data_quality",
+    "source_refs",
+    "errors",
+    "next_action"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message_type": {
+      "enum": [
+        "PRECHECK_RESULT",
+        "MARKET_CONTEXT",
+        "STRATEGY_ROUTE",
+        "CANDIDATE_BATCH",
+        "DEEP_DIVE_REPORT",
+        "SIGNAL_DECISION",
+        "RISK_INTENT",
+        "RISK_RESULT",
+        "ORDER_REQUEST",
+        "EXECUTION_RECEIPT",
+        "REVIEW_REPORT",
+        "AUDIT_MANIFEST",
+        "CHANGE_PROPOSAL"
+      ]
+    },
+    "message_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_message_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "supersedes_message_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data_cutoff": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "freshness_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "producer": {
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "llm",
+            "scheduler",
+            "intel",
+            "risk",
+            "exec",
+            "review",
+            "backtest"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object"
+    },
+    "data_quality": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "ok",
+            "degraded",
+            "invalid"
+          ]
+        },
+        "missing": {
+          "type": "array"
+        },
+        "conflicts": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "source_refs": {
+      "type": "array"
+    },
+    "errors": {
+      "type": "array"
+    },
+    "next_action": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,124 @@
+version: 4.0.0
+# This file is intended for deterministic enforcement outside the LLM.
+# If LLM output conflicts with these permissions, the scheduler/execution layer must reject it.
+
+phases:
+  RECOVERY_SYNC:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  PREOPEN_PRECHECK:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  PREOPEN_CONTEXT:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  OPEN_AUCTION_OBSERVE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: true
+    place_order: false
+  OPEN_AUCTION_FREEZE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  OPEN_RECONCILE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  OPEN_STABILIZE:
+    new_entry: false
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+    order_scope: reduce_only
+  ENTRY_WINDOW_AM:
+    new_entry: true
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+  MORNING_MONITOR:
+    new_entry: true
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+  MORNING_CLOSE_PROTECT:
+    new_entry: false
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+    order_scope: reduce_only
+  MIDDAY_REVIEW:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  PM_PRECHECK:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  PM_STABILIZE:
+    new_entry: false
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+    order_scope: reduce_only
+  ENTRY_WINDOW_PM:
+    new_entry: true
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+  LATE_SESSION_MANAGE:
+    new_entry: true
+    reduce_position: true
+    cancel_order: true
+    place_order: true
+    entry_scope: existing_candidates_only
+  CLOSE_AUCTION_FREEZE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  CLOSE_RECONCILE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  EOD_UNIVERSE_SCAN:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  EOD_DEEP_DIVE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+  NIGHT_EVENT_CHECK:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+
+  DAILY_REVIEW:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+    mutate_production_config: false
+
+  AUDIT_FINALIZE:
+    new_entry: false
+    reduce_position: false
+    cancel_order: false
+    place_order: false
+    mutate_production_config: false
+    local_audit_write_only: true

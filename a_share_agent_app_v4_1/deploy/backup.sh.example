@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${1:-/opt/a-share-agent}"
+BACKUP_DIR="${2:-/var/backups/a-share-agent}"
+STAMP="$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+# Stop or quiesce writes before a strict point-in-time backup if required.
+tar -C "$ROOT" -czf "$BACKUP_DIR/a-share-agent-data-$STAMP.tar.gz" data config
+find "$BACKUP_DIR" -type f -name 'a-share-agent-data-*.tar.gz' -mtime +30 -delete
+printf 'backup=%s\n' "$BACKUP_DIR/a-share-agent-data-$STAMP.tar.gz"

@@ -1,0 +1,7 @@
+[Unit]
+Description=A-Share Agent Worker + Web
+Wants=a-share-agent-worker.service a-share-agent-web.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

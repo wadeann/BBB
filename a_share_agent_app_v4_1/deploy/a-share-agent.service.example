@@ -1,0 +1,4 @@
+# Deprecated compatibility template.
+# v0.4 separates the autonomous worker from the read-only web process.
+# Use a-share-agent-worker.service.example + a-share-agent-web.service.example,
+# optionally grouped by a-share-agent.target.example.

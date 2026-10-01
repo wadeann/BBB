@@ -1,0 +1,100 @@
+version: 4.0.0
+# Experimental defaults. Backtest/walk-forward required before production changes.
+
+strategy_families:
+  trend_breakout:
+    strategies: [triple_golden_cross, ma_convergence_breakout, high_volume_breakout]
+  trend_pullback:
+    strategies: [ma60_breakout_retest, ma5_momentum_pullback, single_bull_hold, low_volume_support_bull]
+  rebound_reversal:
+    strategies: [rebound_candidate, rebound_confirmation]
+  pattern_confirmation:
+    strategies: [long_bull_day7]
+    standalone_entry: false
+  exit_defensive:
+    strategies: [shooting_star_high, volume_price_divergence, ma20_break, trendline_break, ma_bearish_cut]
+
+routes:
+  - id: RISK_ON_STRONG_SECTOR
+    when:
+      market_regime: risk_on
+      sector_strength: strong
+    allow: [trend_breakout, trend_pullback, rebound_reversal, pattern_confirmation, exit_defensive]
+    block: []
+    position_multiplier: 1.00
+    candidate_threshold_delta: 0
+    max_new_positions_override: null
+
+  - id: RISK_ON_NEUTRAL_SECTOR
+    when:
+      market_regime: risk_on
+      sector_strength: neutral
+    allow: [trend_pullback, pattern_confirmation, exit_defensive]
+    block: [rebound_reversal]
+    conditional: [trend_breakout]
+    position_multiplier: 0.80
+    candidate_threshold_delta: 3
+    max_new_positions_override: 3
+
+  - id: NEUTRAL_STRONG_SECTOR
+    when:
+      market_regime: neutral
+      sector_strength: strong
+    allow: [trend_pullback, pattern_confirmation, exit_defensive]
+    conditional: [trend_breakout, rebound_reversal]
+    block: []
+    position_multiplier: 0.70
+    candidate_threshold_delta: 5
+    max_new_positions_override: 2
+
+  - id: NEUTRAL_NEUTRAL_SECTOR
+    when:
+      market_regime: neutral
+      sector_strength: neutral
+    allow: [trend_pullback, pattern_confirmation, exit_defensive]
+    block: [trend_breakout, rebound_reversal]
+    position_multiplier: 0.50
+    candidate_threshold_delta: 8
+    max_new_positions_override: 1
+
+  - id: WEAK_SECTOR
+    when:
+      sector_strength: weak
+    allow: [exit_defensive]
+    conditional: [trend_pullback]
+    block: [trend_breakout, rebound_reversal]
+    position_multiplier: 0.35
+    candidate_threshold_delta: 10
+    max_new_positions_override: 1
+
+  - id: RISK_OFF
+    when:
+      market_regime: risk_off
+    allow: [exit_defensive]
+    conditional: []
+    block: [trend_breakout, trend_pullback, rebound_reversal, pattern_confirmation]
+    position_multiplier: 0.00
+    candidate_threshold_delta: 999
+    max_new_positions_override: 0
+
+  - id: PANIC_REBOUND_EXCEPTION
+    when:
+      market_regime: neutral
+      sentiment_phase: rebound
+      sector_strength: strong
+    allow: [rebound_reversal, exit_defensive]
+    conditional: [trend_pullback]
+    block: [trend_breakout]
+    position_multiplier: 0.45
+    candidate_threshold_delta: 8
+    max_new_positions_override: 1
+
+precedence:
+  - RISK_OFF
+  - WEAK_SECTOR
+  - PANIC_REBOUND_EXCEPTION
+  - exact_market_sector_match
+
+unknown_policy:
+  market_regime_unknown: block_new_entry
+  sector_strength_unknown: reduce_and_require_manual_review

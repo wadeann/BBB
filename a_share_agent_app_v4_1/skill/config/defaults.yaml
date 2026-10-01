@@ -1,0 +1,93 @@
+version: 4.0.0
+
+mode: paper
+
+benchmarks:
+  # 代码仅作为建议；实际部署须确认数据源支持。
+  large_cap: "000300.SH"
+  small_mid: "000852.SH"
+  growth: "399006.SZ"
+
+market_filter:
+  ma_window: 20
+  slope_lookback: 5
+  weak_blowup_rate: 0.45       # 实验默认值，必须回测
+  risk_off_position_multiplier: 0.50
+  short_beta_block_on_risk_off: true
+
+sector_filter:
+  trend_weight: 0.60
+  mainline_weight: 0.40
+  strong_threshold: 70
+  weak_threshold: 45
+  short_beta_block_on_weak_sector: true
+
+score_weights:
+  trend: 25
+  volume_price: 25
+  pattern: 20
+  fundamental: 15
+  market: 4
+  sector: 6
+  liquidity: 5
+  candidate_threshold: 75
+
+risk:
+  risk_per_trade: 0.005
+  max_single_position: 0.10
+  max_total_equity_position: 0.50
+  max_sector_position: 0.20
+
+execution:
+  final_quote_cross_check: true
+  paper_place_order_tool: "mcp_exec_place_order"
+  live_order_tool: null
+  require_human_confirmation_for_live: true
+
+universe:
+  exclude_risk_warning: true
+  exclude_delisting: true
+  exclude_suspended: true
+  min_listing_days: 20
+  bse_enabled: false
+
+mcp:
+  use_antigravity_only_on_explicit_request: true
+  deep_dive_candidate_cap: 200
+  news_only_for_positions_and_finalists: true
+
+
+scheduler:
+  timezone: "Asia/Shanghai"
+  runtime_session_source: "mcp_intel_trading_sessions"
+  runtime_calendar_source: "mcp_intel_is_trading_day"
+  require_phase_in_every_run: true
+  recover_before_resume_after_restart: true
+
+trade_behavior:
+  one_entry_per_symbol_per_day: true
+  reentry_after_stop_same_day: false
+  max_new_positions_per_day: 4
+  max_new_positions_per_phase: 2
+  intraday_full_market_deep_rescan: false
+  strict_daily_close_confirmation: true
+
+
+performance_objective:
+  # Reporting/research only. Must never relax risk controls to hit a target.
+  target_monthly_return: 0.30
+  enforcement: report_only
+  never_force_trade_to_hit_target: true
+  never_increase_risk_to_catch_up: true
+  primary_production_objective: risk_adjusted_consistency
+
+strategy_routing:
+  enabled: true
+  config_file: config/strategy_router.yaml
+  require_route_before_new_entry: true
+
+improvement_loop:
+  enabled: true
+  daily_review_phase: DAILY_REVIEW
+  allow_daily_production_parameter_mutation: false
+  config_file: config/improvement.yaml

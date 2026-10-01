@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Market Context",
+  "type": "object",
+  "required": [
+    "as_of",
+    "trading_day",
+    "market_regime",
+    "benchmarks",
+    "data_quality"
+  ],
+  "properties": {
+    "as_of": {
+      "type": "string"
+    },
+    "trading_day": {
+      "type": "boolean"
+    },
+    "session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "market_regime": {
+      "enum": [
+        "risk_on",
+        "neutral",
+        "risk_off",
+        "unknown"
+      ]
+    },
+    "sentiment_state": {
+      "enum": [
+        "strong",
+        "neutral",
+        "weak",
+        "unknown"
+      ]
+    },
+    "benchmarks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "state"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "up",
+              "mixed",
+              "down",
+              "unknown"
+            ]
+          },
+          "close": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ma20": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ma20_slope": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "market_health": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "limitup_ladder": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "mainline_lanes": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "market_gate": {
+      "enum": [
+        "allow",
+        "reduce",
+        "block_short_beta",
+        "unknown"
+      ]
+    },
+    "data_quality": {
+      "type": "object"
+    },
+    "market_trend": {
+      "enum": [
+        "up",
+        "range",
+        "down",
+        "unknown"
+      ]
+    },
+    "sentiment_phase": {
+      "enum": [
+        "warming",
+        "hot",
+        "divergent",
+        "cooling",
+        "panic",
+        "rebound",
+        "unknown"
+      ]
+    }
+  }
+}

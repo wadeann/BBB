@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Strategy Route",
+  "type": "object",
+  "required": [
+    "as_of",
+    "route_id",
+    "market_regime",
+    "sector_strength",
+    "allowed_strategy_families",
+    "blocked_strategy_families",
+    "position_multiplier",
+    "candidate_threshold_delta",
+    "route_reasons"
+  ],
+  "properties": {
+    "as_of": {
+      "type": "string"
+    },
+    "route_id": {
+      "type": "string"
+    },
+    "market_regime": {
+      "enum": [
+        "risk_on",
+        "neutral",
+        "risk_off",
+        "unknown"
+      ]
+    },
+    "market_trend": {
+      "enum": [
+        "up",
+        "range",
+        "down",
+        "unknown"
+      ]
+    },
+    "sentiment_phase": {
+      "enum": [
+        "warming",
+        "hot",
+        "divergent",
+        "cooling",
+        "panic",
+        "rebound",
+        "unknown"
+      ]
+    },
+    "sector_strength": {
+      "enum": [
+        "strong",
+        "neutral",
+        "weak",
+        "unknown"
+      ]
+    },
+    "sector_lifecycle": {
+      "enum": [
+        "emerging",
+        "accelerating",
+        "crowded",
+        "cooling",
+        "unknown"
+      ]
+    },
+    "allowed_strategy_families": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conditional_strategy_families": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocked_strategy_families": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "position_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "candidate_threshold_delta": {
+      "type": "number"
+    },
+    "max_new_positions_override": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "route_reasons": {
+      "type": "array",
+      "minItems": 1
+    },
+    "data_quality": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

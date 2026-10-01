@@ -1,0 +1,57 @@
+version: 4.0.0
+mode: controlled_learning
+
+daily_review:
+  enabled: true
+  phase: DAILY_REVIEW
+  auto_change_production_parameters: false
+  generate_change_proposals: true
+  compare_signal_vs_execution: true
+  compare_regime_vs_strategy: true
+
+metrics:
+  - net_pnl
+  - gross_pnl
+  - win_rate
+  - payoff_ratio
+  - expectancy_per_trade
+  - profit_factor
+  - max_drawdown
+  - mfe
+  - mae
+  - slippage_bps
+  - fill_rate
+  - turnover
+  - exposure
+  - blocked_trade_counterfactual
+
+attribution_dimensions:
+  - strategy_family
+  - strategy_id
+  - market_regime
+  - market_trend
+  - sentiment_phase
+  - sector_strength
+  - sector_lifecycle
+  - entry_phase
+  - exit_reason
+  - data_quality
+  - execution_quality
+
+proposal_policy:
+  daily_proposals_are_hypotheses_only: true
+  minimum_samples_before_strategy_parameter_proposal: 30   # experimental default
+  minimum_samples_before_promotion: 50                    # experimental default
+  require_walk_forward: true
+  require_out_of_sample: true
+  require_paper_shadow: true
+  paper_shadow_min_trading_days: 10                       # experimental default
+  require_human_approval_for_promotion: true
+  rollback_supported: true
+
+anti_overfit:
+  no_single_day_parameter_tuning: true
+  no_monthly_return_target_chasing: true
+  no_weight_change_from_one_trade: true
+  compare_against_current_production_baseline: true
+  require_regime_segment_analysis: true

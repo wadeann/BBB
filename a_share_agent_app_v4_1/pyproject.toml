@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a-share-agent-runtime"
+version = "0.4.1"
+description = "Auditable A-share LLM trading agent runtime with web console"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0",
+  "jsonschema>=4.20",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "httpx>=0.27"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+a-share-agent = "a_share_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["a_share_agent*"]

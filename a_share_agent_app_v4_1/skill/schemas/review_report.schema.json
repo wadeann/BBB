@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Daily Review Report",
+  "type": "object",
+  "required": [
+    "review_id",
+    "trading_date",
+    "production_version",
+    "summary",
+    "metrics",
+    "attribution",
+    "errors",
+    "change_proposals",
+    "production_config_changed"
+  ],
+  "properties": {
+    "review_id": {
+      "type": "string"
+    },
+    "trading_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "production_version": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "attribution": {
+      "type": "array"
+    },
+    "errors": {
+      "type": "array"
+    },
+    "change_proposals": {
+      "type": "array"
+    },
+    "production_config_changed": {
+      "const": false
+    }
+  },
+  "additionalProperties": true
+}

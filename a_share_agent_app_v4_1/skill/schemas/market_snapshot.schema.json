@@ -1,0 +1,13 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"A-share Market Snapshot",
+  "type":"object",
+  "required":["symbol","as_of","board","bars_daily","security_status"],
+  "properties":{
+    "symbol":{"type":"string"},"as_of":{"type":"string"},
+    "board":{"enum":["SSE_MAIN","SZSE_MAIN","CHINEXT","STAR","BSE","OTHER"]},
+    "security_status":{"type":"object","required":["suspended","risk_warning","listing_days"],"properties":{"suspended":{"type":"boolean"},"risk_warning":{"type":"boolean"},"listing_days":{"type":"integer"}}},
+    "bars_daily":{"type":"array","minItems":260,"items":{"type":"object","required":["date","open","high","low","close","volume"],"properties":{"date":{"type":"string"},"open":{"type":"number"},"high":{"type":"number"},"low":{"type":"number"},"close":{"type":"number"},"volume":{"type":"number"},"amount":{"type":"number"}}}},
+    "auction":{"type":["object","null"]},"intraday":{"type":["array","null"]},"fundamentals":{"type":["array","null"]}
+  }
+}

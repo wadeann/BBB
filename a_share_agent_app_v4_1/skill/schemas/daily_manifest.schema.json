@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A-share Daily Audit Manifest v5",
+  "type": "object",
+  "required": [
+    "schema_version", "trade_date", "generated_at", "event_count",
+    "first_event_hash", "last_event_hash", "candidate_funnel", "execution_summary",
+    "review", "versions"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "trade_date": {"type": "string", "format": "date"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "market_summary": {"type": "object"},
+    "candidate_funnel": {
+      "type": "object",
+      "required": ["universe", "hard_filter_pass", "deep_dive", "entry", "watch", "reject"],
+      "properties": {
+        "universe": {"type": "integer", "minimum": 0},
+        "hard_filter_pass": {"type": "integer", "minimum": 0},
+        "deep_dive": {"type": "integer", "minimum": 0},
+        "entry": {"type": "integer", "minimum": 0},
+        "watch": {"type": "integer", "minimum": 0},
+        "reject": {"type": "integer", "minimum": 0}
+      }
+    },
+    "risk_summary": {"type": "object"},
+    "execution_summary": {"type": "object"},
+    "pnl_summary": {"type": "object"},
+    "review": {
+      "type": "object",
+      "required": ["review_id", "review_path"],
+      "properties": {
+        "review_id": {"type": ["string", "null"]},
+        "review_path": {"type": ["string", "null"]}
+      }
+    },
+    "event_count": {"type": "integer", "minimum": 0},
+    "first_event_hash": {"type": ["string", "null"]},
+    "last_event_hash": {"type": ["string", "null"]},
+    "versions": {"type": "object"},
+    "data_quality": {"type": "object"},
+    "system_errors": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": true
+}
