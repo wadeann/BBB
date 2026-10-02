@@ -49,7 +49,10 @@ Review each candidate for:
 
 For every candidate return ALL fields exactly: candidate_id, decision, confidence, reasons_for, reasons_against, risk_flags.
 Keep reasons concise. Do not output chain-of-thought or hidden reasoning; only short evidence statements.
-Do not modify scores, prices, market regime, sector facts, signal identifiers, or stop values. Do not estimate a win probability. Return exactly one decision for every candidate_id in the input and JSON only."""
+Do not modify scores, prices, market regime, sector facts, signal identifiers, or stop values. Do not estimate a win probability.
+Output format: Return JSON ONLY with root key "decisions" containing an array of decisions:
+{"decisions": [{"candidate_id": "<id>", "decision": "PASS"|"WATCH"|"REJECT", "confidence": 0-100, "reasons_for": ["..."], "reasons_against": ["..."], "risk_flags": ["..."]}]}
+Return exactly one decision for every candidate_id in the input and JSON only."""
 
 
 def _f(v: Any, default: float = 0.0) -> float:

@@ -57,15 +57,15 @@ llm:
   retries: 2
   temperature: 0.0
   max_tokens: 4096
-  structured_output: json_object     # auto | json_schema | json_object | none
+  structured_output: json_schema     # auto | json_schema | json_object | none
   # Historical research should fail fast and stay cheap/reproducible. These values
   # override only the Research Lab client; live/runtime settings above remain unchanged.
   research_overrides:
-    timeout_seconds: 90
-    retries: 0
-    max_tokens: 1200
+    timeout_seconds: 180
+    retries: 1
+    max_tokens: 4096
     temperature: 0.0
-    structured_output: json_object
+    structured_output: json_schema
 
 universe_queries:
   wencai:

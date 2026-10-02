@@ -165,6 +165,17 @@ class OpenAICompatibleLLMClient(LLMClient):
                 if not isinstance(content, str):
                     raise LLMTransportError("LLM response content is missing")
                 out = _extract_json(content)
+                if schema is not None and isinstance(out, dict):
+                    if "decisions" in schema.get("properties", {}) and "decisions" not in out:
+                        if "candidates" in out and isinstance(out["candidates"], list):
+                            out["decisions"] = out.pop("candidates")
+                        elif all(isinstance(v, dict) and "candidate_id" in v for v in out.values()):
+                            out = {"decisions": list(out.values())}
+                    if "decisions" in out and isinstance(out["decisions"], list):
+                        for item in out["decisions"]:
+                            if isinstance(item, dict) and "confidence" in item:
+                                if isinstance(item["confidence"], (int, float)) and 0.0 < item["confidence"] <= 1.0:
+                                    item["confidence"] = round(item["confidence"] * 100.0, 1)
                 if schema is not None:
                     try:
                         validate_json_schema(instance=out, schema=schema)
