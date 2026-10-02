@@ -117,5 +117,5 @@ def test_pit_interval_coverage_rejects_unverified_source_artifact(tmp_path: Path
         min_provenance_coverage=1.0,
     )
     assert audit["unverified_symbol_days"] == 2
-    assert audit["source_provenance_audit"]["missing_source_artifacts"] == 2 or audit["source_provenance_audit"]["missing_source_artifacts"] == 1
+    assert audit["source_provenance_audit"]["missing_source_artifacts"] == 1
     assert audit["dataset_complete"] is False
