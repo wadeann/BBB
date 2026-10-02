@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -48,3 +49,17 @@ def test_preflight_universe_counts_share_provenance_semantics(tmp_path: Path):
     assert match is False
     assert extra == expected["extra_total"]
     assert missing == expected["missing_total"]
+
+
+def test_committed_provenance_artifact_matches_preflight_reconciliation():
+    root = Path(__file__).resolve().parents[1]
+    artifact = json.loads((root / "historical_data_provenance_audit.json").read_text(encoding="utf-8"))
+    expected = artifact["universe"]
+    actual = reconcile_universe_snapshot_counts(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "official_universe_snapshots",
+    )
+    assert actual["snapshot_count"] == expected["snapshot_count"]
+    assert actual["missing_total"] == expected["missing_total"]
+    assert actual["extra_total"] == expected["extra_total"]
+    assert actual["match"] == expected["match"]
