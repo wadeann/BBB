@@ -1,7 +1,7 @@
 {
-  "manifest_id": "official_universe_snapshots_v0.7.4",
-  "description": "Independent authoritative A-share official universe snapshots directly derived from SSE, SZSE, and BSE official registers",
-  "generated_at": "2026-10-02T17:15:00+08:00",
+  "manifest_id": "official_universe_snapshots_v0.7.5",
+  "generated_at": "2026-10-02T11:24:31.946214+00:00",
+  "research_asset_type": "A_SHARE_COMMON_EQUITY",
   "source_registers": {
     "directory": "data/backtest/official_universe_snapshots/raw_registers/",
     "files": {
@@ -13,71 +13,81 @@
       "szse_listing_register.csv": "5c71d3c6268a99cd0f862a7c4811f0a78e6e3117ba2b5c738da8b69d4f48d57c"
     }
   },
+  "asset_type_audit": {
+    "file": "official_universe_asset_type_audit.csv",
+    "included_rows": 5909,
+    "excluded_rows": 30,
+    "excluded_by_type": {
+      "B_SHARE": 28,
+      "CDR": 1,
+      "OTHER_SECURITY": 1
+    }
+  },
   "snapshots": {
     "2024-10-08": {
       "file": "data/backtest/official_universe_snapshots/2024-10-08.csv",
-      "total_symbols": 5355,
+      "total_symbols": 5350,
       "by_board": {
-        "SZSE_MAIN": 1484,
+        "SZSE_MAIN": 1481,
         "CHINEXT": 1352,
-        "SSE_MAIN": 1692,
-        "STAR": 576,
+        "SSE_MAIN": 1691,
+        "STAR": 575,
         "BSE": 251
       },
-      "sha256": "910bcfa4b1d97b3ec308f346a84b523ceea5489e1ed8cf5eb51efbf3972b6992",
-      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS"
+      "sha256": "7fb1730cc2afd9e76298f337afaa2a471e383a4537dbf7c544547c4bb4c026e8",
+      "source": "INDEPENDENT_EXCHANGE_REGISTERS_FILTERED_TO_A_SHARE_COMMON_EQUITY"
     },
     "2025-09-29": {
       "file": "data/backtest/official_universe_snapshots/2025-09-29.csv",
-      "total_symbols": 5434,
+      "total_symbols": 5431,
       "by_board": {
-        "SZSE_MAIN": 1487,
+        "SZSE_MAIN": 1485,
         "CHINEXT": 1388,
         "SSE_MAIN": 1695,
-        "STAR": 589,
+        "STAR": 588,
         "BSE": 275
       },
-      "sha256": "9a8bdaf7d18c52263abc718fce7ddf2dad6a97bdfe5063fe5d346fdea38d54de",
-      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS"
+      "sha256": "3954473cb9b79b08d8fb75c45d1877af281590edeb19097dfdb52c6b75cce61c",
+      "source": "INDEPENDENT_EXCHANGE_REGISTERS_FILTERED_TO_A_SHARE_COMMON_EQUITY"
     },
     "2026-07-01": {
       "file": "data/backtest/official_universe_snapshots/2026-07-01.csv",
-      "total_symbols": 5527,
+      "total_symbols": 5525,
       "by_board": {
-        "SZSE_MAIN": 1496,
+        "SZSE_MAIN": 1495,
         "CHINEXT": 1398,
         "SSE_MAIN": 1701,
-        "STAR": 610,
+        "STAR": 609,
         "BSE": 322
       },
-      "sha256": "5a602c837cbb5e0c22525e806ac29d59531c781c0c6021c7ffd4befae83eb010",
-      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS"
+      "sha256": "68da41b87b6ef12fcaeeb1b13dbc14a960ba5820c7da772d45acdf238a6773c3",
+      "source": "INDEPENDENT_EXCHANGE_REGISTERS_FILTERED_TO_A_SHARE_COMMON_EQUITY"
     },
     "2026-08-31": {
       "file": "data/backtest/official_universe_snapshots/2026-08-31.csv",
-      "total_symbols": 5551,
+      "total_symbols": 5549,
       "by_board": {
-        "SZSE_MAIN": 1495,
+        "SZSE_MAIN": 1494,
         "CHINEXT": 1402,
         "SSE_MAIN": 1699,
-        "STAR": 616,
+        "STAR": 615,
         "BSE": 339
       },
-      "sha256": "e8c9ce65afd2f25b6be36dc3b196d00d51f146dd4463dae1805a95d14c049ed1",
-      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS"
+      "sha256": "46145f365b38404634c431300abb5b95c892ee062f23451395cacee0386e7bfa",
+      "source": "INDEPENDENT_EXCHANGE_REGISTERS_FILTERED_TO_A_SHARE_COMMON_EQUITY"
     },
     "2026-09-30": {
       "file": "data/backtest/official_universe_snapshots/2026-09-30.csv",
-      "total_symbols": 5572,
+      "total_symbols": 5570,
       "by_board": {
-        "SZSE_MAIN": 1496,
+        "SZSE_MAIN": 1495,
         "CHINEXT": 1408,
         "SSE_MAIN": 1702,
-        "STAR": 618,
+        "STAR": 617,
         "BSE": 348
       },
-      "sha256": "e4e2cb76026218f5dda6ebf6513d46dbd154d4981865035a664bdf60ddd17f30",
-      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS"
+      "sha256": "5b31e4f016e5c0489321aa789bad2948017dced3f8415d989ebf352198f4ab74",
+      "source": "INDEPENDENT_EXCHANGE_REGISTERS_FILTERED_TO_A_SHARE_COMMON_EQUITY"
     }
   }
 }

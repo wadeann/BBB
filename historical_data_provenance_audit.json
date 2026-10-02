@@ -1,15 +1,17 @@
 {
   "audit_version": "0.7.6",
-  "generated_at": "2026-10-02T11:11:37.406701+00:00",
+  "generated_at": "2026-10-02T11:25:07.951764+00:00",
   "universe": {
     "snapshot_count": 5,
-    "missing_total": 77,
+    "legacy_schema_snapshots": 0,
+    "filtered_non_target_snapshot_rows": 0,
+    "missing_total": 63,
     "extra_total": 0,
     "match": false,
     "detailed_diff_file": "official_universe_set_diff_detailed.csv",
     "root_cause_counts": {
       "LOCAL_DELISTING_DATE_MISMATCH": 4,
-      "LOCAL_MASTER_MISSING": 73
+      "LOCAL_MASTER_MISSING": 59
     }
   },
   "raw_dataset": {

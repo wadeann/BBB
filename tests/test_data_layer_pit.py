@@ -511,16 +511,16 @@ def test_candidate_eligibility_prefilter():
 
 def test_official_snapshot_independent_difference():
     """Verify that official universe snapshots are generated independently of local security master
-    and contain official exchange listings (such as CDR 689009.SH) not in local master."""
+    and contain official exchange listings (such as delisted common equity 000584.SZ) not in local master."""
     root = Path(__file__).resolve().parents[1]
-    snap_file = root / "data" / "backtest" / "official_universe_snapshots" / "2026-08-31.csv"
+    snap_file = root / "data" / "backtest" / "official_universe_snapshots" / "2024-10-08.csv"
     assert snap_file.exists()
 
     official_symbols = set()
     with snap_file.open("r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         assert reader.fieldnames == [
-            "date", "symbol", "exchange", "board", "listing_date",
+            "date", "symbol", "exchange", "board", "security_type", "listing_date",
             "source", "source_document_id_or_url", "dataset_version"
         ]
         for row in reader:
@@ -532,10 +532,10 @@ def test_official_snapshot_independent_difference():
         for row in csv.DictReader(f):
             master_symbols.add(row["symbol"])
 
-    # 689009.SH is a genuine STAR market listing (Ninebot CDR) present in official SSE register
-    # but not in local equity security master, proving snapshots are truly independent.
+    # 000584.SZ is a genuine official exchange listing present in official register
+    # but not in local security master, proving snapshots are truly independent.
     diff_symbols = official_symbols - master_symbols
-    assert "689009.SH" in diff_symbols
+    assert "000584.SZ" in diff_symbols
     assert len(diff_symbols) > 0
 
     # Verify official snapshot manifest with SHA256 of raw registers
