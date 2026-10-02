@@ -6,3 +6,8 @@ data/diagnostics/*.json
 data/logs/*.log*
 *.log
 .env
+data/backtest/cache/
+data/backtest/llm_cache/
+data/backtest/runs/
+data/backtest/jobs/
+data/research/runs/

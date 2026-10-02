@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 import httpx
+from jsonschema import ValidationError, validate as validate_json_schema
 
 from .base import LLMClient
 
@@ -83,6 +84,7 @@ class OpenAICompatibleLLMClient(LLMClient):
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             transport=transport,
             follow_redirects=True,
+            trust_env=False,
         )
 
     @property
@@ -162,7 +164,13 @@ class OpenAICompatibleLLMClient(LLMClient):
                     content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
                 if not isinstance(content, str):
                     raise LLMTransportError("LLM response content is missing")
-                return _extract_json(content)
+                out = _extract_json(content)
+                if schema is not None:
+                    try:
+                        validate_json_schema(instance=out, schema=schema)
+                    except ValidationError as exc:
+                        raise LLMTransportError(f"LLM JSON schema validation failed: {exc.message}") from exc
+                return out
             except LLMTransportError as exc:
                 last_error = exc
                 # Fallback only when json_schema compatibility is the likely problem.

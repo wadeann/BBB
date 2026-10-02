@@ -67,3 +67,21 @@ def test_openai_compatible_json_client(monkeypatch):
     }, transport=httpx.MockTransport(handler))
     out = client.complete_json(system_prompt="json", user_payload={"x":1}, schema={"type":"object"})
     assert out == {"ok": True}
+
+
+def test_openai_compatible_client_enforces_schema_locally(monkeypatch):
+    monkeypatch.setenv("TEST_LLM_URL", "https://llm.invalid")
+    monkeypatch.setenv("TEST_LLM_KEY", "secret-key")
+    monkeypatch.setenv("TEST_LLM_MODEL", "model-x")
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices":[{"message":{"content":"{\"ok\": true}"}}]})
+    client = OpenAICompatibleLLMClient({
+        "base_url_env":"TEST_LLM_URL", "api_key_env":"TEST_LLM_KEY", "model_env":"TEST_LLM_MODEL",
+        "structured_output":"json_object", "retries":0,
+    }, transport=httpx.MockTransport(handler))
+    import pytest
+    from a_share_agent.llm.openai_compatible import LLMTransportError
+    with pytest.raises(LLMTransportError):
+        client.complete_json(system_prompt="json", user_payload={"x":1}, schema={
+            "type":"object","properties":{"must":{"type":"string"}},"required":["must"],"additionalProperties":False
+        })

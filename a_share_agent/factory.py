@@ -34,13 +34,15 @@ def create_mcp_invoker(config: RuntimeConfig, *, backend: str | None = None) -> 
     return StreamableHTTPMCPInvoker(config.runtime.get("mcp") or {})
 
 
-def create_llm_client(config: RuntimeConfig, *, required: bool = False) -> LLMClient | None:
+def create_llm_client(config: RuntimeConfig, *, required: bool = False, purpose: str | None = None) -> LLMClient | None:
     """Create only the OpenAI-compatible LLM layer.
 
     This function never reads MCP credentials and is therefore safe to use for an
     isolated LLM deployment probe.
     """
-    llm_cfg = config.runtime.get("llm") or {}
+    llm_cfg = dict(config.runtime.get("llm") or {})
+    if purpose == "research":
+        llm_cfg.update(dict(llm_cfg.get("research_overrides") or {}))
     if not bool(llm_cfg.get("enabled", True)):
         if required:
             raise ValueError("LLM is disabled in config/runtime.yaml")

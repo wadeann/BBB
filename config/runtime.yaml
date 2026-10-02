@@ -1,7 +1,7 @@
-version: 0.5.0
+version: 0.6.0
 backend: fake                 # fake | production; production must be an explicit deployment choice
 mode: paper
-code_version: runtime-v0.5.0
+code_version: runtime-v0.6.0
 model_id: external-llm
 strategy_version: skill-v5.0.0
 
@@ -11,7 +11,7 @@ mcp:
   transport: streamable_http
   protocol_version: "2025-06-18"
   client_name: a-share-agent
-  client_version: "0.5.0"
+  client_version: "0.6.0"
   timeout_seconds: 20
   verify_tls: true
   services:
@@ -53,11 +53,19 @@ llm:
   api_key_env: ASHARE_LLM_API_KEY
   model_env: ASHARE_LLM_MODEL
   chat_completions_path: /v1/chat/completions
-  timeout_seconds: 60
+  timeout_seconds: 120
   retries: 2
   temperature: 0.0
   max_tokens: 4096
-  structured_output: auto     # auto | json_schema | json_object | none
+  structured_output: json_object     # auto | json_schema | json_object | none
+  # Historical research should fail fast and stay cheap/reproducible. These values
+  # override only the Research Lab client; live/runtime settings above remain unchanged.
+  research_overrides:
+    timeout_seconds: 90
+    retries: 0
+    max_tokens: 1200
+    temperature: 0.0
+    structured_output: json_object
 
 universe_queries:
   wencai:

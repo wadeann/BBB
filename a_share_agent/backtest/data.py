@@ -58,12 +58,42 @@ def normalize_bars(raw: Any) -> list[dict[str, Any]]:
     return [uniq[k] for k in sorted(uniq)]
 
 
+def _extract_sector_fields(raw: Any) -> tuple[str | None, str | None, dict[str, Any]]:
+    """Best-effort parser for heterogeneous TDX F10 payloads."""
+    name_keys = {"industry","sector","industry_name","sector_name","hy_name","hyname","所属行业","行业","行业名称","板块","板块名称"}
+    code_keys = {"industry_code","sector_code","hy_code","hycode","industrycode","行业代码","板块代码"}
+    name = None
+    code = None
+    visited: set[str] = set()
+    def walk(obj: Any, depth: int = 0) -> None:
+        nonlocal name, code
+        if depth > 5 or (name is not None and code is not None):
+            return
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                ks = str(k); lk = ks.lower(); visited.add(ks)
+                if name is None and (lk in name_keys or ks in name_keys) and isinstance(v, (str,int,float)) and str(v).strip():
+                    name = str(v)
+                if code is None and (lk in code_keys or ks in code_keys) and isinstance(v, (str,int,float)) and str(v).strip():
+                    code = str(v)
+            for v in obj.values():
+                if isinstance(v, (dict,list)): walk(v, depth + 1)
+        elif isinstance(obj, list):
+            for v in obj[:50]:
+                if isinstance(v, (dict,list)): walk(v, depth + 1)
+    walk(raw)
+    diag = {"top_level_keys": sorted(str(k) for k in raw.keys())[:30] if isinstance(raw, dict) else [], "visited_key_sample": sorted(visited)[:50]}
+    return name, code, diag
+
+
 @dataclass
 class UniverseInfo:
     symbols: list[str]
     source: str
     survivorship_bias: bool
     notes: list[str]
+    point_in_time: bool = False
+    membership_records: int = 0
 
 
 class HistoricalDataProvider:
@@ -81,6 +111,7 @@ class HistoricalDataProvider:
         self._bars_mem: dict[str, list[dict[str, Any]]] = {}
         self._sector_mem: dict[str, dict[str, Any]] = {}
         self.warnings: list[str] = []
+        self._membership: dict[str, list[dict[str, Any]]] = {}
 
     @staticmethod
     def _safe(symbol: str) -> str:
@@ -102,6 +133,89 @@ class HistoricalDataProvider:
         tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)
 
+    def _normalize_membership_items(self, raw: Any) -> list[dict[str, Any]]:
+        if isinstance(raw, dict):
+            for key in ("data", "items", "symbols", "securities", "result", "list"):
+                if isinstance(raw.get(key), list):
+                    raw = raw[key]; break
+        if not isinstance(raw, list):
+            return []
+        def as_bool(v: Any, default: bool=False) -> bool:
+            if v is None: return default
+            if isinstance(v,bool): return v
+            if isinstance(v,(int,float)): return v != 0
+            return str(v).strip().lower() in {"1","true","yes","y","on"}
+        out=[]
+        for x in raw:
+            if isinstance(x, str):
+                out.append({"symbol":x,"active_from":"","active_to":"","tradable":True})
+                continue
+            if not isinstance(x, dict) or not x.get("symbol"):
+                continue
+            start=_date_str(x.get("active_from") or x.get("effective_from") or x.get("listing_date") or x.get("start_date"))
+            end=_date_str(x.get("active_to") or x.get("effective_to") or x.get("delisting_date") or x.get("end_date"))
+            out.append({
+                "symbol":str(x["symbol"]),"active_from":start,"active_to":end,
+                "tradable":as_bool(x.get("tradable"), True),"st":as_bool(x.get("st", x.get("risk_warning", False))),
+                "suspended":as_bool(x.get("suspended", False)),"board":x.get("board"),"raw":x,
+            })
+        return out
+
+    def _load_local_security_master(self, start_date: str, end_date: str) -> UniverseInfo | None:
+        path=self.root/"data"/"backtest"/"security_master.csv"
+        if not path.exists():
+            return None
+        with path.open("r",encoding="utf-8-sig",newline="") as fh:
+            items=self._normalize_membership_items(list(csv.DictReader(fh)))
+        if not items:
+            return None
+        symbols=[]
+        for rec in items:
+            sym=rec["symbol"]; symbols.append(sym); self._membership.setdefault(sym,[]).append(rec)
+        return UniverseInfo(list(dict.fromkeys(symbols)),f"security_master:{path}",False,["Local point-in-time security master used."],True,len(items))
+
+    def load_universe_for_period(self, start_date: str, end_date: str, universe_file: str, *, max_universe: int = 0, mode: str = "prefer_point_in_time") -> UniverseInfo:
+        if mode in {"strict_point_in_time","prefer_point_in_time"}:
+            local=self._load_local_security_master(start_date,end_date)
+            if local:
+                if max_universe: local.symbols=local.symbols[:max_universe]
+                return local
+            if self.mcp is not None:
+                try:
+                    raw=self.mcp.invoke("mcp_intel_get_historical_universe",start_date=start_date,end_date=end_date,mode="membership_intervals",include_status=True)
+                    items=self._normalize_membership_items(raw)
+                    interval_items=[x for x in items if x.get("active_from") or x.get("active_to")]
+                    if items and interval_items:
+                        symbols=[]
+                        for rec in items:
+                            sym=rec["symbol"]; symbols.append(sym); self._membership.setdefault(sym,[]).append(rec)
+                        syms=list(dict.fromkeys(symbols))
+                        if max_universe: syms=syms[:max_universe]
+                        return UniverseInfo(syms,"mcp_historical_universe",False,["Point-in-time membership intervals returned by Intel MCP."],True,len(items))
+                    if items:
+                        self.warnings.append("HISTORICAL_UNIVERSE_NO_INTERVALS")
+                except Exception as exc:
+                    self.warnings.append(f"HISTORICAL_UNIVERSE_UNAVAILABLE:{type(exc).__name__}")
+            if mode == "strict_point_in_time":
+                raise RuntimeError("strict point-in-time universe requested, but neither security_master.csv nor historical universe MCP intervals are available")
+        info=self.load_universe(universe_file,max_universe=max_universe)
+        info.notes.append(f"universe_mode={mode}; point-in-time source unavailable, fallback used")
+        return info
+
+    def eligible_on(self, symbol: str, as_of: str) -> bool:
+        records=self._membership.get(symbol)
+        if not records:
+            return True
+        for r in records:
+            start=str(r.get("active_from") or "")
+            end=str(r.get("active_to") or "")
+            if start and as_of < start: continue
+            if end and as_of > end: continue
+            if not bool(r.get("tradable",True)) or bool(r.get("st",False)) or bool(r.get("suspended",False)):
+                continue
+            return True
+        return False
+
     def load_universe(self, universe_file: str, *, max_universe: int = 0) -> UniverseInfo:
         path = (self.root / universe_file).resolve() if not Path(universe_file).is_absolute() else Path(universe_file)
         syms: list[str] = []
@@ -111,8 +225,8 @@ class HistoricalDataProvider:
                 if s and not s.startswith("#") and any(ch.isdigit() for ch in s):
                     syms.append(s)
             source = f"file:{path}"
-            survivorship = False
-            notes = ["Universe supplied by user file. Point-in-time membership is the user's responsibility."]
+            survivorship = True
+            notes = ["Static universe file used. This is not point-in-time membership unless the file itself was constructed point-in-time."]
         elif self.mcp is not None:
             target=max_universe or 5000; page=1; page_size=min(50,target)
             while len(syms)<target and page<=120:
@@ -172,18 +286,23 @@ class HistoricalDataProvider:
         path = self._cache_file("sector_map", symbol)
         if self.use_cache and path.exists():
             val = self._load_json(path)
-            if isinstance(val, dict):
+            # v0.6.1 re-parses legacy null sector caches because the old parser did not
+            # unwrap nested F10 payloads. A parsed cache carries parser_version=2.
+            if isinstance(val, dict) and int(val.get("parser_version", 0) or 0) >= 2:
                 self._sector_mem[symbol] = val
                 return val
         val: dict[str, Any] = {"name": None, "code": None, "source": "unknown"}
         if self.mcp is not None:
             try:
                 raw = self.mcp.invoke("mcp_intel_tdx_f10", symbol=symbol, module="basic")
-                if isinstance(raw, dict):
-                    base = raw.get("basic") if isinstance(raw.get("basic"), dict) else raw
-                    val["name"] = base.get("industry") or base.get("sector") or base.get("industry_name") or raw.get("industry")
-                    val["code"] = base.get("industry_code") or base.get("sector_code") or base.get("hy_code") or raw.get("industry_code") or raw.get("sector_code")
-                    val["source"] = "current_f10"
+                name, code, diag = _extract_sector_fields(raw)
+                val["name"] = name
+                val["code"] = code
+                val["source"] = "current_f10"
+                val["parser_version"] = 2
+                if not code:
+                    val["diagnostic"] = diag
+                    self.warnings.append(f"SECTOR_CODE_UNPARSED:{symbol}")
             except Exception as exc:
                 self.warnings.append(f"SECTOR_LOOKUP_FAILED:{symbol}:{type(exc).__name__}")
         self._sector_mem[symbol] = val

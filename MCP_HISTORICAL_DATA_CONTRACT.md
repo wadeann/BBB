@@ -166,3 +166,25 @@ Runtime 应：
 ## 兼容性
 
 这些是 **建议新增接口**。现有 53 工具不要直接改变语义，避免破坏生产 Worker。
+
+---
+
+## v0.6 Runtime 接入状态
+
+以下名称已经加入 Runtime 的 **optional Intel tools** 映射：
+
+```text
+mcp_intel_get_historical_universe
+mcp_intel_get_historical_security
+mcp_intel_get_historical_sector_membership
+```
+
+它们不属于原始 53 工具，因此：
+
+- 服务端没有这些工具时，普通生产 MCP catalog probe 不失败；
+- `mcp-probe` 会在 `optional_historical_tools` 中报告实际可用项；
+- `mcp_intel_get_historical_universe` 已被 `HistoricalDataProvider.load_universe_for_period()` 尝试使用；
+- `strict_point_in_time` 要求历史 universe interval 数据，否则回测拒绝开始；
+- `prefer_point_in_time` 允许显式降级并记录 survivorship-bias warning。
+
+`mcp_intel_get_historical_sector_membership` 当前仅完成工具映射，Engine 的按日期 sector membership interval 重建仍是下一阶段任务；因此当前 F10/current sector mapping 会导致 Research Validity 降级。

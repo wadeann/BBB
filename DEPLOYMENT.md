@@ -232,3 +232,62 @@ a-share-agent --root "$PWD" --backend production backtest \
 ```
 
 确认 `report.json` 的 `coverage` 和 `data_quality` 后，再扩大到 200、500 或完整股票池。回测只需要 intel MCP 认证，不需要 LLM/exec/risk 服务在线。
+
+---
+
+# v0.6 Research Lab 部署后测试
+
+部署完成后，正式跑两年研究前按以下顺序：
+
+```bash
+cd /opt/a-share-agent
+
+# 1) Intel MCP
+.venv/bin/a-share-agent --root "$PWD" --backend production mcp-probe --service intel
+
+# 2) 历史数据覆盖
+.venv/bin/a-share-agent --root "$PWD" --backend production research-preflight \
+  --start 2024-10-01 --end 2026-09-30 \
+  --universe-mode prefer_point_in_time --sample-size 30
+
+# 3) 确定性 A/B
+.venv/bin/a-share-agent --root "$PWD" --backend production research-suite \
+  --start 2024-10-01 --end 2026-09-30 \
+  --experiment baseline \
+  --experiment no_triple_golden_cross \
+  --experiment core_signal_focus \
+  --experiment router_disabled \
+  --experiment sector_disabled
+
+# 4) 找到反馈包
+.venv/bin/a-share-agent --root "$PWD" research-latest
+```
+
+需要 LLM A/B 时，先：
+
+```bash
+.venv/bin/a-share-agent --root "$PWD" llm-probe
+```
+
+再运行：
+
+```bash
+.venv/bin/a-share-agent --root "$PWD" --backend production research-suite \
+  --start 2024-10-01 --end 2026-09-30 \
+  --include-llm \
+  --experiment baseline \
+  --experiment llm_gate_baseline \
+  --experiment no_triple_golden_cross \
+  --experiment llm_gate_no_triple
+```
+
+完整流程见 `TESTING_GUIDE.md`。
+
+研究反馈文件：
+
+```text
+data/research/runs/<suite_id>/feedback_bundle.zip
+data/diagnostics/latest_research_preflight.json
+```
+
+`.env`、API Key、Basic Auth 密码不属于反馈文件，禁止打包外发。

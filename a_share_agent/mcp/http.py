@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from .base import MCPError, MCPInvoker
-from .tool_catalog import EXEC_TOOLS, INTEL_TOOLS, JIN10_TOOLS, RISK_TOOLS
+from .tool_catalog import EXEC_TOOLS, INTEL_TOOLS, JIN10_TOOLS, RISK_TOOLS, OPTIONAL_INTEL_TOOLS
 
 
 TOOL_TO_SERVICE = {
@@ -18,6 +18,7 @@ TOOL_TO_SERVICE = {
     **{name: "exec" for name in EXEC_TOOLS},
     **{name: "risk" for name in RISK_TOOLS},
     **{name: "jin10" for name in JIN10_TOOLS},
+    **{name: "intel" for name in OPTIONAL_INTEL_TOOLS},
 }
 
 EXPECTED_TOOLS_BY_SERVICE = {
@@ -144,7 +145,7 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
         self.services = config.get("services") or {}
         self.protocol_version = str(config.get("protocol_version", "2025-06-18"))
         self.client_name = str(config.get("client_name", "a-share-agent"))
-        self.client_version = str(config.get("client_version", "0.5.0"))
+        self.client_version = str(config.get("client_version", "0.6.0"))
         self.timeout = float(config.get("timeout_seconds", 20.0))
         self.verify_tls = bool(config.get("verify_tls", True))
         self._transport = transport
@@ -305,7 +306,9 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
             advertised = set(names)
             expected = EXPECTED_TOOLS_BY_SERVICE.get(service, set())
             missing = sorted(expected - advertised)
-            unexpected = sorted(advertised - expected)
+            optional_expected = set(OPTIONAL_INTEL_TOOLS) if service == "intel" else set()
+            optional_available = sorted(advertised & optional_expected)
+            unexpected = sorted(advertised - expected - optional_expected)
             return {
                 "ok": True,
                 "catalog_match": not missing,
@@ -318,6 +321,7 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
                 "expected_tool_count": len(expected),
                 "missing_tools": missing,
                 "unexpected_tools": unexpected,
+                "optional_historical_tools": optional_available,
                 "tools": names,
             }
         except Exception as exc:

@@ -32,3 +32,11 @@ CRITICAL_PAPER_TOOLS = {
     "mcp_exec_register_approved_intent", "mcp_exec_place_order", "mcp_risk_check_intent",
     "mcp_risk_daily_pnl", "mcp_risk_get_blacklist",
 }
+
+# Optional research-grade historical tools. They are NOT part of the user's original
+# 53-tool contract, so absence does not fail the production MCP catalog probe.
+OPTIONAL_INTEL_TOOLS = [
+    "mcp_intel_get_historical_universe",
+    "mcp_intel_get_historical_security",
+    "mcp_intel_get_historical_sector_membership",
+]

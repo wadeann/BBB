@@ -23,7 +23,7 @@ class BacktestReportWriter:
     def write(self, report: dict[str,Any]) -> Path:
         run_id=str(report["run_id"]); path=self.root/run_id; path.mkdir(parents=True,exist_ok=True)
         (path/"report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
-        for name,key in (("trades.csv","trades"),("equity_curve.csv","equity_curve"),("monthly_returns.csv","monthly_returns"),("rejections.csv","rejections")):
+        for name,key in (("trades.csv","trades"),("equity_curve.csv","equity_curve"),("monthly_returns.csv","monthly_returns"),("rejections.csv","rejections"),("strategy_breakdown.csv","by_strategy"),("family_breakdown.csv","by_family"),("route_breakdown.csv","by_route"),("sector_breakdown.csv","by_sector")):
             rows=report.get(key,[])
             if rows:
                 fields=[]
@@ -34,6 +34,8 @@ class BacktestReportWriter:
                     w=csv.DictWriter(fh,fieldnames=fields,extrasaction="ignore"); w.writeheader()
                     for r in rows:
                         w.writerow({k:(json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else v) for k,v in r.items()})
+        (path/"data_quality.json").write_text(json.dumps(report.get("data_quality",{}),ensure_ascii=False,indent=2),encoding="utf-8")
+        (path/"methodology.json").write_text(json.dumps(report.get("methodology",{}),ensure_ascii=False,indent=2),encoding="utf-8")
         (path/"report.html").write_text(self._html(report),encoding="utf-8")
         latest=self.root/"latest.json"; latest.write_text(json.dumps({"run_id":run_id,"path":str(path)},ensure_ascii=False,indent=2),encoding="utf-8")
         return path
@@ -55,7 +57,7 @@ class BacktestReportWriter:
 
     def _html(self,r:dict[str,Any])->str:
         m=r.get("metrics",{}); months=r.get("monthly_returns",[]); trades=[x for x in r.get("trades",[]) if x.get("direction")=="SELL"]
-        cards=[("总收益",_pct(m.get("total_return"))),("CAGR",_pct(m.get("cagr"))),("最大回撤",_pct(m.get("max_drawdown"))),("Sharpe",_num(m.get("sharpe"))),("胜率",_pct(m.get("win_rate"))),("Profit Factor",_num(m.get("profit_factor"))),("交易数",str(m.get("closed_trades",0))),("总费用",_num(m.get("total_fees")))]
+        cards=[("总收益",_pct(m.get("total_return"))),("CAGR",_pct(m.get("cagr"))),("最大回撤",_pct(m.get("max_drawdown"))),("Sharpe",_num(m.get("sharpe"))),("胜率",_pct(m.get("win_rate"))),("Profit Factor",_num(m.get("profit_factor"))),("交易数",str(m.get("closed_trades",0))),("净已实现PnL",_num(m.get("net_realized_pnl"))),("毛PnL(成本前)",_num(m.get("gross_pnl_before_costs"))),("往返费用",_num(m.get("round_trip_fees"))),("估算滑点成本",_num(m.get("estimated_slippage_cost"))),("总费用(逐笔)",_num(m.get("total_fees")))]
         card_html="".join(f'<div class="card"><b>{html.escape(k)}</b><span>{html.escape(v)}</span></div>' for k,v in cards)
         month_rows="".join(f'<tr><td>{x["month"]}</td><td>{_pct(x["return"])}</td><td>{_num(x["ending_equity"])}</td></tr>' for x in months)
         trade_rows="".join(f'<tr><td>{html.escape(str(x.get("trade_date")))}</td><td>{html.escape(str(x.get("symbol")))}</td><td>{html.escape(str(x.get("strategy_id")))}</td><td>{_pct(x.get("pnl_pct"))}</td><td>{html.escape(str(x.get("exit_reason")))}</td></tr>' for x in trades[-100:])

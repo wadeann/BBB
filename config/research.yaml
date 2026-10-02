@@ -1,0 +1,62 @@
+version: 1.0
+# Research Lab experiments are diagnostic comparisons, not automatic strategy promotion.
+baseline_id: baseline
+min_symbols_for_research_grade: 500
+max_neutral_sector_share_for_research_grade: 0.85
+experiments:
+  - id: baseline
+    description: Current deterministic strategy/router baseline.
+    overrides:
+      research_tag: baseline
+      route_mode: enabled
+      sector_mode: historical_or_neutral
+      llm_filter_enabled: false
+
+  - id: no_triple_golden_cross
+    description: "Ablation: remove triple_golden_cross only."
+    overrides:
+      research_tag: no_triple_golden_cross
+      disabled_strategies: [triple_golden_cross]
+      llm_filter_enabled: false
+
+  - id: core_signal_focus
+    description: Diagnostic focus on single_bull_hold + high_volume_breakout; not a production recommendation.
+    overrides:
+      research_tag: core_signal_focus
+      enabled_strategies: [single_bull_hold, high_volume_breakout]
+      llm_filter_enabled: false
+
+  - id: router_disabled
+    description: "Ablation: disable market/sector Strategy Router gating while keeping deterministic signals/scoring."
+    overrides:
+      research_tag: router_disabled
+      route_mode: disabled
+      llm_filter_enabled: false
+
+  - id: sector_disabled
+    description: "Ablation: neutralize sector context to quantify current sector layer contribution."
+    overrides:
+      research_tag: sector_disabled
+      sector_mode: disabled
+      llm_filter_enabled: false
+
+  - id: llm_gate_baseline
+    description: Historical point-in-time LLM candidate gate on baseline deterministic candidates.
+    requires_llm: true
+    overrides:
+      research_tag: llm_gate_baseline
+      decision_engine: deterministic_plus_llm_filter
+      llm_filter_enabled: true
+      llm_filter_top_n: 20
+      llm_filter_accept: [PASS]
+
+  - id: llm_gate_no_triple
+    description: LLM gate after removing triple_golden_cross.
+    requires_llm: true
+    overrides:
+      research_tag: llm_gate_no_triple
+      disabled_strategies: [triple_golden_cross]
+      decision_engine: deterministic_plus_llm_filter
+      llm_filter_enabled: true
+      llm_filter_top_n: 20
+      llm_filter_accept: [PASS]

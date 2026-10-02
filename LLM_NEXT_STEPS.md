@@ -464,3 +464,57 @@ a-share-agent --root "$PWD" --backend production backtest \
 ```
 
 这才是后续评估策略真实赚钱能力的基础。
+
+---
+
+# v0.6 状态更新（后续 LLM 必读）
+
+v0.5.1 文档中以下事项已经在 v0.6 **部分或全部编码实现**：
+
+- `HistoricalDataProvider.load_universe_for_period()` 已实现。
+- 本地 `data/backtest/security_master.csv` Point-in-Time membership intervals 已实现。
+- `strict_point_in_time` / `prefer_point_in_time` 已实现。
+- `eligible_on(symbol, date)` 已接入历史 entry scan 和 pending BUY execution。
+- optional `mcp_intel_get_historical_universe` 已接入 MCP mapping；服务端缺失时可降级或 strict fail。
+- Research Validity / DIAGNOSTIC_ONLY 已实现。
+- Standardized A/B Research Suite 已实现。
+- Historical LLM candidate Gate 已实现，默认匿名 ticker，且不会调用实时数据源。
+
+## 仍未完全解决
+
+### 1. Historical sector membership
+
+`mcp_intel_get_historical_sector_membership` 已作为 optional tool 名称被 Runtime 识别，但 Engine 尚未完整使用“按日期变化的行业/概念 membership intervals”重建每个交易日的 sector mapping。
+
+当前若使用 `mcp_intel_tdx_f10` 获取行业映射，报告会：
+
+```text
+historical_sector_membership_point_in_time = false
+```
+
+并将 Research Validity 降级。
+
+下一位开发者优先实现：
+
+```text
+HistoricalSectorMembershipProvider
+symbol + date -> historical memberships
+```
+
+最好支持一次获取区间 intervals 并缓存，而不是 5000 股票 × 500 交易日逐日远程调用。
+
+### 2. ST / suspension 状态区间的精细化
+
+本地 `security_master.csv` 已支持 interval + tradable/st/suspended 字段，但正式全市场数据需要服务端给出状态历史区间，而不是只给上市/退市日期。
+
+### 3. Dataset version / content hash
+
+建议为 security master、price dataset、sector membership dataset 增加 dataset version + hash，并写入 report.json，便于不同回测机器完全复现。
+
+### 4. LLM historical contamination
+
+v0.6 已默认匿名 ticker，但模型仍可能通过行业、特殊K线形态等间接识别某些历史事件。因此 LLM A/B 应视为“降低污染后的实验”，不能宣称完全消除模型训练数据泄漏。
+
+### 5. LLM 性价比
+
+应通过 `llm_filter_stats.calls/cache_hits/failures` 和 A/B delta 同时评估收益改善与模型调用成本。不要只看收益。

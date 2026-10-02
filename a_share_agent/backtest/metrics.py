@@ -34,6 +34,10 @@ def performance_metrics(equity_curve: list[dict[str,Any]], trades: list[dict[str
     avg_loss=mean([float(t["pnl_pct"]) for t in losses]) if losses else 0
     expectancy=mean([float(t["pnl_pct"]) for t in sells]) if sells else 0
     fees=sum(float(t.get("fees",0)) for t in trades)
+    gross_pnl=sum(float(t.get("gross_pnl_before_costs",0) or 0) for t in sells)
+    round_trip_fees=sum(float(t.get("round_trip_fees",0) or 0) for t in sells)
+    slippage_cost=sum(float(t.get("round_trip_slippage",0) or 0) for t in sells)
+    net_pnl=sum(float(t.get("pnl",0) or 0) for t in sells)
     streak=0; max_loss_streak=0
     for t in sells:
         if float(t.get("pnl",0))<0: streak+=1; max_loss_streak=max(max_loss_streak,streak)
@@ -45,6 +49,9 @@ def performance_metrics(equity_curve: list[dict[str,Any]], trades: list[dict[str
         "max_drawdown":max_dd,"max_drawdown_days":max_dd_days,"sharpe":sharpe,"sortino":sortino,"calmar":calmar,
         "closed_trades":len(sells),"win_rate":len(wins)/len(sells) if sells else 0,"profit_factor":pf,
         "avg_win_pct":avg_win,"avg_loss_pct":avg_loss,"expectancy_pct":expectancy,"total_fees":fees,
+        "gross_pnl_before_costs":gross_pnl,"round_trip_fees":round_trip_fees,"estimated_slippage_cost":slippage_cost,
+        "net_realized_pnl":net_pnl,"gross_return_on_initial":gross_pnl/initial_cash if initial_cash else 0.0,
+        "net_realized_return_on_initial":net_pnl/initial_cash if initial_cash else 0.0,
         "max_consecutive_losses":max_loss_streak,"avg_mfe_pct":mean(mfe_vals) if mfe_vals else 0.0,"avg_mae_pct":mean(mae_vals) if mae_vals else 0.0,
     }
 

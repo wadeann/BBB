@@ -1,0 +1,153 @@
+======================================================================
+CodexA v0.51 - 2-Year Historical Backtest Results
+Period: 2024-10-01 ~ 2026-09-30
+Run at: 2026-10-02T06:47:04.171160+08:00
+Run ID: bt-cdba73d1f84d
+======================================================================
+
+Backtest Universe: 63 stocks
+Trading Days: ~504 (2 years)
+
+PERFORMANCE METRICS
+--------------------------------------------------
+  Initial Cash:             1,000,000
+  Ending Equity:              991,882
+  Total Return:                 -0.81%
+  CAGR:                         -0.42%
+  Sharpe Ratio:                 -0.10
+  Sortino Ratio:                -0.08
+  Max Drawdown:                 -4.06%
+  Max Drawdown Days:              318
+
+TRADE STATISTICS
+--------------------------------------------------
+  Closed Trades:                  237
+  Win Rate:                      39.2%
+  Profit Factor:                 0.97
+  Avg Win:                      +5.01%
+  Avg Loss:                     -3.45%
+  Expectancy per Trade:         -0.13%
+  Max Consec. Losses:               8
+  Total Fees:                  14,486
+
+BENCHMARK COMPARISON
+--------------------------------------------------
+  Benchmark (沪深300):           +2.39%
+  Excess Return:                 -3.20%
+
+MONTHLY RETURNS
+--------------------------------------------------
+  2024-10: -0.81%
+  2024-11: -0.71%
+  2024-12: +0.03%
+  2025-01: -0.26%
+  2025-02: -0.11%
+  2025-03: -0.06%
+  2025-04: -0.38%
+  2025-05: -0.39%
+  2025-06: -0.19%
+  2025-07: -0.08%
+  2025-08: +0.82%
+  2025-09: +0.06%
+  2025-10: -0.62%
+  2025-11: +1.31%
+  2025-12: -0.46%
+  2026-01: +2.07%
+  2026-02: -0.39%
+  2026-03: -0.27%
+  2026-04: +0.93%
+  2026-05: -0.03%
+  2026-06: -0.27%
+  2026-07: -0.53%
+  2026-08: -0.27%
+  2026-09: -0.17%
+
+TRADE LOG (first 50)
+--------------------------------------------------
+  2024-10-09 BUY  000858.SZ  Qty:  300 @   160.08  
+  2024-10-09 BUY  000568.SZ  Qty:  500 @   152.08  
+  2024-10-09 BUY  600036.SH  Qty: 1800 @    39.72  
+  2024-10-10 BUY  600000.SH  Qty: 4300 @    10.07  
+  2024-10-10 BUY  601318.SH  Qty:  700 @    56.66  
+  2024-10-10 SELL 000858.SZ  Qty:  300 @   147.60  PnL:     -3,796
+  2024-10-10 SELL 000568.SZ  Qty:  500 @   142.13  PnL:     -5,055
+  2024-10-10 SELL 600036.SH  Qty: 1800 @    37.38  PnL:     -4,286
+  2024-10-11 BUY  600030.SH  Qty: 1600 @    27.21  
+  2024-10-11 BUY  000858.SZ  Qty:  200 @   150.07  
+  2024-10-14 BUY  688041.SH  Qty:  100 @   125.05  
+  2024-10-17 SELL 000858.SZ  Qty:  200 @   142.43  PnL:     -1,562
+  2024-10-18 SELL 600030.SH  Qty: 1600 @    26.11  PnL:     -1,818
+  2024-10-18 BUY  000858.SZ  Qty:  500 @   137.08  
+  2024-10-21 SELL 601318.SH  Qty:  700 @    57.37  PnL:       +454
+  2024-10-21 SELL 688041.SH  Qty:  100 @   135.93  PnL:     +1,071
+  2024-10-21 BUY  600941.SH  Qty:  700 @   107.16  
+  2024-10-22 SELL 600000.SH  Qty: 4300 @    10.15  PnL:       +338
+  2024-10-22 BUY  002475.SZ  Qty:  900 @    45.44  
+  2024-10-22 BUY  688981.SH  Qty:  200 @    95.04  
+  2024-10-23 SELL 000858.SZ  Qty:  500 @   145.40  PnL:     +4,079
+  2024-10-23 SELL 600941.SH  Qty:  700 @   104.33  PnL:     -2,067
+  2024-10-23 SELL 002475.SZ  Qty:  900 @    45.75  PnL:       +228
+  2024-10-23 BUY  002625.SZ  Qty:  800 @    36.31  
+  2024-10-24 BUY  601012.SH  Qty: 1400 @    19.71  
+  2024-10-24 BUY  600438.SH  Qty: 1300 @    24.62  
+  2024-10-24 BUY  002415.SZ  Qty: 1200 @    30.76  
+  2024-10-25 SELL 600438.SH  Qty: 1300 @    25.39  PnL:       +958
+  2024-10-28 SELL 002415.SZ  Qty: 1200 @    30.47  PnL:       -378
+  2024-10-28 BUY  600438.SH  Qty:  800 @    28.99  
+  2024-10-29 BUY  002415.SZ  Qty: 1400 @    30.64  
+  2024-10-31 SELL 002415.SZ  Qty: 1400 @    29.98  PnL:       -972
+  2024-11-01 SELL 688981.SH  Qty:  200 @    85.15  PnL:     -1,998
+  2024-11-01 SELL 002625.SZ  Qty:  800 @    42.58  PnL:     +4,980
+  2024-11-05 SELL 601012.SH  Qty: 1400 @    19.19  PnL:       -758
+  2024-11-06 BUY  002625.SZ  Qty:  200 @    46.52  
+  2024-11-12 SELL 002625.SZ  Qty:  200 @    49.43  PnL:       +565
+  2024-11-12 BUY  000858.SZ  Qty:  300 @   154.90  
+  2024-11-12 BUY  000568.SZ  Qty:  300 @   148.22  
+  2024-11-13 SELL 600438.SH  Qty:  800 @    29.39  PnL:       +286
+  2024-11-13 BUY  002460.SZ  Qty:  700 @    43.23  
+  2024-11-14 BUY  002230.SZ  Qty:  700 @    54.62  
+  2024-11-14 BUY  600104.SH  Qty: 3200 @    17.00  
+  2024-11-18 SELL 000858.SZ  Qty:  300 @   151.20  PnL:     -1,159
+  2024-11-18 SELL 002230.SZ  Qty:  700 @    53.95  PnL:       -507
+  2024-11-18 SELL 002460.SZ  Qty:  700 @    38.06  PnL:     -3,648
+  2024-11-19 SELL 000568.SZ  Qty:  300 @   143.42  PnL:     -1,490
+  2024-11-21 BUY  002460.SZ  Qty:  800 @    42.80  
+  2024-11-21 BUY  600276.SH  Qty: 1300 @    50.34  
+  2024-11-21 BUY  600028.SH  Qty:12400 @     6.33  
+
+STRATEGY BREAKDOWN
+--------------------------------------------------
+By Strategy:
+  single_bull_hold         :   88 trades  PnL:    +14,708  WR: 39%
+  high_volume_breakout     :   28 trades  PnL:     +6,488  WR: 61%
+  ma_convergence_breakout  :    9 trades  PnL:       -170  WR: 44%
+  ma60_breakout_retest     :   28 trades  PnL:     -2,575  WR: 50%
+  triple_golden_cross      :   84 trades  PnL:    -26,569  WR: 29%
+
+By Family:
+  trend_pullback           :  116 trades  PnL:    +12,133  WR: 41%
+  trend_breakout           :  121 trades  PnL:    -20,251  WR: 37%
+
+By Route:
+  NEUTRAL_NEUTRAL_SECTOR   :   38 trades  PnL:       +775  WR: 42%
+  RISK_ON_NEUTRAL_SECTOR   :  199 trades  PnL:     -8,893  WR: 39%
+
+DATA QUALITY NOTES
+--------------------------------------------------
+  Missing bars: 0
+  Sector history missing: 0
+
+METHODOLOGY
+--------------------------------------------------
+  signal_time: daily_close
+  entry_execution: next_trading_day_open
+  exit_signal_execution: next_trading_day_open
+  protective_stop: intraday_daily_bar_low; T+1 enforced
+  lookahead_protection: True
+  llm_used: False
+  decision_engine: deterministic rule/scoring engine for reproducibility
+  market_benchmarks: ['000300.SH', '000852.SH', '399006.SZ']
+
+======================================================================
+Results saved to: /home/wade/workspace/ai/codexA/backtest_results.txt
+======================================================================

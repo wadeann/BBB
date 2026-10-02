@@ -774,3 +774,15 @@ LLM可以产生“派生结论”，但不得改写原始行情、账户、风�
 ## Historical Backtest / Walk-Forward
 
 历史回测必须遵循 `references/backtesting.md`。回测运行时禁止调用真实/模拟下单接口；日线收盘信号最早下一交易日成交；T+1、涨跌停、交易成本和数据可用时间必须纳入。回测结果只能作为研究证据，任何参数变更仍须经过 Walk-Forward / OOS / Paper Shadow / 审批流程。
+
+---
+
+## Research Lab v0.6：A/B 与 LLM 历史 Gate
+
+标准研究实验必须遵循 `references/research-lab-v06.md`。
+
+Research Suite 的目的不是自动挑选“历史收益最高”的版本，而是隔离变量：策略本身、Market/Sector Router、LLM Gate、交易成本分别贡献多少。
+
+历史 LLM Gate 只能作为 deterministic candidate 的二次过滤层，默认匿名 ticker，禁止调用实时 MCP/Web/新闻，禁止访问未来数据；LLM 故障时 fail-closed。任何 LLM A/B 结果都必须披露模型版本、缓存统计和潜在训练语料历史知识污染风险。
+
+正式结论必须先检查 `research_validity.grade`。`DIAGNOSTIC_ONLY` 实验只能用于发现问题，不能直接作为策略晋级依据。

@@ -21,6 +21,7 @@ class RuntimeConfig:
     logging: dict[str, Any]
     improvement: dict[str, Any]
     backtest: dict[str, Any]
+    research: dict[str, Any]
 
     @property
     def mode(self) -> str:
@@ -40,6 +41,7 @@ class RuntimeConfig:
             "logging": self.logging,
             "improvement": self.improvement,
             "backtest": self.backtest,
+            "research": self.research,
         }))
 
 
@@ -95,4 +97,5 @@ def load_config(project_root: str | Path) -> RuntimeConfig:
         logging=_read_yaml(cfg / "logging.yaml"),
         improvement=_read_yaml(cfg / "improvement.yaml"),
         backtest=_read_yaml(cfg / "backtest.yaml"),
+        research=_read_yaml(cfg / "research.yaml"),
     )

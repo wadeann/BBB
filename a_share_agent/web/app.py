@@ -17,7 +17,7 @@ from ..backtest.service import BacktestService
 
 
 def create_app(runtime: AgentRuntime) -> FastAPI:
-    app = FastAPI(title="A-Share Agent Workbench", version="0.5.0")
+    app = FastAPI(title="A-Share Agent Workbench", version="0.6.0")
     static_dir = Path(__file__).resolve().parent / "static"
     ttl = int(runtime.config.runtime.get("web", {}).get("dashboard_refresh_seconds", 30))
     service = DashboardService(runtime, runtime.mcp, runtime.config, ttl_seconds=ttl)

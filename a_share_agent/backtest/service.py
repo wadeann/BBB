@@ -48,12 +48,12 @@ class BacktestService:
             s=settings_from(self.config,overrides); provider=HistoricalDataProvider(self.config.project_root,self.mcp,use_cache=s.cache)
             uni=None
             if not symbols:
-                uni=provider.load_universe(s.universe_file,max_universe=s.max_universe); symbols=uni.symbols
+                uni=provider.load_universe_for_period(s.start_date,s.end_date,s.universe_file,max_universe=s.max_universe,mode=s.universe_mode); symbols=uni.symbols
             if not symbols: raise RuntimeError("backtest universe is empty; populate data/backtest/universe.txt or use production MCP universe")
             def run_one(ss:BacktestSettings):
                 e=BacktestEngine(self.config,provider,ss); r=e.run(symbols)
                 if uni:
-                    r["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols)}
+                    r["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records}
                 return r
             report=run_one(s); path=self.writer.write(report)
             wf=None

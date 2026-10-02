@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from datetime import date
 from typing import Any
 
 
@@ -27,14 +26,27 @@ class BacktestSettings:
     slippage_bps: float = 5.0
     block_open_at_limit: bool = True
     sector_mode: str = "historical_or_neutral"  # strict | historical_or_neutral | disabled
+    route_mode: str = "enabled"  # enabled | disabled
     position_round_lot: int = 100
-    decision_engine: str = "deterministic"
-    universe_source: str = "file_or_mcp"
+    decision_engine: str = "deterministic"  # deterministic | deterministic_plus_llm_filter
+    universe_source: str = "point_in_time_or_fallback"
     universe_file: str = "data/backtest/universe.txt"
+    universe_mode: str = "prefer_point_in_time"  # strict_point_in_time | prefer_point_in_time | current_fallback | file
     max_universe: int = 0
     cache: bool = True
     include_benchmark: bool = True
     report_title: str = "A股 Agent 两年回测"
+    enabled_strategies: list[str] = field(default_factory=list)
+    disabled_strategies: list[str] = field(default_factory=list)
+    llm_filter_enabled: bool = False
+    llm_filter_top_n: int = 20
+    llm_filter_batch_size: int = 1
+    llm_filter_accept: list[str] = field(default_factory=lambda: ["PASS"])
+    llm_filter_anonymize_symbol: bool = True
+    llm_filter_payload_mode: str = "compact_features"  # compact_features | bars
+    llm_filter_max_bars: int = 20
+    llm_filter_failure_policy: str = "exclude_and_invalidate"
+    research_tag: str = "baseline"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -58,6 +70,8 @@ class Position:
     holding_days: int = 0
     entry_cost: float = 0.0
     meta: dict[str, Any] = field(default_factory=dict)
+    raw_entry_price: float = 0.0
+    entry_slippage_cost: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -89,6 +103,12 @@ class Trade:
     mae_pct: float | None = None
     entry_market_regime: str | None = None
     entry_sector_strength: str | None = None
+    raw_price: float | None = None
+    slippage_cost: float = 0.0
+    gross_pnl_before_costs: float | None = None
+    round_trip_fees: float | None = None
+    round_trip_slippage: float | None = None
+    llm_decision: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

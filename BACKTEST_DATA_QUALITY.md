@@ -110,3 +110,65 @@ MISSING_TRADING_DAY
 - run id
 
 相同输入应得到相同输出。
+
+---
+
+## v0.6 Research Validity 自动分级
+
+v0.6 每个 Research Suite 实验增加：
+
+```json
+{
+  "research_validity": {
+    "grade": "RESEARCH_GRADE | DIAGNOSTIC_ONLY",
+    "reasons": [],
+    "tested_symbols": 0,
+    "neutral_sector_trade_share": 0.0,
+    "survivorship_bias": false
+  }
+}
+```
+
+默认会因以下原因降级：
+
+- 股票覆盖低于 `config/research.yaml:min_symbols_for_research_grade`；
+- 股票池存在幸存者偏差；
+- 历史行业/板块 membership 不是 Point-in-Time；
+- 交易几乎都落在 `NEUTRAL_SECTOR`；
+- 历史板块行情缺失。
+
+## 本地 Point-in-Time Security Master
+
+如果 Intel MCP 暂时没有历史股票池接口，可以放：
+
+```text
+data/backtest/security_master.csv
+```
+
+模板见：
+
+```text
+data/backtest/security_master.example.csv
+```
+
+支持字段：
+
+```text
+symbol
+active_from
+active_to
+tradable
+st
+suspended
+board
+```
+
+同一个 symbol 可以有多行状态区间。正式数据应把 ST、停牌、退市整理等历史状态拆成有效区间，而不是只保存今天状态。
+
+## LLM 历史决策的数据泄漏风险
+
+v0.6 默认匿名化 ticker，且禁止历史 LLM Gate 调用实时数据源。这能降低但不能完全消除模型训练语料带来的历史知识污染，因此：
+
+- LLM A/B 必须单独标记；
+- 不应把 LLM 回测结果与纯确定性回测混成一个未经说明的数字；
+- 报告 `methodology.llm_filter_stats` 会保留匿名化、调用次数和缓存信息。

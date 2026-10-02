@@ -158,3 +158,134 @@ Known fidelity limits disclosed in every report:
 6. 对应自动测试与正式两年全市场回测。
 
 完成前，不应把 current-universe 历史回测结果描述为严格的全市场 Point-in-Time 业绩验证。
+
+---
+
+# v0.6 Research Lab implementation status
+
+## 已完成
+
+### 标准 A/B / 消融实验
+
+- `research-suite` CLI
+- `config/research.yaml`
+- baseline / no_triple_golden_cross / core_signal_focus / router_disabled / sector_disabled
+- 可选 LLM Gate：llm_gate_baseline / llm_gate_no_triple
+- 实验间共享历史数据缓存，但每个实验独立生成 backtest report
+- 自动生成 comparison metrics 与 baseline delta
+- 自动生成 `feedback_bundle.zip`
+
+### LLM Historical Gate
+
+- LLM 仅过滤 deterministic candidate，不能创建新信号
+- PASS / WATCH / REJECT JSON Schema
+- 仅使用 as-of 当日及之前数据
+- 不调用实时 MCP / News / Web
+- 出错 fail-closed = REJECT
+- model + prompt + payload cache
+- 默认匿名化 ticker，降低模型历史知识污染
+- LLM 调用统计写入 methodology
+
+### Point-in-Time Universe
+
+- `data/backtest/security_master.csv` 本地历史证券主表
+- `strict_point_in_time` / `prefer_point_in_time` / fallback 模式
+- `eligible_on(symbol, date)` 动态历史资格过滤
+- optional MCP：`mcp_intel_get_historical_universe`
+- optional Intel tools 被允许调用，但不计入原始 53-tool 必选 catalog
+- 缺少 PIT 数据时显式 survivorship-bias warning
+
+### Research data preflight
+
+- `research-preflight` CLI
+- universe source / size / PIT / survivorship 检查
+- 历史价格周期覆盖抽样
+- sector mapping 覆盖抽样
+- sector history 周期覆盖抽样
+- benchmark 周期覆盖
+- 自动写 `data/diagnostics/latest_research_preflight.json`
+
+### Gross / Cost / Net
+
+- raw entry / exit price retained
+- round-trip explicit fees
+- estimated round-trip slippage cost
+- gross PnL before costs
+- net realized PnL
+- gross/net return on initial cash
+
+### 报告与交接
+
+- `TESTING_GUIDE.md`
+- `RESEARCH_LAB.md`
+- `scripts/run_research_validation.sh`
+- `scripts/show_feedback_path.sh`
+- research output：`data/research/runs/<suite_id>/`
+- single-run output：`data/backtest/runs/<run_id>/`
+- automatic `feedback_bundle.zip`
+
+## 数据质量保护
+
+Research Suite 会将以下情况标记为 `DIAGNOSTIC_ONLY`：
+
+- tested symbols < 配置最小值
+- static/current universe 导致 survivorship bias
+- sector membership 不是 Point-in-Time
+- neutral-sector trade share 过高
+- sector history 缺失
+
+因此，收益更高不等于自动晋级策略。
+
+## 自动测试
+
+v0.6 新增覆盖：
+
+- Historical LLM Filter cache
+- LLM historical gate deterministic output contract
+- local point-in-time security master eligibility
+- Research Validity downgrade logic
+- Gross / Fee / Slippage / Net decomposition
+
+最终打包前验证结果：
+
+- `pytest`: **28 passed**
+- Python compile: **PASS**
+- `run_research_validation.sh` / `show_feedback_path.sh`: **bash syntax PASS**
+- `research-suite --help` / `research-preflight --help`: **PASS**
+- ResearchLab end-to-end CLI synthetic run: **PASS**
+- `feedback_bundle.zip` generation/contents: **PASS**
+- Backtest execution safety (no Exec MCP order calls): **PASS**
+
+# v0.6.1 Research integrity patch
+
+- [x] LLM transport/schema failure separated from intelligent REJECT
+- [x] LLM experiment invalidated when any candidate is excluded by LLM ERROR
+- [x] local JSON Schema enforcement for OpenAI-compatible JSON output
+- [x] legacy malformed LLM caches ignored
+- [x] compact historical feature payload for LLM research
+- [x] capacity-aware candidate review to reduce LLM calls
+- [x] dedicated research timeout/retry/token configuration
+- [x] nested TDX F10 sector parser + null-cache refresh
+- [x] sector parser diagnostics in research preflight
+- [x] additional automated regression tests
+
+---
+
+## v0.6.1 Gemini 接力测试交付补充
+
+新增文档/脚本：
+
+- `CHANGELOG_V0.6.1.md`：逐项修复记录、旧问题、代码语义、验收门槛；
+- `GEMINI_CONTINUATION_TEST_PLAN.md`：给 Gemini/其他 LLM 的标准接力测试协议；
+- `scripts/run_gemini_validation.sh`：默认跑 2026-07-01 ~ 2026-09-30 的 preflight + deterministic A/B + LLM A/B；
+- `TESTING_GUIDE.md`：版本与接力入口更新为 v0.6.1；
+- `README.md`：加入接力测试入口和反馈文件位置。
+
+接力测试硬规则：
+
+1. 复测前重置旧 LLM research cache；
+2. LLM API/schema error 不得解释为 REJECT；
+3. LLM A/B 只有 `failures=0`、`error_candidates=0`、`llm_experiment_valid=true` 才有效；
+4. Sector mapping coverage 为 0 时不得声明 sector router 已验证；
+5. 不允许根据当前诊断数据直接把生产仓位提高到 30%~40%/80%~100%；
+6. 下一轮优先比较 `no_triple_golden_cross` vs `llm_gate_no_triple`。

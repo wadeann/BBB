@@ -27,3 +27,17 @@ universe_file: data/backtest/universe.txt
 max_universe: 500
 cache: true
 report_title: "A股 Agent 两年回测"
+# v0.6 research controls
+enabled_strategies: []
+disabled_strategies: []
+route_mode: enabled
+universe_mode: prefer_point_in_time
+llm_filter_enabled: false
+llm_filter_top_n: 20
+llm_filter_batch_size: 1
+llm_filter_accept: [PASS]
+llm_filter_anonymize_symbol: true
+llm_filter_payload_mode: compact_features
+llm_filter_max_bars: 20
+llm_filter_failure_policy: exclude_and_invalidate
+research_tag: baseline

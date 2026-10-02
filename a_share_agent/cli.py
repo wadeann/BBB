@@ -18,6 +18,7 @@ from .backtest.data import HistoricalDataProvider
 from .backtest.engine import BacktestEngine
 from .backtest.report import BacktestReportWriter
 from .backtest.walk_forward import WalkForwardEngine
+from .backtest.research import ResearchLab, run_research_preflight
 
 
 def _project_root(arg: str | None) -> Path:
@@ -216,17 +217,17 @@ def cmd_backtest(args) -> None:
     overrides={k:v for k,v in {
         "start_date":args.start,"end_date":args.end,"initial_cash":args.cash,"benchmark":args.benchmark,
         "min_score":args.min_score,"max_universe":args.max_universe,"universe_file":args.universe_file,
-        "slippage_bps":args.slippage_bps,"sector_mode":args.sector_mode
+        "slippage_bps":args.slippage_bps,"sector_mode":args.sector_mode,"universe_mode":getattr(args, "universe_mode", None)
     }.items() if v is not None}
     settings=settings_from(cfg,overrides); provider=HistoricalDataProvider(root,mcp,use_cache=not args.no_cache)
     symbols=list(args.symbol or [])
     uni=None
     if not symbols:
-        uni=provider.load_universe(settings.universe_file,max_universe=settings.max_universe); symbols=uni.symbols
+        uni=provider.load_universe_for_period(settings.start_date,settings.end_date,settings.universe_file,max_universe=settings.max_universe,mode=settings.universe_mode); symbols=uni.symbols
     if not symbols: raise SystemExit("回测股票池为空：请填写 data/backtest/universe.txt，或使用 production backend 获取股票池")
     def run_one(ss):
         report=BacktestEngine(cfg,provider,ss).run(symbols)
-        if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols)}
+        if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records}
         return report
     report=run_one(settings); path=BacktestReportWriter(root).write(report)
     out={"run_id":report["run_id"],"report_dir":str(path),"metrics":report["metrics"],"coverage":report["coverage"],"data_quality":report["data_quality"]}
@@ -235,6 +236,48 @@ def cmd_backtest(args) -> None:
         (path/"walk_forward.json").write_text(json.dumps(wf,ensure_ascii=False,indent=2),encoding="utf-8")
         out["walk_forward"]={"segments":len(wf.get("segments",[])),"file":str(path/"walk_forward.json")}
     print(json.dumps(out,ensure_ascii=False,indent=2,default=str))
+
+
+
+def cmd_research_preflight(args) -> None:
+    root=_project_root(args.root); cfg=load_config(root)
+    backend=getattr(args,"backend",None) or cfg.runtime.get("backend","fake")
+    mcp=create_mcp_invoker(cfg,backend=backend)
+    overrides={k:v for k,v in {
+        "start_date":args.start,"end_date":args.end,"max_universe":args.max_universe,"universe_file":args.universe_file,
+        "universe_mode":args.universe_mode
+    }.items() if v is not None}
+    result=run_research_preflight(cfg,mcp,overrides=overrides,sample_size=args.sample_size)
+    _emit_diagnostic(root,"research_preflight",result,ok=bool(result.get("ok")))
+    if not result.get("ok"):
+        raise SystemExit(2)
+
+def cmd_research_suite(args) -> None:
+    root=_project_root(args.root); cfg=load_config(root)
+    backend=getattr(args,"backend",None) or cfg.runtime.get("backend","fake")
+    mcp=create_mcp_invoker(cfg,backend=backend)
+    include_llm=bool(args.include_llm)
+    llm=create_llm_client(cfg,required=True,purpose="research") if include_llm else None
+    overrides={k:v for k,v in {
+        "start_date":args.start,"end_date":args.end,"initial_cash":args.cash,"benchmark":args.benchmark,
+        "min_score":args.min_score,"max_universe":args.max_universe,"universe_file":args.universe_file,
+        "slippage_bps":args.slippage_bps,"sector_mode":args.sector_mode,"universe_mode":args.universe_mode
+    }.items() if v is not None}
+    lab=ResearchLab(cfg,mcp,llm)
+    summary=lab.run(overrides=overrides,symbols=list(args.symbol or []),include_llm=include_llm,experiment_ids=list(args.experiment or []))
+    print(json.dumps({
+        "suite_id":summary["suite_id"],
+        "feedback_bundle":summary.get("feedback_bundle"),
+        "report_dir":str(root/"data"/"research"/"runs"/summary["suite_id"]),
+        "experiments":summary.get("experiments"),
+    },ensure_ascii=False,indent=2,default=str))
+
+
+def cmd_research_latest(args) -> None:
+    root=_project_root(args.root); p=root/"data"/"research"/"runs"/"latest.json"
+    if not p.exists():
+        raise SystemExit("no research suite has been run yet")
+    print(p.read_text(encoding="utf-8"))
 
 def cmd_backtest_list(args) -> None:
     root=_project_root(args.root); print(json.dumps(BacktestReportWriter(root).list_runs(args.limit),ensure_ascii=False,indent=2))
@@ -289,9 +332,29 @@ def main() -> None:
     s.add_argument("--symbol", action="append", help="repeatable explicit universe symbol")
     s.add_argument("--universe-file"); s.add_argument("--max-universe", type=int); s.add_argument("--min-score", type=float)
     s.add_argument("--slippage-bps", type=float); s.add_argument("--sector-mode", choices=["strict","historical_or_neutral","disabled"])
+    s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
     s.add_argument("--no-cache", action="store_true"); s.add_argument("--walk-forward", action="store_true")
     s.add_argument("--train-months", type=int, default=12); s.add_argument("--test-months", type=int, default=3)
     s.set_defaults(func=cmd_backtest)
+
+    s = sub.add_parser("research-preflight", help="check historical universe/price/sector coverage before research suite")
+    s.add_argument("--start"); s.add_argument("--end"); s.add_argument("--universe-file"); s.add_argument("--max-universe", type=int)
+    s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
+    s.add_argument("--sample-size", type=int, default=30)
+    s.set_defaults(func=cmd_research_preflight)
+
+    s = sub.add_parser("research-suite", help="run standardized A/B and ablation backtest experiments")
+    s.add_argument("--start"); s.add_argument("--end"); s.add_argument("--cash", type=float); s.add_argument("--benchmark")
+    s.add_argument("--symbol", action="append", help="repeatable explicit universe symbol")
+    s.add_argument("--universe-file"); s.add_argument("--max-universe", type=int); s.add_argument("--min-score", type=float)
+    s.add_argument("--slippage-bps", type=float); s.add_argument("--sector-mode", choices=["strict","historical_or_neutral","disabled"])
+    s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
+    s.add_argument("--experiment", action="append", help="repeatable experiment id; default runs all configured deterministic experiments")
+    s.add_argument("--include-llm", action="store_true", help="also run configured historical LLM gate experiments; can incur API cost")
+    s.set_defaults(func=cmd_research_suite)
+
+    s = sub.add_parser("research-latest", help="show latest research suite feedback bundle path")
+    s.set_defaults(func=cmd_research_latest)
 
     s = sub.add_parser("backtest-list", help="list saved backtest reports")
     s.add_argument("--limit", type=int, default=50); s.set_defaults(func=cmd_backtest_list)

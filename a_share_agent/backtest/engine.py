@@ -19,6 +19,7 @@ from .portfolio import Portfolio
 from .portfolio import Portfolio
 from .regime import market_context_from_benchmarks, sector_context_from_history
 from .scoring import deterministic_score
+from .llm_filter import HistoricalLLMFilter
 
 
 def _atr(bars: list[dict[str,Any]], n: int=14) -> float:
@@ -41,16 +42,19 @@ class BacktestEngine:
     Entries/exits created from close signals execute no earlier than the next session.
     Stop-loss checks can execute intraday using the day's high/low, subject to T+1.
     """
-    def __init__(self, runtime_config: RuntimeConfig, provider: HistoricalDataProvider, settings: BacktestSettings):
+    def __init__(self, runtime_config: RuntimeConfig, provider: HistoricalDataProvider, settings: BacktestSettings, llm_filter: HistoricalLLMFilter | None = None):
         self.cfg=runtime_config
         self.provider=provider
         self.s=settings
+        self.llm_filter=llm_filter
         self.signal_engine=DeterministicSignalEngine()
         self.router=StrategyRouter(runtime_config.strategy_router)
         self.costs=AShareCostModel(settings.commission_rate,settings.commission_min,settings.stamp_tax_rate_sell,settings.transfer_fee_rate,settings.slippage_bps)
         self.logs: list[dict[str,Any]]=[]
         self.rejections: list[dict[str,Any]]=[]
         self.data_quality: dict[str,Any]={"missing_bars":[],"sector_history_missing":[],"warnings":[]}
+        self.enabled_strategies=set(settings.enabled_strategies or [])
+        self.disabled_strategies=set(settings.disabled_strategies or [])
 
     def _log(self, date: str, kind: str, **payload: Any) -> None:
         self.logs.append({"date":date,"type":kind,**payload})
@@ -76,6 +80,27 @@ class BacktestEngine:
         ex=[h for h in hits if h.get("strength")=="exit"]
         priority={"ma20_break":1,"shooting_star_high":2,"ma_bearish_cut":3,"volume_price_divergence":4}
         return sorted(ex,key=lambda x:priority.get(str(x.get("signal")),99))[0] if ex else None
+
+    def _eligible(self, symbol: str, d: str) -> bool:
+        fn=getattr(self.provider,"eligible_on",None)
+        return bool(fn(symbol,d)) if callable(fn) else True
+
+    def _route(self, market: dict[str,Any], sector: dict[str,Any]) -> dict[str,Any]:
+        if self.s.route_mode == "disabled":
+            return {
+                "route_id":"ROUTER_DISABLED",
+                "allowed_strategy_families":["trend_breakout","trend_pullback","rebound_reversal","pattern_confirmation","exit_defensive"],
+                "conditional_strategy_families":[],"blocked_strategy_families":[],
+                "position_multiplier":1.0,"candidate_threshold_delta":0.0,"max_new_positions_override":None,
+                "market_regime":market.get("market_regime"),"sector_strength":sector.get("sector_strength"),
+                "route_reasons":["research_ablation:router_disabled"],"data_quality":{"state":"ok"},
+            }
+        return self.router.route(market_context=market,sector_context=sector)
+
+    def _sector_context(self, bars: list[dict[str,Any]], d: str, name: str | None) -> dict[str,Any]:
+        if self.s.sector_mode == "disabled":
+            return {"as_of":d,"sector":name,"sector_strength":"neutral","sector_lifecycle":"unknown","sector_score":50.0,"data_quality":{"state":"ok","research_ablation":"sector_disabled"}}
+        return sector_context_from_history(bars,d,name=name,fallback_neutral=self.s.sector_mode!="strict")
 
     def run(self, symbols: list[str]) -> dict[str,Any]:
         benchmark_symbols=list(dict.fromkeys([self.s.benchmark, *[str(x) for x in self.cfg.defaults.get("benchmarks",{}).values()]]))
@@ -104,6 +129,11 @@ class BacktestEngine:
             if code and code not in sector_bars:
                 sector_bars[code]=self.provider.sector_bars(str(code))
         symbols=valid
+        sector_sources: dict[str,int]={}
+        for info in sector_by_symbol.values():
+            src=str(info.get("source") or "unknown"); sector_sources[src]=sector_sources.get(src,0)+1
+        self.data_quality["sector_mapping_sources"]=sector_sources
+        self.data_quality["historical_sector_membership_point_in_time"]=bool(sector_sources) and all(src.startswith("historical") for src in sector_sources)
         portfolio=Portfolio(self.s.initial_cash)
         pending: list[PendingOrder]=[]
         equity_curve=[]
@@ -141,6 +171,8 @@ class BacktestEngine:
                     continue
                 if o.symbol in portfolio.positions:
                     continue
+                if not self._eligible(o.symbol,d):
+                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NOT_POINT_IN_TIME_ELIGIBLE","order":o.to_dict()}); continue
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
                 equity=portfolio.equity(current_prices); mv=portfolio.market_value(current_prices)
@@ -174,7 +206,7 @@ class BacktestEngine:
                 if len(hist)<60: continue
                 secinfo=sector_by_symbol.get(sym,{})
                 sbars=sector_bars.get(str(secinfo.get("code")),[]) if secinfo.get("code") else []
-                sector=sector_context_from_history(sbars,d,name=secinfo.get("name"),fallback_neutral=self.s.sector_mode!="strict")
+                sector=self._sector_context(sbars,d,secinfo.get("name"))
                 hits=self.signal_engine.scan(hist,market_regime=str(market.get("market_regime")),sector_strength=str(sector.get("sector_strength")))
                 ex=self._exit_hit(hits)
                 reason=None
@@ -187,6 +219,7 @@ class BacktestEngine:
             # Entry scanning. Cap is intentionally applied after ranking all candidates for the day.
             daily_candidates=[]
             for sym in symbols:
+                if not self._eligible(sym,d): continue
                 if sym in portfolio.positions or any(o.symbol==sym and o.direction=="BUY" for o in pending): continue
                 hist=[x for x in bars_by_symbol[sym] if x["date"]<=d]
                 if len(hist)<60 or hist[-1]["date"]!=d: continue
@@ -194,13 +227,27 @@ class BacktestEngine:
                 sbars=sector_bars.get(str(secinfo.get("code")),[]) if secinfo.get("code") else []
                 if not sbars and secinfo.get("code"):
                     self.data_quality["sector_history_missing"].append(str(secinfo.get("code")))
-                sector=sector_context_from_history(sbars,d,name=secinfo.get("name"),fallback_neutral=self.s.sector_mode!="strict")
-                route=self.router.route(market_context=market,sector_context=sector)
+                sector=self._sector_context(sbars,d,secinfo.get("name"))
+                route=self._route(market,sector)
                 route_stats[route["route_id"]]=route_stats.get(route["route_id"],0)+1
                 hits=self.signal_engine.scan(hist,market_regime=str(market.get("market_regime")),sector_strength=str(sector.get("sector_strength")))
-                prim=self._primary_hit(hits)
-                if not prim: continue
-                signal_count+=1; signal_stats[str(prim["signal"])]=signal_stats.get(str(prim["signal"]),0)+1
+                filtered_hits=[]
+                for hit in hits:
+                    sid0=str(hit.get("signal"))
+                    if hit.get("strength")=="primary":
+                        if self.enabled_strategies and sid0 not in self.enabled_strategies:
+                            continue
+                        if sid0 in self.disabled_strategies:
+                            continue
+                    filtered_hits.append(hit)
+                prim=self._primary_hit(filtered_hits)
+                if not prim:
+                    if any(h.get("strength")=="primary" for h in hits):
+                        self.rejections.append({"date":d,"symbol":sym,"reason":"NO_ENABLED_PRIMARY_STRATEGY","strategies":[h.get("signal") for h in hits if h.get("strength")=="primary"]})
+                    continue
+                hits=filtered_hits
+                sid=str(prim.get("signal"))
+                signal_count+=1; signal_stats[sid]=signal_stats.get(sid,0)+1
                 family=str(prim["family"])
                 allowed=set(route.get("allowed_strategy_families",[])); conditional=set(route.get("conditional_strategy_families",[]))
                 if family not in allowed and family not in conditional:
@@ -212,7 +259,7 @@ class BacktestEngine:
                     self.rejections.append({"date":d,"symbol":sym,"reason":"SCORE_BELOW_THRESHOLD","score":score,"threshold":threshold,"strategy":prim["signal"],"route_id":route["route_id"]}); continue
                 candidates_count+=1
                 stop=self._stop_for_entry(hist,float(hist[-1]["close"]))
-                daily_candidates.append({"symbol":sym,"score":score,"breakdown":breakdown,"primary":prim,"hits":hits,"route":route,"sector":sector,"sector_name":secinfo.get("name"),"stop":stop})
+                daily_candidates.append({"symbol":sym,"score":score,"breakdown":breakdown,"primary":prim,"hits":hits,"route":route,"market":market,"sector":sector,"sector_name":secinfo.get("name"),"stop":stop,"recent_bars":hist[-80:]})
 
             if next_d:
                 daily_candidates.sort(key=lambda x:(x["score"],float(x["sector"].get("sector_score",50))),reverse=True)
@@ -220,9 +267,49 @@ class BacktestEngine:
                 route_caps=[x["route"].get("max_new_positions_override") for x in daily_candidates if x["route"].get("max_new_positions_override") is not None]
                 if route_caps: max_new=min(max_new,max(0,max(int(x) for x in route_caps)))
                 room=max(0,self.s.max_positions-len(portfolio.positions)-sum(1 for o in pending if o.direction=="BUY"))
-                for x in daily_candidates[:min(max_new,room)]:
-                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,{"score_breakdown":x["breakdown"],"hits":x["hits"],"market":market,"sector":x["sector"]}))
-                    self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d)
+                target_accept=min(max_new,room)
+
+                if self.s.llm_filter_enabled:
+                    if not self.llm_filter:
+                        raise RuntimeError("llm_filter_enabled but no HistoricalLLMFilter was provided")
+                    gated=[]
+                    top_n=min(len(daily_candidates),max(1,int(self.s.llm_filter_top_n)))
+                    batch=max(1,int(self.s.llm_filter_batch_size))
+                    reviewed=0
+                    # Review only as many ranked candidates as needed to fill actual portfolio capacity.
+                    # If the gate rejects some, continue down the ranking until capacity is filled or top_n is exhausted.
+                    while reviewed < top_n and len(gated) < target_accept:
+                        chunk=daily_candidates[reviewed:min(top_n,reviewed+batch)]
+                        decisions=self.llm_filter.decide_batch(as_of=d,candidates=[(x["symbol"],x,x["recent_bars"]) for x in chunk]) if chunk else {}
+                        for x in chunk:
+                            dec=decisions.get(x["symbol"],{
+                                "decision":"ERROR","confidence":0,"reasons_for":[],
+                                "reasons_against":["LLM_MISSING_DECISION"],"risk_flags":["MISSING_DECISION"]
+                            })
+                            x["llm_filter"]=dec
+                            decision=str(dec.get("decision") or "ERROR")
+                            if decision == "ERROR":
+                                self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_ERROR_EXCLUDED","score":x["score"],"strategy":x["primary"]["signal"],"llm":dec})
+                                continue
+                            if decision not in set(self.s.llm_filter_accept):
+                                self.rejections.append({"date":d,"symbol":x["symbol"],"reason":f"LLM_{decision}","score":x["score"],"strategy":x["primary"]["signal"],"llm":dec})
+                                continue
+                            gated.append(x)
+                            if len(gated) >= target_accept:
+                                break
+                        reviewed += len(chunk)
+                    for x in daily_candidates[reviewed:top_n]:
+                        self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_NOT_REVIEWED_CAPACITY_FILLED","score":x["score"],"strategy":x["primary"]["signal"]})
+                    for x in daily_candidates[top_n:]:
+                        self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_TOP_N_CUTOFF","score":x["score"],"strategy":x["primary"]["signal"]})
+                    daily_candidates=gated
+
+                for x in daily_candidates[:target_accept]:
+                    meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
+                    if x.get("llm_filter"):
+                        meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
+                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta))
+                    self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)
             equity_curve.append({"date":d,"equity":equity,"cash":portfolio.cash,"market_value":portfolio.market_value(current_prices),"positions":len(portfolio.positions),"market_regime":market.get("market_regime")})
@@ -259,7 +346,7 @@ class BacktestEngine:
             "by_strategy":grouped_trade_stats(trades,"strategy_id"),"by_family":grouped_trade_stats(trades,"strategy_family"),
             "by_route":grouped_trade_stats(trades,"route_id"),"by_sector":grouped_trade_stats(trades,"sector"),
             "by_market_regime":grouped_trade_stats(trades,"entry_market_regime"),"by_sector_strength":grouped_trade_stats(trades,"entry_sector_strength"),
-            "coverage":{"requested_symbols":len(valid)+len(self.data_quality["missing_bars"]),"tested_symbols":len(valid),"missing_symbols":len(self.data_quality["missing_bars"]),"signal_count":signal_count,"candidate_count":candidates_count},
+            "coverage":{"requested_symbols":len(valid)+len(self.data_quality["missing_bars"]),"tested_symbols":len(valid),"missing_symbols":len(self.data_quality["missing_bars"]),"signal_count":signal_count,"deterministic_candidate_count":candidates_count,"candidate_count":candidates_count},
             "data_quality":{
                 **self.data_quality,"provider_warnings":self.provider.warnings,
                 "historical_market_context":"derived_from_multiple_benchmark_prices",
@@ -268,8 +355,10 @@ class BacktestEngine:
             },
             "methodology":{
                 "signal_time":"daily_close","entry_execution":"next_trading_day_open","exit_signal_execution":"next_trading_day_open",
-                "protective_stop":"intraday_daily_bar_low; T+1 enforced","lookahead_protection":True,"llm_used":False,
-                "decision_engine":"deterministic rule/scoring engine for reproducibility",
+                "protective_stop":"intraday_daily_bar_low; T+1 enforced","lookahead_protection":True,"llm_used":bool(self.s.llm_filter_enabled),
+                "decision_engine":"deterministic + historical LLM candidate gate" if self.s.llm_filter_enabled else "deterministic rule/scoring engine for reproducibility",
+                "llm_filter_stats":self.llm_filter.stats() if self.llm_filter else None,
+                "route_mode":self.s.route_mode,"sector_mode":self.s.sector_mode,"enabled_strategies":list(self.enabled_strategies),"disabled_strategies":list(self.disabled_strategies),"research_tag":self.s.research_tag,
                 "market_benchmarks":benchmark_symbols,
             },
         }

@@ -1,4 +1,30 @@
-# A股 Agent Runtime + Web Workbench v0.5.0
+# A股 Agent Runtime + Web Workbench v0.6.1
+
+## v0.6.1 接力测试入口（Gemini / 其他 LLM）
+
+如果本包交给另一个 LLM 继续测试，**不要先自行改策略**。请按以下顺序：
+
+1. `GEMINI_CONTINUATION_TEST_PLAN.md` — 唯一接力测试入口与成功/作废标准；
+2. `CHANGELOG_V0.6.1.md` — 修复记录、旧三个月 LLM A/B 为什么无效；
+3. `AUDIT_REVIEW_GEMINI.md` — 对上一轮审计结论的代码/数据复核；
+4. `TESTING_GUIDE.md` — 完整测试命令和报告目录。
+
+推荐先执行三个月标准复测：
+
+```bash
+bash scripts/run_gemini_validation.sh
+```
+
+测试完成后反馈两个核心文件：
+
+```text
+data/diagnostics/latest_research_preflight.json
+data/research/runs/<latest_suite>/feedback_bundle.zip
+```
+
+LLM 实验只有在 `failures=0`、`error_candidates=0` 且 `llm_experiment_valid=true` 时才允许解释收益差异。
+
+---
 
 v0.4 把系统从“Web 页面驱动的 Runtime”升级成**独立后台 Worker + 只读 Web Workbench**，并加入生产 MCP HTTP Adapter、OpenAI-compatible LLM Client、SSE 实时事件流、可靠消息通知和部署前探针。
 
@@ -82,7 +108,7 @@ Web 进程**不会初始化 LLM Client**。只有 Worker 持有 LLM 凭证。
 推荐 Python 3.11+：
 
 ```bash
-cd a_share_agent_app_v4
+cd a_share_agent_app_v6
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -640,3 +666,177 @@ data/backtest/runs/<run_id>/
 用户不应手工指定正式全市场回测股票名单。
 
 建议后续 LLM 优先实现独立 `HistoricalUniverseProvider`，并增加 strict point-in-time 模式。详细接口和验收测试请见上述三份文档。
+
+
+---
+
+# v0.6 Research Lab：标准化 A/B、LLM Gate 与反馈包
+
+v0.6 在 v0.5 Backtest Lab 基础上新增研究套件，目标是把“为什么 -0.81%”“LLM 是否有增量价值”“板块 Router 到底有没有贡献”变成可复现的 A/B 实验，而不是凭感觉修改策略。
+
+## 新增命令
+
+```bash
+a-share-agent --root "$PWD" --backend production research-preflight \
+  --start 2024-10-01 --end 2026-09-30 \
+  --universe-mode prefer_point_in_time --sample-size 30
+
+a-share-agent --root "$PWD" --backend production research-suite \
+  --start 2024-10-01 --end 2026-09-30 \
+  --experiment baseline \
+  --experiment no_triple_golden_cross \
+  --experiment core_signal_focus \
+  --experiment router_disabled \
+  --experiment sector_disabled
+
+a-share-agent --root "$PWD" research-latest
+```
+
+LLM A/B：
+
+```bash
+a-share-agent --root "$PWD" llm-probe
+
+a-share-agent --root "$PWD" --backend production research-suite \
+  --start 2024-10-01 --end 2026-09-30 \
+  --include-llm \
+  --experiment baseline \
+  --experiment llm_gate_baseline \
+  --experiment no_triple_golden_cross \
+  --experiment llm_gate_no_triple
+```
+
+## 标准实验
+
+配置：`config/research.yaml`
+
+- `baseline`：当前确定性策略 + Router。
+- `no_triple_golden_cross`：只移除三线金叉，测它的边际贡献。
+- `core_signal_focus`：仅保留 `single_bull_hold + high_volume_breakout`，用于诊断，不自动晋级生产。
+- `router_disabled`：关闭 Strategy Router 门控。
+- `sector_disabled`：中性化板块上下文。
+- `llm_gate_baseline`：在 baseline 候选上加历史 LLM PASS/WATCH/REJECT Gate。
+- `llm_gate_no_triple`：去三线金叉后再加 LLM Gate。
+
+## LLM 历史回测边界
+
+LLM 只过滤已经通过确定性规则的候选，不能创造新信号、修改价格、修改 deterministic score 或直接下单。输入只包含当日及以前数据。
+
+为降低模型参数记忆过去股票后续走势造成的隐性未来知识污染，默认：
+
+```yaml
+llm_filter_anonymize_symbol: true
+```
+
+LLM 不看到真实 ticker，只看到匿名证券 ID。输出会缓存到：
+
+```text
+data/backtest/llm_cache/
+```
+
+## Point-in-Time 股票池
+
+v0.6 已加入可执行的历史股票池支持：
+
+1. 优先读取 `data/backtest/security_master.csv`；
+2. 或调用可选 Intel MCP `mcp_intel_get_historical_universe`；
+3. `strict_point_in_time` 模式下缺少严格历史数据直接失败；
+4. `prefer_point_in_time` 才允许降级到当前股票池，并标记幸存者偏差。
+
+原始 53 个 MCP 工具契约保持不变；历史接口属于 optional research tools，缺少不会让普通生产 `mcp-probe` 失败。
+
+## Gross / Cost / Net 分解
+
+`report.json` 新增：
+
+```text
+gross_pnl_before_costs
+round_trip_fees
+estimated_slippage_cost
+net_realized_pnl
+gross_return_on_initial
+net_realized_return_on_initial
+```
+
+用于区分“信号没有毛收益”与“毛收益被交易成本/滑点吃掉”。
+
+## Research Validity
+
+每个 Research Suite 实验报告新增：
+
+```text
+research_validity.grade = RESEARCH_GRADE | DIAGNOSTIC_ONLY
+research_validity.reasons
+```
+
+股票覆盖过小、幸存者偏差、板块映射不是 Point-in-Time、板块几乎全为 `NEUTRAL_SECTOR` 等情况都会自动降级。
+
+## 报告位置
+
+单次 backtest：
+
+```text
+data/backtest/runs/<bt-run-id>/
+```
+
+标准 A/B suite：
+
+```text
+data/research/runs/<research-suite-id>/
+├── research_summary.json
+├── experiment_metrics.csv
+├── FEEDBACK_README.md
+└── feedback_bundle.zip
+```
+
+最近一次 suite：
+
+```text
+data/research/runs/latest.json
+```
+
+部署/数据质量预检：
+
+```text
+data/diagnostics/latest_research_preflight.json
+```
+
+反馈时优先提供：
+
+1. `feedback_bundle.zip`
+2. `latest_research_preflight.json`
+
+完整测试步骤见 [TESTING_GUIDE.md](TESTING_GUIDE.md)。研究设计见 [RESEARCH_LAB.md](RESEARCH_LAB.md)。
+
+
+## v0.6 最终验证状态
+
+```text
+pytest                         28 / 28 PASS
+Python compile                 PASS
+Research Suite CLI E2E         PASS
+feedback_bundle.zip            PASS
+Point-in-Time validity guard   PASS
+LLM historical gate cache      PASS
+Backtest no-exec safety        PASS
+```
+
+完整测试流程见 `TESTING_GUIDE.md`。
+
+---
+
+## v0.6.1：LLM Research Integrity Patch
+
+本版本根据真实三个月 LLM Gate 回测审计修正研究方法。核心变化：
+
+- LLM 超时/Schema/网络错误不再伪装成 `REJECT`；
+- 任一 LLM ERROR 会使对应 Research 实验标记为无效/诊断用途；
+- OpenAI-compatible 返回结果增加本地 JSON Schema 强校验；
+- 旧的不完整 LLM 缓存自动失效；
+- LLM 历史输入默认改为 compact features；
+- 只审核实际可能占用组合仓位的排名候选，减少调用量；
+- Research LLM 默认 `retries=0`，避免超时重试把回测拖成数小时；
+- TDX F10 行业字段增加嵌套/中文 key 解析；
+- 旧 `code=null` sector cache 会自动刷新。
+
+详细审计结论和推荐复测命令见：`AUDIT_REVIEW_GEMINI.md`。
