@@ -1,6 +1,6 @@
 {
   "audit_version": "0.7.6",
-  "generated_at": "2026-10-02T11:25:07.951764+00:00",
+  "generated_at": "2026-10-02T12:38:47.209927+00:00",
   "universe": {
     "snapshot_count": 5,
     "legacy_schema_snapshots": 0,
@@ -11,158 +11,7 @@
     "detailed_diff_file": "official_universe_set_diff_detailed.csv",
     "root_cause_counts": {
       "LOCAL_MASTER_MISSING": 59
-    },
-    "missing_observation_count": 59,
-    "extra_observation_count": 0,
-    "unique_missing_symbol_count": 35,
-    "unique_extra_symbol_count": 0,
-    "unique_missing_symbols": [
-      "000584.SZ",
-      "000622.SZ",
-      "000627.SZ",
-      "000638.SZ",
-      "002231.SZ",
-      "002336.SZ",
-      "002750.SZ",
-      "002808.SZ",
-      "002898.SZ",
-      "300029.SZ",
-      "300108.SZ",
-      "300117.SZ",
-      "300208.SZ",
-      "300280.SZ",
-      "300344.SZ",
-      "300391.SZ",
-      "300630.SZ",
-      "600193.SH",
-      "600213.SH",
-      "600225.SH",
-      "600355.SH",
-      "600421.SH",
-      "600462.SH",
-      "600599.SH",
-      "600608.SH",
-      "600636.SH",
-      "600696.SH",
-      "600705.SH",
-      "600804.SH",
-      "600898.SH",
-      "601028.SH",
-      "603003.SH",
-      "603388.SH",
-      "603963.SH",
-      "605081.SH"
-    ],
-    "unique_extra_symbols": [],
-    "per_snapshot": [
-      {
-        "date": "2024-10-08",
-        "official_count": 5350,
-        "local_count": 5315,
-        "missing_count": 35,
-        "extra_count": 0,
-        "missing_symbols": [
-          "000584.SZ",
-          "000622.SZ",
-          "000627.SZ",
-          "000638.SZ",
-          "002231.SZ",
-          "002336.SZ",
-          "002750.SZ",
-          "002808.SZ",
-          "002898.SZ",
-          "300029.SZ",
-          "300108.SZ",
-          "300117.SZ",
-          "300208.SZ",
-          "300280.SZ",
-          "300344.SZ",
-          "300391.SZ",
-          "300630.SZ",
-          "600193.SH",
-          "600213.SH",
-          "600225.SH",
-          "600355.SH",
-          "600421.SH",
-          "600462.SH",
-          "600599.SH",
-          "600608.SH",
-          "600636.SH",
-          "600696.SH",
-          "600705.SH",
-          "600804.SH",
-          "600898.SH",
-          "601028.SH",
-          "603003.SH",
-          "603388.SH",
-          "603963.SH",
-          "605081.SH"
-        ],
-        "extra_symbols": []
-      },
-      {
-        "date": "2025-09-29",
-        "official_count": 5431,
-        "local_count": 5413,
-        "missing_count": 18,
-        "extra_count": 0,
-        "missing_symbols": [
-          "000627.SZ",
-          "000638.SZ",
-          "002231.SZ",
-          "002808.SZ",
-          "002898.SZ",
-          "300029.SZ",
-          "300280.SZ",
-          "300344.SZ",
-          "300391.SZ",
-          "600193.SH",
-          "600355.SH",
-          "600421.SH",
-          "600599.SH",
-          "600608.SH",
-          "600636.SH",
-          "600696.SH",
-          "603388.SH",
-          "605081.SH"
-        ],
-        "extra_symbols": []
-      },
-      {
-        "date": "2026-07-01",
-        "official_count": 5525,
-        "local_count": 5519,
-        "missing_count": 6,
-        "extra_count": 0,
-        "missing_symbols": [
-          "002808.SZ",
-          "002898.SZ",
-          "300029.SZ",
-          "600193.SH",
-          "600608.SH",
-          "605081.SH"
-        ],
-        "extra_symbols": []
-      },
-      {
-        "date": "2026-08-31",
-        "official_count": 5549,
-        "local_count": 5549,
-        "missing_count": 0,
-        "extra_count": 0,
-        "missing_symbols": [],
-        "extra_symbols": []
-      },
-      {
-        "date": "2026-09-30",
-        "official_count": 5570,
-        "local_count": 5570,
-        "missing_count": 0,
-        "extra_count": 0,
-        "missing_symbols": [],
-        "extra_symbols": []
-      }
-    ]
+    }
   },
   "raw_dataset": {
     "manifest_present": true,
@@ -477,7 +326,5 @@
       "CSRC_RECLASSIFICATION_SZSE_RECLASS_002466_20241025": 1,
       "CSRC_RECLASSIFICATION_SZSE_RECLASS_300496_20250710": 1
     }
-  },
-  "universe_refreshed_at": "2026-10-02T11:50:16.193018+00:00",
-  "refresh_scope": "UNIVERSE_ONLY_OTHER_SECTIONS_CARRIED_FORWARD"
+  }
 }

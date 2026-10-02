@@ -1,0 +1,9 @@
+{
+  "candidate_count": 35,
+  "membership_ready_count": 17,
+  "execution_ready_count": 0,
+  "blocked_membership_count": 18,
+  "blocked_execution_count": 35,
+  "output_csv": "security_master_missing_history_readiness.csv",
+  "safety_rule": "membership_ready is reference-data readiness only; execution_ready is required before strategy eligibility. This audit never mutates security_master.csv."
+}
