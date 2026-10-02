@@ -42,17 +42,48 @@ def _row_raw_source_hash(row: dict[str, str]) -> str:
     return ""
 
 
+def _row_raw_source_path(row: dict[str, Any]) -> str:
+    for key in ("raw_source_path", "source_file_path", "source_path", "raw_source_file", "path", "file"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _valid_sha256(value: str) -> bool:
     return len(value) == 64 and all(c in "0123456789abcdef" for c in value.lower())
 
 
-def validate_official_ca_register(register_path: Path, manifest_path: Path) -> dict[str, Any]:
-    """Validate that a corporate-action register is independently sourced and row-provenanced.
+def _resolve_source_artifact(anchor_dir: Path, declared_path: str) -> Path | None:
+    raw = str(declared_path or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    return p if p.is_absolute() else (anchor_dir / p)
 
-    The register is deliberately rejected when its manifest merely labels it "official".
-    A valid manifest must bind the register bytes, declare the source dataset, enumerate
-    source files with SHA256 fingerprints, and every event row must point at one of those
-    source-file hashes plus an announcement/document identifier.
+
+def _verify_source_artifact(anchor_dir: Path, row: dict[str, Any], digest: str) -> dict[str, Any]:
+    declared_path = _row_raw_source_path(row)
+    artifact = _resolve_source_artifact(anchor_dir, declared_path)
+    exists = bool(artifact and artifact.exists() and artifact.is_file())
+    actual = sha256_file(artifact) if exists and artifact is not None else None
+    match = bool(exists and _valid_sha256(digest) and actual == digest.lower())
+    return {
+        "declared_path": declared_path or None,
+        "resolved_path": str(artifact) if artifact is not None else None,
+        "exists": exists,
+        "actual_sha256": actual,
+        "hash_match": match,
+    }
+
+
+def validate_official_ca_register(register_path: Path, manifest_path: Path) -> dict[str, Any]:
+    """Validate an independently sourced Corporate Action register fail-closed.
+
+    In addition to binding the normalized register itself, every manifest-declared raw
+    source file must be physically available and re-hash to its declared SHA256. Every
+    event row must then bind to one of those *verified* raw-source hashes plus a concrete
+    document/record identifier. A syntactically plausible SHA string is never enough.
     """
     result: dict[str, Any] = {
         "valid": False,
@@ -64,6 +95,9 @@ def validate_official_ca_register(register_path: Path, manifest_path: Path) -> d
         "rows_with_unknown_source_hash": 0,
         "manifest_event_count_match": False,
         "source_files_valid": False,
+        "source_files_missing_artifact": 0,
+        "source_files_hash_mismatch": 0,
+        "source_files_invalid_declaration": 0,
     }
     if not register_path.exists() or not manifest_path.exists():
         return result
@@ -77,15 +111,30 @@ def validate_official_ca_register(register_path: Path, manifest_path: Path) -> d
     source_files = manifest.get("source_files") or manifest.get("raw_source_files") or []
     if not isinstance(source_files, list):
         source_files = []
-    normalized_sources: list[dict[str, str]] = []
+
+    verified_sources: list[dict[str, str]] = []
+    invalid_declaration = 0
+    missing_artifact = 0
+    hash_mismatch = 0
     for item in source_files:
         if not isinstance(item, dict):
+            invalid_declaration += 1
             continue
-        source_id = str(item.get("source_id") or item.get("file") or item.get("name") or item.get("document_id") or "").strip()
+        source_id = str(item.get("source_id") or item.get("name") or item.get("document_id") or item.get("file") or "").strip()
         digest = str(item.get("sha256") or item.get("raw_source_hash") or "").strip().lower()
-        if source_id and _valid_sha256(digest):
-            normalized_sources.append({"source_id": source_id, "sha256": digest})
-    source_hashes = {x["sha256"] for x in normalized_sources}
+        declared_path = _row_raw_source_path(item)
+        if not source_id or not _valid_sha256(digest) or not declared_path:
+            invalid_declaration += 1
+            continue
+        artifact_status = _verify_source_artifact(manifest_path.parent, item, digest)
+        if not artifact_status["exists"]:
+            missing_artifact += 1
+            continue
+        if not artifact_status["hash_match"]:
+            hash_mismatch += 1
+            continue
+        verified_sources.append({"source_id": source_id, "sha256": digest})
+    source_hashes = {x["sha256"] for x in verified_sources}
 
     keys = [tuple(str(r.get(k) or "").strip() for k in CA_KEY_FIELDS) for r in rows]
     duplicate_count = sum(v - 1 for v in Counter(keys).values() if v > 1)
@@ -112,7 +161,13 @@ def validate_official_ca_register(register_path: Path, manifest_path: Path) -> d
         manifest_count_int = -1
 
     event_count_match = manifest_count_int == len(rows)
-    source_files_valid = bool(normalized_sources and len(normalized_sources) == len(source_files))
+    source_files_valid = bool(
+        source_files
+        and len(verified_sources) == len(source_files)
+        and invalid_declaration == 0
+        and missing_artifact == 0
+        and hash_mismatch == 0
+    )
     valid = bool(
         source_type == "INDEPENDENT_OFFICIAL_EXPORT"
         and source_dataset_id
@@ -138,6 +193,10 @@ def validate_official_ca_register(register_path: Path, manifest_path: Path) -> d
             "rows_with_unknown_source_hash": unknown_hash,
             "manifest_event_count_match": event_count_match,
             "source_files_valid": source_files_valid,
+            "source_files_missing_artifact": missing_artifact,
+            "source_files_hash_mismatch": hash_mismatch,
+            "source_files_invalid_declaration": invalid_declaration,
+            "verified_source_file_count": len(verified_sources),
             "expected_register_hash": expected_register_hash or None,
             "actual_register_hash": actual_register_hash,
         }
@@ -211,24 +270,34 @@ def audit_interval_provenance(
     *,
     min_coverage: float = 0.95,
 ) -> dict[str, Any]:
-    """Audit PIT interval provenance using an explicit source-id sidecar.
+    """Audit PIT interval provenance using physically verified raw-source artifacts.
 
-    Sidecar columns must include source_id, a concrete document/url field, and a
-    SHA256 hash of the raw source artifact. Generic strings in the interval table do
-    not count as provenance by themselves.
+    Each sidecar row must include source_id, a concrete document/url, a raw-source
+    SHA256, and a path to the corresponding raw artifact. The artifact is re-hashed at
+    audit time. Generic labels or syntactically plausible hashes do not count.
     """
     intervals = read_csv_rows(interval_path)
     sidecar = read_csv_rows(provenance_path)
     valid_sources: dict[str, dict[str, str]] = {}
     invalid_sidecar_rows = 0
+    missing_source_artifacts = 0
+    source_artifact_hash_mismatches = 0
     for row in sidecar:
         source_id = str(row.get("source_id") or row.get("source") or "").strip()
         document_id = _row_document_id(row)
         raw_hash = _row_raw_source_hash(row)
-        if source_id and document_id and _valid_sha256(raw_hash):
-            valid_sources[source_id] = row
-        else:
+        declared_path = _row_raw_source_path(row)
+        if not source_id or not document_id or not _valid_sha256(raw_hash) or not declared_path:
             invalid_sidecar_rows += 1
+            continue
+        artifact_status = _verify_source_artifact(provenance_path.parent, row, raw_hash)
+        if not artifact_status["exists"]:
+            missing_source_artifacts += 1
+            continue
+        if not artifact_status["hash_match"]:
+            source_artifact_hash_mismatches += 1
+            continue
+        valid_sources[source_id] = row
 
     total = len(intervals)
     verified = 0
@@ -242,6 +311,13 @@ def audit_interval_provenance(
         else:
             unverified_counts[source_id or "<EMPTY_SOURCE>"] += 1
     coverage = verified / total if total else 0.0
+    dataset_complete = bool(
+        total
+        and coverage >= min_coverage
+        and invalid_sidecar_rows == 0
+        and missing_source_artifacts == 0
+        and source_artifact_hash_mismatches == 0
+    )
     return {
         "interval_file": str(interval_path),
         "provenance_file": str(provenance_path),
@@ -249,10 +325,12 @@ def audit_interval_provenance(
         "interval_count": total,
         "verified_interval_count": verified,
         "source_coverage": round(coverage, 4),
-        "dataset_complete": bool(total and coverage >= min_coverage and invalid_sidecar_rows == 0),
+        "dataset_complete": dataset_complete,
         "min_coverage": min_coverage,
         "valid_source_ids": len(valid_sources),
         "invalid_sidecar_rows": invalid_sidecar_rows,
+        "missing_source_artifacts": missing_source_artifacts,
+        "source_artifact_hash_mismatches": source_artifact_hash_mismatches,
         "unverified_source_ids": sorted(unverified_counts),
         "unverified_interval_count_by_source": dict(sorted(unverified_counts.items())),
         "interval_count_by_source": dict(sorted(source_counts.items())),
