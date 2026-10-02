@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from pathlib import Path
@@ -30,7 +29,7 @@ def test_interval_provenance_requires_explicit_sidecar(tmp_path: Path):
     assert audit["dataset_complete"] is False
 
 
-def test_interval_provenance_accepts_hashed_source_sidecar(tmp_path: Path):
+def test_interval_provenance_accepts_physically_hashed_source_sidecar(tmp_path: Path):
     intervals = tmp_path / "historical_status_intervals.csv"
     intervals.write_text(
         "symbol,status,effective_from,effective_to,source\n"
@@ -41,13 +40,56 @@ def test_interval_provenance_accepts_hashed_source_sidecar(tmp_path: Path):
     source_file.write_text("official notice", encoding="utf-8")
     sidecar = tmp_path / "status_provenance.csv"
     sidecar.write_text(
-        "source_id,source_document_id_or_url,raw_source_hash\n"
-        f"SSE_NOTICE_1,https://example.invalid/notice,{_sha(source_file)}\n",
+        "source_id,source_document_id_or_url,raw_source_hash,raw_source_path\n"
+        f"SSE_NOTICE_1,https://example.invalid/notice,{_sha(source_file)},{source_file.name}\n",
         encoding="utf-8",
     )
     audit = audit_interval_provenance(intervals, sidecar, min_coverage=1.0)
     assert audit["source_coverage"] == 1.0
+    assert audit["valid_source_ids"] == 1
+    assert audit["missing_source_artifacts"] == 0
+    assert audit["source_artifact_hash_mismatches"] == 0
     assert audit["dataset_complete"] is True
+
+
+def test_interval_provenance_rejects_syntactic_hash_without_artifact(tmp_path: Path):
+    intervals = tmp_path / "historical_status_intervals.csv"
+    intervals.write_text(
+        "symbol,status,effective_from,effective_to,source\n"
+        "600000.SH,SUSPENDED,2024-01-01,2024-01-02,SSE_NOTICE_1\n",
+        encoding="utf-8",
+    )
+    sidecar = tmp_path / "status_provenance.csv"
+    sidecar.write_text(
+        "source_id,source_document_id_or_url,raw_source_hash,raw_source_path\n"
+        f"SSE_NOTICE_1,doc-1,{'a' * 64},missing-source.txt\n",
+        encoding="utf-8",
+    )
+    audit = audit_interval_provenance(intervals, sidecar, min_coverage=1.0)
+    assert audit["source_coverage"] == 0.0
+    assert audit["missing_source_artifacts"] == 1
+    assert audit["dataset_complete"] is False
+
+
+def test_interval_provenance_rejects_source_artifact_hash_mismatch(tmp_path: Path):
+    intervals = tmp_path / "historical_status_intervals.csv"
+    intervals.write_text(
+        "symbol,status,effective_from,effective_to,source\n"
+        "600000.SH,SUSPENDED,2024-01-01,2024-01-02,SSE_NOTICE_1\n",
+        encoding="utf-8",
+    )
+    source_file = tmp_path / "notice.txt"
+    source_file.write_text("actual bytes", encoding="utf-8")
+    sidecar = tmp_path / "status_provenance.csv"
+    sidecar.write_text(
+        "source_id,source_document_id_or_url,raw_source_hash,raw_source_path\n"
+        f"SSE_NOTICE_1,doc-1,{'b' * 64},{source_file.name}\n",
+        encoding="utf-8",
+    )
+    audit = audit_interval_provenance(intervals, sidecar, min_coverage=1.0)
+    assert audit["source_coverage"] == 0.0
+    assert audit["source_artifact_hash_mismatches"] == 1
+    assert audit["dataset_complete"] is False
 
 
 def test_official_ca_register_requires_row_level_source_hash(tmp_path: Path):
@@ -55,6 +97,34 @@ def test_official_ca_register_requires_row_level_source_hash(tmp_path: Path):
     register.write_text(
         "symbol,action_type,ex_date,record_date,source,source_document_id_or_url,raw_source_hash\n"
         "600000.SH,CASH_DIVIDEND,2025-06-01,2025-05-31,SSE,doc,\n",
+        encoding="utf-8",
+    )
+    raw = tmp_path / "source.txt"
+    raw.write_text("source", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "source_type": "INDEPENDENT_OFFICIAL_EXPORT",
+                "source_dataset_id": "official-test",
+                "register_sha256": _sha(register),
+                "event_count": 1,
+                "source_files": [{"source_id": "raw-1", "path": raw.name, "sha256": _sha(raw)}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = validate_official_ca_register(register, manifest)
+    assert status["valid"] is False
+    assert status["rows_missing_provenance"] == 1
+
+
+def test_official_ca_register_rejects_manifest_hash_without_source_file(tmp_path: Path):
+    register = tmp_path / "official.csv"
+    raw_hash = "c" * 64
+    register.write_text(
+        "symbol,action_type,ex_date,record_date,source,source_document_id_or_url,raw_source_hash\n"
+        f"600000.SH,CASH_DIVIDEND,2025-06-01,2025-05-31,SSE,doc-1,{raw_hash}\n",
         encoding="utf-8",
     )
     manifest = tmp_path / "manifest.json"
@@ -65,14 +135,15 @@ def test_official_ca_register_requires_row_level_source_hash(tmp_path: Path):
                 "source_dataset_id": "official-test",
                 "register_sha256": _sha(register),
                 "event_count": 1,
-                "source_files": [{"source_id": "raw-1", "sha256": "0" * 64}],
+                "source_files": [{"source_id": "raw-1", "path": "missing.txt", "sha256": raw_hash}],
             }
         ),
         encoding="utf-8",
     )
     status = validate_official_ca_register(register, manifest)
     assert status["valid"] is False
-    assert status["rows_missing_provenance"] == 1
+    assert status["source_files_missing_artifact"] == 1
+    assert status["source_files_valid"] is False
 
 
 def test_corporate_action_reconciliation_uses_independent_source_hashes(tmp_path: Path):
@@ -91,7 +162,7 @@ def test_corporate_action_reconciliation_uses_independent_source_hashes(tmp_path
                 "source_dataset_id": "official-test",
                 "register_sha256": _sha(register),
                 "event_count": 1,
-                "source_files": [{"source_id": "raw-1", "sha256": raw_hash}],
+                "source_files": [{"source_id": "raw-1", "path": raw.name, "sha256": raw_hash}],
             }
         ),
         encoding="utf-8",
