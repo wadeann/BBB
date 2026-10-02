@@ -1,0 +1,13 @@
+{
+  "candidate_count": 35,
+  "date_provenance_ready_count": 17,
+  "blocked_source_semantics_count": 18,
+  "unresolved_source_record_count": 0,
+  "by_exchange": {
+    "SZSE": 17,
+    "SSE": 18,
+    "BSE": 0
+  },
+  "master_insert_approved_count": 0,
+  "output_csv": "security_master_missing_history_candidates.csv"
+}
