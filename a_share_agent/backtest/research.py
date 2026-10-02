@@ -76,9 +76,9 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
     if binding.get("daily_raw_coverage_fresh") and csv_path.exists():
         with csv_path.open("r", encoding="utf-8-sig") as fh:
             for row in csv.DictReader(fh):
-                raw = str(row.get("active_raw_coverage") or row.get("raw_coverage_pct") or "").rstrip("%")
+                raw_value = str(row.get("active_raw_coverage") or row.get("raw_coverage_pct") or "").rstrip("%")
                 try:
-                    value = float(raw)
+                    value = float(raw_value)
                     values.append(value / 100.0 if value > 1 else value)
                 except ValueError:
                     continue
@@ -158,9 +158,7 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     )
     calendar_ready = bool(calendar_audit["verified"])
     trading_dates = list(calendar_audit["trading_dates"]) if calendar_ready else []
-    coverage_window_dates = sorted(
-        d for d in coverage["dates"] if research_start <= d <= research_end
-    )
+    coverage_window_dates = sorted(d for d in coverage["dates"] if research_start <= d <= research_end)
     calendar_set = set(trading_dates)
     coverage_set = set(coverage_window_dates)
     coverage_calendar_missing = sorted(calendar_set - coverage_set)
@@ -250,10 +248,7 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result["security_master_integrity_audit"] = master_integrity
     no_prelisting_leakage = not bool(master_integrity["prelisting_leakage_symbols"])
     no_post_delisting_leakage = not bool(master_integrity["post_delisting_leakage_symbols"])
-    no_survivorship_bias = bool(
-        trusted_universe_match
-        and master_integrity["survivorship_bias_protection_ready"]
-    )
+    no_survivorship_bias = bool(trusted_universe_match and master_integrity["survivorship_bias_protection_ready"])
     result["survivorship_bias"] = not no_survivorship_bias
     result["no_survivorship_bias"] = no_survivorship_bias
     if isinstance(result.get("universe"), dict):
@@ -283,12 +278,15 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         root,
         list((trading_rules_runtime.get("checks") or {}).keys()),
     )
-    trading_rules_verified = bool(
+    trading_rules_research_verified = bool(
         trading_rules_runtime["verified"] and trading_rule_provenance["verified"]
     )
     result["historical_trading_rules_audit"] = trading_rules_runtime
     result["historical_trading_rule_provenance_audit"] = trading_rule_provenance
-    result["historical_trading_rules_verified"] = trading_rules_verified
+    # Backward-compatible diagnostic: runtime implementation matches its configured rules.
+    # Formal research readiness uses the separately provenance-bound field/checklist below.
+    result["historical_trading_rules_verified"] = bool(trading_rules_runtime["verified"])
+    result["historical_trading_rules_research_verified"] = trading_rules_research_verified
 
     min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 5000))
     daily_active_universe_ok = bool(
@@ -328,7 +326,7 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
                 and all(value >= 0.98 for value in coverage["by_exchange"].values())
             ),
             "12_official_universe_set_match": trusted_universe_match,
-            "13_historical_trading_rules_verified": trading_rules_verified,
+            "13_historical_trading_rules_verified": trading_rules_research_verified,
             "14_benchmark_coverage": bool(calendar_ready and benchmark_audit["complete"]),
             "15_survivorship_bias": no_survivorship_bias,
             "16_raw_dataset_hash_match": raw_match,
