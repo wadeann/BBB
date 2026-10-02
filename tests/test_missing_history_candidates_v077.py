@@ -1,7 +1,8 @@
 import csv
 import importlib.util
-import json
 from pathlib import Path
+
+from a_share_agent.backtest.universe_reconciliation import reconcile_universe_snapshot_counts
 
 
 def _load_script(root: Path):
@@ -17,9 +18,13 @@ def test_candidate_matrix_matches_current_unique_universe_gaps():
     root = Path(__file__).resolve().parents[1]
     module = _load_script(root)
     summary = module.build_candidates()
-    audit = json.loads((root / "historical_data_provenance_audit.json").read_text(encoding="utf-8"))
-    unique_missing = audit["universe"]["unique_missing_symbols"]
+    reconciliation = reconcile_universe_snapshot_counts(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "official_universe_snapshots",
+    )
+    unique_missing = reconciliation["unique_missing_symbols"]
 
+    assert summary["source_of_missing_symbols"] == "LIVE_UNIVERSE_RECONCILIATION"
     assert summary["candidate_count"] == len(unique_missing)
     assert summary["master_insert_approved_count"] == 0
     assert summary["unresolved_source_record_count"] == 0
