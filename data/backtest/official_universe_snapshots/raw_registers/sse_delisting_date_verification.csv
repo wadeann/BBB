@@ -1,0 +1,5 @@
+symbol,raw_field,raw_date,verified_delisting_date,verification_status,official_announcement_url,evidence_note
+600421.SH,暂停上市日期,2026-06-26,2026-06-26,MATCH,https://www.sse.com.cn/disclosure/announcement/listing/stock/c/c_20260622_10823158.shtml,Official SSE delisting announcement states the stock is removed on 2026-06-26
+600462.SH,暂停上市日期,2025-07-21,2025-07-21,MATCH,https://www.sse.com.cn/disclosure/announcement/listing/stock/c/c_20250714_10784844.shtml,Official SSE delisting announcement states the stock is removed on 2025-07-21
+600608.SH,暂停上市日期,2026-07-03,2026-07-03,MATCH,https://www.sse.com.cn/disclosure/announcement/listing/stock/c/c_20260629_10823833.shtml,Official SSE delisting announcement states the stock is removed on 2026-07-03
+600636.SH,暂停上市日期,2026-06-29,2026-06-29,MATCH,https://big5.sse.com.cn/site/cht/www.sse.com.cn/disclosure/announcement/listing/stock/c/c_20260622_10823156.shtml,Official SSE delisting announcement states the stock is removed on 2026-06-29
