@@ -24,6 +24,7 @@ from .provenance_audit import (
     is_a_share_common_equity_symbol,
     reconcile_corporate_action_sets,
 )
+from .raw_price_provenance import audit_raw_price_provenance
 from .security_master_integrity import audit_security_master_integrity
 from .service import settings_from
 from .trusted_research_sources import audit_official_trading_calendar, audit_trading_rule_provenance
@@ -151,6 +152,16 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         root / "raw_dataset_manifest.json",
     )
     raw_match = bool(raw.get("raw_dataset_hash_match"))
+    raw_provenance = audit_raw_price_provenance(
+        root,
+        actual_dataset_hash=raw.get("actual_raw_dataset_hash"),
+        research_start=research_start,
+        research_end=research_end,
+    )
+    raw_provenance_verified = bool(raw_provenance.get("verified"))
+    result["raw_price_provenance_audit"] = raw_provenance
+    result["raw_price_provenance_verified"] = raw_provenance_verified
+
     coverage = _daily_coverage_audit(root, raw.get("actual_raw_dataset_hash"))
     coverage_fresh = coverage["fresh"]
 
@@ -231,6 +242,7 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
 
     raw_ready = bool(
         raw_match
+        and raw_provenance_verified
         and coverage_fresh
         and calendar_ready
         and coverage_calendar_exact
@@ -346,20 +358,27 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
             "27_daily_raw_coverage_exact_calendar": coverage_calendar_exact,
             "28_official_snapshot_and_register_hashes_verified": bool(universe_audit.get("official_snapshot_integrity_ready")),
             "29_trading_rule_provenance_verified": bool(trading_rule_provenance["verified"]),
+            "30_raw_price_provenance_verified": raw_provenance_verified,
         }
     )
-    result["criteria_checklist"] = checklist
 
     git_meta = get_git_metadata(root)
     current_head = git_meta.get("git_commit_sha")
+    commit_bound_source = bool(git_meta.get("commit_bound_execution_ready"))
+    checklist["31_commit_bound_clean_source"] = commit_bound_source
+    result["criteria_checklist"] = checklist
     result["git_commit_sha"] = current_head
     result["git_branch"] = git_meta.get("git_branch")
     result["working_tree_clean"] = git_meta.get("working_tree_clean")
+    result["tracked_tree_clean"] = git_meta.get("tracked_tree_clean")
+    result["commit_bound_execution_ready"] = commit_bound_source
+    result["source_provenance_reason"] = git_meta.get("source_provenance_reason")
     result["generated_at"] = git_meta.get("generated_at")
     result["research_start"] = research_start
     result["research_end"] = research_end
     result["producer_git_commit"] = current_head
     result["producer_code_version"] = git_meta.get("producer_code_version")
+    result["preflight_execution_ok"] = bool(result.get("ok", True))
 
     def _read_json_file(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -423,6 +442,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("SECTOR_PIT_TEMPORAL_COVERAGE_INCOMPLETE")
     if not raw_match:
         warnings.append("RAW_DATASET_HASH_MISMATCH_OR_UNMOUNTED")
+    if not raw_provenance_verified:
+        warnings.append("RAW_PRICE_PROVENANCE_UNAVAILABLE_OR_UNVERIFIED")
     if not coverage_fresh:
         warnings.append("DAILY_RAW_COVERAGE_STALE_OR_UNBOUND")
     if not master_integrity["boundary_integrity"]:
@@ -435,6 +456,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("HISTORICAL_TRADING_RULE_RUNTIME_CHECK_FAILED")
     if not trading_rule_provenance["verified"]:
         warnings.append("HISTORICAL_TRADING_RULE_PROVENANCE_INCOMPLETE")
+    if not commit_bound_source:
+        warnings.append("SOURCE_TREE_NOT_CLEAN_OR_COMMIT_BOUND")
     if any_stale:
         warnings.append(f"STALE_READINESS_ARTIFACTS_DETECTED: {','.join(stale_artifacts)}")
     if not preflight_current:
