@@ -6,7 +6,7 @@ Generated: 2026-10-02T11:25:07.951764+00:00
 - Snapshots audited: 5
 - Legacy-schema snapshots: 0
 - Non-target snapshot rows filtered: 0
-- Missing in local: 63
+- Missing in local: 59
 - Extra in local: 0
 - Exact set match: False
 - Detailed diff: `official_universe_set_diff_detailed.csv`
@@ -41,7 +41,7 @@ Generated: 2026-10-02T11:25:07.951764+00:00
 - Dataset complete: False
 
 ## Remaining blockers
-- Universe unresolved differences: missing=63, extra=0
+- Universe unresolved differences: missing=59, extra=0
 - Independent Corporate Action event set incomplete/unverified
 - Status provenance coverage=0.00%
 - Sector provenance coverage=0.00%
