@@ -13,12 +13,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from a_share_agent.backtest.universe_reconciliation import reconcile_universe_snapshot_counts
 from a_share_agent.backtest.universe_source_semantics import load_source_semantics
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKTEST = ROOT / "data" / "backtest"
 RAW_DIR = BACKTEST / "official_universe_snapshots" / "raw_registers"
-AUDIT_JSON = ROOT / "historical_data_provenance_audit.json"
 OUT_CSV = ROOT / "security_master_missing_history_candidates.csv"
 OUT_JSON = ROOT / "security_master_missing_history_candidates_summary.json"
 
@@ -31,13 +31,14 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
 
 
 def _load_missing_symbols() -> list[str]:
-    if not AUDIT_JSON.exists():
-        raise RuntimeError(f"missing audit artifact: {AUDIT_JSON}")
-    data = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
-    universe = data.get("universe") or {}
-    symbols = universe.get("unique_missing_symbols") or []
-    if not isinstance(symbols, list) or not symbols:
-        raise RuntimeError("audit artifact has no unique_missing_symbols")
+    """Recompute current unique gaps from source tables; never trust a stale report artifact."""
+    audit = reconcile_universe_snapshot_counts(
+        BACKTEST / "security_master.csv",
+        BACKTEST / "official_universe_snapshots",
+    )
+    symbols = audit.get("unique_missing_symbols") or []
+    if not isinstance(symbols, list):
+        raise RuntimeError("universe reconciliation returned invalid unique_missing_symbols")
     return sorted({str(symbol).strip() for symbol in symbols if str(symbol).strip()})
 
 
@@ -179,6 +180,7 @@ def build_candidates() -> dict[str, Any]:
         },
         "master_insert_approved_count": 0,
         "output_csv": OUT_CSV.name,
+        "source_of_missing_symbols": "LIVE_UNIVERSE_RECONCILIATION",
     }
     OUT_JSON.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return summary

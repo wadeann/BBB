@@ -23,14 +23,36 @@ def main() -> int:
         "listing_date",
         "delisting_date",
         "candidate_status",
+        "membership_source_file",
+        "membership_source_register_hash_match",
+        "membership_source_record_found",
+        "membership_source_semantic_status",
+        "membership_source_allows_delisting_date",
+        "membership_source_dates_match_candidate",
+        "research_window_start",
+        "research_window_end",
+        "research_window_trading_days",
         "raw_filename",
         "raw_file_exists",
         "raw_manifest_hash_present",
         "raw_file_hash_match",
+        "raw_dataset_hash_match",
+        "daily_raw_coverage_fresh",
+        "raw_expected_trading_days",
+        "raw_present_trading_days",
+        "raw_missing_trading_days",
+        "raw_window_coverage",
+        "raw_window_complete",
         "status_interval_count",
         "status_provenance_verified",
+        "status_window_coverage_complete",
+        "status_gap_day_count",
+        "status_conflict_day_count",
         "sector_interval_count",
         "sector_provenance_verified",
+        "sector_window_coverage_complete",
+        "sector_gap_day_count",
+        "sector_conflict_day_count",
         "blockers",
     ]
     with OUT_CSV.open("w", encoding="utf-8-sig", newline="") as fh:
@@ -43,8 +65,9 @@ def main() -> int:
 
     audit["output_csv"] = OUT_CSV.name
     audit["safety_rule"] = (
-        "membership_ready is reference-data readiness only; execution_ready is required before "
-        "strategy eligibility. This audit never mutates security_master.csv."
+        "membership_ready is independently re-derived from current hash-bound exchange source artifacts. "
+        "execution_ready additionally requires complete research-window Raw/Status/Sector coverage. "
+        "This audit never mutates security_master.csv."
     )
     OUT_JSON.write_text(json.dumps(audit, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(audit, indent=2, ensure_ascii=False))
