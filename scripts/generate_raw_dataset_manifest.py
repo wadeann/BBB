@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from a_share_agent.backtest.data_integrity import raw_dataset_fingerprint
+from a_share_agent.git_utils import get_git_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "backtest" / "raw_prices"
@@ -13,9 +14,12 @@ MANIFEST_FILE = ROOT / "raw_dataset_manifest.json"
 
 def generate_raw_manifest():
     fp = raw_dataset_fingerprint(RAW_DIR)
+    git_meta = get_git_metadata(ROOT)
     manifest = {
         "dataset_id": "ashare_raw_ohlcv_external",
         "dataset_version": "0.7.5",
+        "producer_git_commit": git_meta.get("git_commit_sha"),
+        "producer_code_version": git_meta.get("producer_code_version"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "date_range": {"start": "2024-10-01", "end": "2026-09-30"},
         "summary": {

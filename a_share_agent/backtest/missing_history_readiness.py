@@ -11,6 +11,7 @@ from .data_integrity import (
     verify_coverage_binding,
     verify_raw_dataset_manifest,
 )
+from ..git_utils import get_git_metadata
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -440,6 +441,7 @@ def audit_missing_history_candidates(root: Path, candidates_path: Path | None = 
     for row in rows:
         for blocker in row.get("blockers") or []:
             blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
+    git_meta = get_git_metadata(root)
     return {
         "candidate_count": len(rows),
         "membership_ready_count": sum(1 for row in rows if row["membership_ready"]),
@@ -449,5 +451,8 @@ def audit_missing_history_candidates(root: Path, candidates_path: Path | None = 
         "blocker_counts": dict(sorted(blocker_counts.items())),
         "raw_dataset_hash_match": bool((context.get("integrity") or {}).get("raw_dataset_hash_match")),
         "daily_raw_coverage_fresh": bool((context.get("coverage_binding") or {}).get("daily_raw_coverage_fresh")),
+        "producer_git_commit": git_meta.get("git_commit_sha"),
+        "producer_code_version": git_meta.get("producer_code_version"),
+        "generated_at": git_meta.get("generated_at"),
         "rows": rows,
     }

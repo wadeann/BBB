@@ -37,6 +37,9 @@ def test_trusted_calendar_requires_physical_source_artifact(tmp_path: Path):
         "source_type": "INDEPENDENT_OFFICIAL_EXPORT",
         "source_dataset_id": "calendar-test",
         "calendar_semantics": "OPEN_DATES_ONLY",
+        "coverage_scope": "FULL_EXCHANGE_CALENDAR",
+        "coverage_start": "2026-01-05",
+        "coverage_end": "2026-01-06",
         "calendar_sha256": sha256_file(calendar),
         "row_count": 2,
         "source_files": [
@@ -50,8 +53,8 @@ def test_trusted_calendar_requires_physical_source_artifact(tmp_path: Path):
     (backtest / "trusted_trading_calendar_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     audit = audit_official_trading_calendar(
         tmp_path,
-        research_start="2026-01-01",
-        research_end="2026-01-31",
+        research_start="2026-01-05",
+        research_end="2026-01-06",
     )
     assert audit["verified"] is False
     assert audit["source_artifacts_verified"] is False
@@ -63,11 +66,64 @@ def test_trusted_calendar_requires_physical_source_artifact(tmp_path: Path):
     (backtest / "trusted_trading_calendar_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     audit = audit_official_trading_calendar(
         tmp_path,
-        research_start="2026-01-01",
-        research_end="2026-01-31",
+        research_start="2026-01-05",
+        research_end="2026-01-06",
     )
     assert audit["verified"] is True
     assert audit["trading_dates"] == ["2026-01-05", "2026-01-06"]
+
+
+def test_trusted_calendar_rejects_partial_window_or_truncated_export(tmp_path: Path):
+    backtest = tmp_path / "data" / "backtest"
+    calendar = backtest / "trusted_trading_calendar.csv"
+    # Official calendar artifact is real, hashes match, but only covers 2026-07-01 -> 2026-09-30
+    _write_csv(calendar, ["date"], [{"date": "2026-07-01"}, {"date": "2026-09-30"}])
+    raw = backtest / "calendar-source.txt"
+    raw.write_text("official exchange calendar source 2026-07-01 to 2026-09-30", encoding="utf-8")
+
+    manifest = {
+        "source_type": "INDEPENDENT_OFFICIAL_EXPORT",
+        "source_dataset_id": "sse-szse-official-calendar",
+        "calendar_semantics": "OPEN_DATES_ONLY",
+        "coverage_scope": "FULL_EXCHANGE_CALENDAR",
+        "coverage_start": "2026-07-01",
+        "coverage_end": "2026-09-30",
+        "calendar_sha256": sha256_file(calendar),
+        "row_count": 2,
+        "source_files": [
+            {
+                "source_document_id_or_url": "https://www.sse.com.cn/calendar/2026q3",
+                "raw_source_path": "data/backtest/calendar-source.txt",
+                "raw_source_hash": sha256_file(raw),
+                "coverage_start": "2026-07-01",
+                "coverage_end": "2026-09-30",
+            }
+        ],
+    }
+    (backtest / "trusted_trading_calendar_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    # When research window is 2024-10-01 -> 2026-09-30, it MUST fail
+    audit = audit_official_trading_calendar(
+        tmp_path,
+        research_start="2024-10-01",
+        research_end="2026-09-30",
+    )
+    assert audit["verified"] is False
+    assert audit["coverage_contract_valid"] is False
+    assert audit["calendar_range_complete"] is False
+
+    # Even if manifest falsely declares coverage_start as 2024-10-01, the data/source truncation fails it
+    manifest["coverage_start"] = "2024-10-01"
+    (backtest / "trusted_trading_calendar_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    audit_deceptive = audit_official_trading_calendar(
+        tmp_path,
+        research_start="2024-10-01",
+        research_end="2026-09-30",
+    )
+    assert audit_deceptive["verified"] is False
+    assert audit_deceptive["calendar_data_range_valid"] is False
+    assert audit_deceptive["calendar_range_complete"] is False
+
 
 
 def test_trading_rule_provenance_rejects_plausible_hash_without_artifact(tmp_path: Path):

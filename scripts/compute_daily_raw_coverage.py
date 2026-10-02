@@ -6,6 +6,7 @@ from datetime import datetime,timezone
 from pathlib import Path
 from a_share_agent.backtest.data import HistoricalDataProvider
 from a_share_agent.backtest.data_integrity import sha256_file,verify_raw_dataset_manifest
+from a_share_agent.git_utils import get_git_metadata
 ROOT=Path(__file__).resolve().parent.parent; RAW_DIR=ROOT/"data"/"backtest"/"raw_prices"; BM_FILE=ROOT/"data"/"backtest"/"cache"/"bars"/"000300_SH.json"; OUTPUT_FILE=ROOT/"daily_raw_coverage.csv"; OUTPUT_MANIFEST=ROOT/"daily_raw_coverage_manifest.json"; RAW_MANIFEST=ROOT/"raw_dataset_manifest.json"; START,END="2024-10-01","2026-09-30"; BOARDS=["SSE_MAIN","STAR","SZSE_MAIN","CHINEXT","BSE"]
 
 def _pct(num:int,den:int)->float: return num/den if den else 0.0
@@ -39,7 +40,8 @@ def compute_daily_raw_coverage():
     with OUTPUT_FILE.open("w",encoding="utf-8-sig",newline="") as fh:
         fields=["date","active_symbols","active_raw_available","active_raw_coverage","raw_coverage_pct","market_tradable_symbols","tradable_raw_available","tradable_raw_coverage","sse_main_cov","star_cov","szse_main_cov","chinext_cov","bse_cov"]; w=csv.DictWriter(fh,fieldnames=fields); w.writeheader(); w.writerows(rows)
     sorted_covs=sorted(active_covs); summary={"trading_days":len(rows),"min_daily_active_raw_coverage":min(active_covs) if active_covs else 0.0,"median_daily_active_raw_coverage":statistics.median(active_covs) if active_covs else 0.0,"p05_daily_active_raw_coverage":sorted_covs[max(0,int(len(sorted_covs)*0.05))] if sorted_covs else 0.0,"days_below_98pct":sum(1 for x in active_covs if x<0.98),"meets_formal_threshold":bool(active_covs and min(active_covs)>=0.98)}
-    manifest={"coverage_version":"0.7.5","generated_at":datetime.now(timezone.utc).isoformat(),"source_raw_dataset_hash":integrity["actual_raw_dataset_hash"],"source_raw_file_count":integrity["actual_file_count"],"source_raw_row_count":integrity["actual_row_count"],"coverage_csv":OUTPUT_FILE.name,"coverage_csv_sha256":sha256_file(OUTPUT_FILE),"denominator_semantics":{"strict_gate":"active listed A-share common-equity securities","diagnostic":"market-tradable securities after PIT status/data-availability semantics"},"summary":summary}
+    git_meta = get_git_metadata(ROOT)
+    manifest={"coverage_version":"0.7.5","producer_git_commit":git_meta.get("git_commit_sha"),"producer_code_version":git_meta.get("producer_code_version"),"generated_at":datetime.now(timezone.utc).isoformat(),"source_raw_dataset_hash":integrity["actual_raw_dataset_hash"],"source_raw_file_count":integrity["actual_file_count"],"source_raw_row_count":integrity["actual_row_count"],"coverage_csv":OUTPUT_FILE.name,"coverage_csv_sha256":sha256_file(OUTPUT_FILE),"denominator_semantics":{"strict_gate":"active listed A-share common-equity securities","diagnostic":"market-tradable securities after PIT status/data-availability semantics"},"summary":summary}
     OUTPUT_MANIFEST.write_text(json.dumps(manifest,indent=2,ensure_ascii=False),encoding="utf-8"); print(json.dumps(manifest,indent=2,ensure_ascii=False)); return summary
 
 if __name__=="__main__": compute_daily_raw_coverage()

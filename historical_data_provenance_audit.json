@@ -1,6 +1,8 @@
 {
   "audit_version": "0.7.6",
-  "generated_at": "2026-10-02T12:38:47.209927+00:00",
+  "producer_git_commit": "2c9b99e81be139b84c8919828f3ebc3213fc660c",
+  "producer_code_version": "0.7.7",
+  "generated_at": "2026-10-02T15:43:54.643687+00:00",
   "universe": {
     "snapshot_count": 5,
     "legacy_schema_snapshots": 0,
@@ -32,8 +34,8 @@
     "coverage_csv_present": true,
     "source_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
     "actual_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
-    "expected_coverage_csv_sha256": "0fb7aede833d257505d7671a659e0c07e52e7a819d501d51516f2ad15d3f7417",
-    "actual_coverage_csv_sha256": "0fb7aede833d257505d7671a659e0c07e52e7a819d501d51516f2ad15d3f7417",
+    "expected_coverage_csv_sha256": "dc4d224891bbe5339e85e07e8abfe86d2a75c003592d2a3c5fecb9adfc2e8f55",
+    "actual_coverage_csv_sha256": "dc4d224891bbe5339e85e07e8abfe86d2a75c003592d2a3c5fecb9adfc2e8f55",
     "daily_raw_coverage_fresh": true
   },
   "corporate_actions": {
@@ -47,7 +49,10 @@
       "rows_missing_provenance": 0,
       "rows_with_unknown_source_hash": 0,
       "manifest_event_count_match": false,
-      "source_files_valid": false
+      "source_files_valid": false,
+      "source_files_missing_artifact": 0,
+      "source_files_hash_mismatch": 0,
+      "source_files_invalid_declaration": 0
     },
     "official_source_dataset_id": null,
     "expected_events": 0,
@@ -71,6 +76,8 @@
     "min_coverage": 0.95,
     "valid_source_ids": 0,
     "invalid_sidecar_rows": 0,
+    "missing_source_artifacts": 0,
+    "source_artifact_hash_mismatches": 0,
     "unverified_source_ids": [
       "BSE_OFFICIAL_STATUS_REGISTER",
       "SSE_DELIST_NOTICE_20241223",
@@ -251,6 +258,8 @@
     "min_coverage": 0.95,
     "valid_source_ids": 0,
     "invalid_sidecar_rows": 0,
+    "missing_source_artifacts": 0,
+    "source_artifact_hash_mismatches": 0,
     "unverified_source_ids": [
       "CSRC_2012_INDUSTRY_CLASSIFICATION_STANDARD",
       "CSRC_HISTORICAL_INITIAL_INDUSTRY",
