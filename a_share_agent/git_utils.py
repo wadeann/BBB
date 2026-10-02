@@ -77,16 +77,17 @@ def check_artifact_stale(
     if producer_commit == current_commit:
         return False
     if repo_root is not None:
-        try:
-            res = subprocess.run(
-                ["git", "rev-parse", "HEAD~1"],
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            if res.returncode == 0 and res.stdout.strip() == producer_commit:
-                return False
-        except Exception:
-            pass
+        for ref in (f"{current_commit}~1", f"{current_commit}^2"):
+            try:
+                res = subprocess.run(
+                    ["git", "rev-parse", "--verify", ref],
+                    cwd=str(repo_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if res.returncode == 0 and res.stdout.strip() == producer_commit:
+                    return False
+            except Exception:
+                pass
     return True
