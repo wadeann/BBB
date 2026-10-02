@@ -1,4 +1,4 @@
-"""v0.7.7 fail-closed research preflight wrapper.
+"""v0.7.7+ fail-closed research preflight wrapper.
 
 The v0.7.4 research implementation is retained in ``research_legacy``. This wrapper
 adds non-bypassable provenance checks around official universe snapshots, source date
@@ -13,11 +13,13 @@ from typing import Any
 
 from . import research_legacy as _legacy
 from .data_integrity import verify_coverage_binding, verify_raw_dataset_manifest
+from .pit_interval_coverage import audit_pit_interval_coverage
 from .provenance_audit import (
     audit_interval_provenance,
     is_a_share_common_equity_symbol,
     reconcile_corporate_action_sets,
 )
+from .service import settings_from
 from .universe_reconciliation import reconcile_universe_snapshot_counts
 from .universe_source_semantics import validate_universe_source_semantics
 
@@ -43,9 +45,6 @@ def _official_universe_reconciliation(config) -> dict[str, Any]:
 
 
 def _official_universe_audit(config, mcp, overrides: dict[str, Any] | None) -> tuple[bool, int, int]:
-    # ``mcp``/``overrides`` remain in the signature for compatibility with existing
-    # callers. The set audit is intentionally based only on immutable local PIT
-    # security-master intervals plus independent official snapshots.
     audit = _official_universe_reconciliation(config)
     return bool(audit["match"]), int(audit["extra_total"]), int(audit["missing_total"])
 
@@ -63,6 +62,7 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
     manifest_path = root / "daily_raw_coverage_manifest.json"
     binding = verify_coverage_binding(csv_path, manifest_path, actual_raw_hash)
     values: list[float] = []
+    dates: list[str] = []
     board_values = {k: [] for k in ("SSE_MAIN", "STAR", "SZSE_MAIN", "CHINEXT", "BSE")}
     colmap = {
         "SSE_MAIN": "sse_main_cov",
@@ -80,6 +80,9 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
                     values.append(value / 100.0 if value > 1 else value)
                 except ValueError:
                     continue
+                trade_date = str(row.get("date") or row.get("trade_date") or "").strip()
+                if trade_date:
+                    dates.append(trade_date)
                 for board, column in colmap.items():
                     try:
                         x = float(str(row.get(column) or "").rstrip("%"))
@@ -95,6 +98,7 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
         "p05": ordered[max(0, int(len(ordered) * 0.05))] if ordered else 0.0,
         "days_below_98pct": sum(1 for value in values if value < 0.98),
         "days": len(values),
+        "dates": sorted(set(dates)),
         "by_exchange": {board: (min(board_values[board]) if board_values[board] else 0.0) for board in board_values},
     }
 
@@ -102,6 +106,7 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
 def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = None, sample_size: int = 30) -> dict[str, Any]:
     result = _ORIGINAL_PREFLIGHT(config, mcp, overrides=overrides, sample_size=sample_size)
     root = config.project_root
+    settings = settings_from(config, overrides or {})
 
     universe_audit = _official_universe_reconciliation(config)
     universe_set_match_raw = bool(universe_audit["match"])
@@ -132,21 +137,6 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result["corporate_action_ready"] = ca["complete"]
     result["synthetic_corporate_actions_detected"] = ca["synthetic_events"]
 
-    status = audit_interval_provenance(
-        root / "data" / "backtest" / "historical_status_intervals.csv",
-        root / "data" / "backtest" / "status_provenance.csv",
-    )
-    sector = audit_interval_provenance(
-        root / "data" / "backtest" / "historical_sector_intervals.csv",
-        root / "data" / "backtest" / "sector_provenance.csv",
-    )
-    result["status_provenance_audit"] = status
-    result["status_source_coverage"] = status["source_coverage"]
-    result["status_dataset_complete"] = status["dataset_complete"]
-    result["sector_provenance_audit"] = sector
-    result["sector_source_coverage"] = sector["source_coverage"]
-    result["sector_dataset_complete"] = sector["dataset_complete"]
-
     raw = verify_raw_dataset_manifest(
         root / "data" / "backtest" / "raw_prices",
         root / "raw_dataset_manifest.json",
@@ -168,9 +158,49 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         "total_evaluated_days": coverage["days"],
     }
 
+    trading_dates = [
+        d for d in coverage["dates"]
+        if str(settings.start_date) <= d <= str(settings.end_date)
+    ] if coverage_fresh else []
+
+    status_source = audit_interval_provenance(
+        root / "data" / "backtest" / "historical_status_intervals.csv",
+        root / "data" / "backtest" / "status_provenance.csv",
+    )
+    sector_source = audit_interval_provenance(
+        root / "data" / "backtest" / "historical_sector_intervals.csv",
+        root / "data" / "backtest" / "sector_provenance.csv",
+    )
+    status_pit = audit_pit_interval_coverage(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "historical_status_intervals.csv",
+        root / "data" / "backtest" / "status_provenance.csv",
+        trading_dates,
+        value_fields=("status",),
+        source_audit=status_source,
+    )
+    sector_pit = audit_pit_interval_coverage(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "historical_sector_intervals.csv",
+        root / "data" / "backtest" / "sector_provenance.csv",
+        trading_dates,
+        value_fields=("sector_code", "industry_code", "sector", "industry"),
+        source_audit=sector_source,
+    )
+
+    result["status_provenance_audit"] = status_source
+    result["status_pit_coverage_audit"] = status_pit
+    result["status_source_coverage"] = status_source["source_coverage"]
+    result["status_dataset_complete"] = status_pit["dataset_complete"]
+    result["sector_provenance_audit"] = sector_source
+    result["sector_pit_coverage_audit"] = sector_pit
+    result["sector_source_coverage"] = sector_source["source_coverage"]
+    result["sector_dataset_complete"] = sector_pit["dataset_complete"]
+
+    # Corporate Actions are a separate formal gate. This field now reports only Raw
+    # execution-price integrity/coverage instead of conflating unrelated CA readiness.
     raw_ready = bool(
-        ca["complete"]
-        and raw_match
+        raw_match
         and coverage_fresh
         and coverage["min"] >= 0.98
         and coverage["days"] > 0
@@ -182,8 +212,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     checklist = dict(result.get("criteria_checklist") or {})
     checklist.update(
         {
-            "6_status_dataset_complete": status["dataset_complete"],
-            "7_sector_dataset_complete": sector["dataset_complete"],
+            "6_status_dataset_complete": status_pit["dataset_complete"],
+            "7_sector_dataset_complete": sector_pit["dataset_complete"],
             "8_corporate_action_dataset_complete": ca["complete"],
             "9_raw_execution_price_ready": raw_ready,
             "10_daily_raw_bar_coverage": bool(
@@ -195,9 +225,11 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
             "12_official_universe_set_match": trusted_universe_match,
             "16_raw_dataset_hash_match": raw_match,
             "17_daily_raw_coverage_fresh": coverage_fresh,
-            "18_status_provenance_sidecar": bool(status["provenance_sidecar_present"]),
-            "19_sector_provenance_sidecar": bool(sector["provenance_sidecar_present"]),
+            "18_status_provenance_sidecar": bool(status_source["provenance_sidecar_present"]),
+            "19_sector_provenance_sidecar": bool(sector_source["provenance_sidecar_present"]),
             "20_official_universe_source_semantics_verified": semantics_ready,
+            "21_status_full_window_pit_coverage": bool(status_pit["dataset_complete"]),
+            "22_sector_full_window_pit_coverage": bool(sector_pit["dataset_complete"]),
         }
     )
     result["criteria_checklist"] = checklist
@@ -210,14 +242,18 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("OFFICIAL_UNIVERSE_SOURCE_DATE_SEMANTICS_UNVERIFIED")
     if not ca["official_register_valid"]:
         warnings.append("CORPORATE_ACTION_OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED")
-    if not status["provenance_sidecar_present"]:
+    if not status_source["provenance_sidecar_present"]:
         warnings.append("STATUS_PROVENANCE_SIDECAR_MISSING")
-    elif not status["dataset_complete"]:
+    elif not status_source["dataset_complete"]:
         warnings.append("STATUS_PROVENANCE_INCOMPLETE")
-    if not sector["provenance_sidecar_present"]:
+    elif not status_pit["dataset_complete"]:
+        warnings.append("STATUS_PIT_TEMPORAL_COVERAGE_INCOMPLETE")
+    if not sector_source["provenance_sidecar_present"]:
         warnings.append("SECTOR_PROVENANCE_SIDECAR_MISSING")
-    elif not sector["dataset_complete"]:
+    elif not sector_source["dataset_complete"]:
         warnings.append("SECTOR_PROVENANCE_INCOMPLETE")
+    elif not sector_pit["dataset_complete"]:
+        warnings.append("SECTOR_PIT_TEMPORAL_COVERAGE_INCOMPLETE")
     if not raw_match:
         warnings.append("RAW_DATASET_HASH_MISMATCH_OR_UNMOUNTED")
     if not coverage_fresh:
