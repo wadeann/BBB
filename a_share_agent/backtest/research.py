@@ -1,9 +1,8 @@
 """v0.7.7+ fail-closed research preflight wrapper.
 
 The v0.7.4 research implementation is retained in ``research_legacy``. This wrapper
-adds non-bypassable provenance checks around official universe snapshots, source date
-semantics, corporate actions, status/sector interval sources, Raw OHLCV fingerprints,
-and coverage binding.
+adds non-bypassable provenance, temporal-coverage, security-master, benchmark and
+trading-rule checks around formal full-market research readiness.
 """
 from __future__ import annotations
 
@@ -12,13 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from . import research_legacy as _legacy
+from .data import HistoricalDataProvider
 from .data_integrity import verify_coverage_binding, verify_raw_dataset_manifest
 from .pit_interval_coverage import audit_pit_interval_coverage
+from .preflight_checks import audit_benchmark_calendar, audit_trading_rules_runtime
 from .provenance_audit import (
     audit_interval_provenance,
     is_a_share_common_equity_symbol,
     reconcile_corporate_action_sets,
 )
+from .security_master_integrity import audit_security_master_integrity
 from .service import settings_from
 from .universe_reconciliation import reconcile_universe_snapshot_counts
 from .universe_source_semantics import validate_universe_source_semantics
@@ -31,12 +33,10 @@ _ORIGINAL_PREFLIGHT = _legacy.run_research_preflight
 
 
 def _is_a_share_common_equity_symbol(symbol: str, board: str) -> bool:
-    """Compatibility wrapper retained for existing tests/imports."""
     return is_a_share_common_equity_symbol(symbol, board)
 
 
 def _official_universe_reconciliation(config) -> dict[str, Any]:
-    """Use the same listing-interval set construction as the provenance audit."""
     root = config.project_root
     return reconcile_universe_snapshot_counts(
         root / "data" / "backtest" / "security_master.csv",
@@ -197,8 +197,6 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result["sector_source_coverage"] = sector_source["source_coverage"]
     result["sector_dataset_complete"] = sector_pit["dataset_complete"]
 
-    # Corporate Actions are a separate formal gate. This field now reports only Raw
-    # execution-price integrity/coverage instead of conflating unrelated CA readiness.
     raw_ready = bool(
         raw_match
         and coverage_fresh
@@ -209,9 +207,68 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     )
     result["raw_execution_price_ready"] = raw_ready
 
+    master_integrity = audit_security_master_integrity(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "official_universe_snapshots",
+        research_start=str(settings.start_date),
+        research_end=str(settings.end_date),
+        trading_dates=trading_dates,
+    )
+    result["security_master_integrity_audit"] = master_integrity
+    no_prelisting_leakage = not bool(master_integrity["prelisting_leakage_symbols"])
+    no_post_delisting_leakage = not bool(master_integrity["post_delisting_leakage_symbols"])
+    no_survivorship_bias = bool(
+        trusted_universe_match
+        and master_integrity["survivorship_bias_protection_ready"]
+    )
+    result["survivorship_bias"] = not no_survivorship_bias
+    result["no_survivorship_bias"] = no_survivorship_bias
+    if isinstance(result.get("universe"), dict):
+        result["universe"]["survivorship_bias"] = not no_survivorship_bias
+        result["universe"]["survivorship_bias_protection_ready"] = no_survivorship_bias
+
+    benchmark_provider = HistoricalDataProvider(root, mcp, use_cache=settings.cache)
+    benchmark_bars = benchmark_provider.bars(
+        settings.benchmark,
+        count=max(1200, int(settings.warmup_bars) + len(trading_dates) + 100),
+    )
+    benchmark_audit = audit_benchmark_calendar(
+        [str(row.get("date") or "") for row in benchmark_bars],
+        trading_dates,
+        research_start=str(settings.start_date),
+        research_end=str(settings.end_date),
+        warmup_required=int(settings.warmup_bars),
+    )
+    result["benchmark_strict_coverage_audit"] = benchmark_audit
+    if isinstance(result.get("benchmark"), dict):
+        result["benchmark"]["strict_window_complete"] = benchmark_audit["complete"]
+        result["benchmark"]["missing_trading_dates"] = benchmark_audit["missing_trading_dates"]
+        result["benchmark"]["warmup_bars"] = benchmark_audit["benchmark_warmup_bars"]
+
+    trading_rules = audit_trading_rules_runtime()
+    result["historical_trading_rules_audit"] = trading_rules
+    result["historical_trading_rules_verified"] = trading_rules["verified"]
+
+    min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 5000))
+    daily_active_universe_ok = bool(
+        trading_dates
+        and master_integrity["min_daily_active_symbols"] >= min_symbols
+    )
+    result["daily_active_universe_audit"] = {
+        "trading_date_count": master_integrity["trading_date_count"],
+        "min_daily_active_symbols": master_integrity["min_daily_active_symbols"],
+        "max_daily_active_symbols": master_integrity["max_daily_active_symbols"],
+        "min_symbols_required": min_symbols,
+        "complete": daily_active_universe_ok,
+    }
+
     checklist = dict(result.get("criteria_checklist") or {})
     checklist.update(
         {
+            "1_market_universe_coverage": daily_active_universe_ok,
+            "3_historical_delisted_preserved": bool(master_integrity["delisted_register_complete"]),
+            "4_no_prelisting_leakage": no_prelisting_leakage,
+            "5_no_post_delisting_leakage": no_post_delisting_leakage,
             "6_status_dataset_complete": status_pit["dataset_complete"],
             "7_sector_dataset_complete": sector_pit["dataset_complete"],
             "8_corporate_action_dataset_complete": ca["complete"],
@@ -223,6 +280,9 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
                 coverage["by_exchange"] and all(value >= 0.98 for value in coverage["by_exchange"].values())
             ),
             "12_official_universe_set_match": trusted_universe_match,
+            "13_historical_trading_rules_verified": bool(trading_rules["verified"]),
+            "14_benchmark_coverage": bool(benchmark_audit["complete"]),
+            "15_survivorship_bias": no_survivorship_bias,
             "16_raw_dataset_hash_match": raw_match,
             "17_daily_raw_coverage_fresh": coverage_fresh,
             "18_status_provenance_sidecar": bool(status_source["provenance_sidecar_present"]),
@@ -230,6 +290,9 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
             "20_official_universe_source_semantics_verified": semantics_ready,
             "21_status_full_window_pit_coverage": bool(status_pit["dataset_complete"]),
             "22_sector_full_window_pit_coverage": bool(sector_pit["dataset_complete"]),
+            "23_security_master_interval_integrity": bool(master_integrity["boundary_integrity"]),
+            "24_delisted_register_reconciliation_complete": bool(master_integrity["delisted_register_complete"]),
+            "25_benchmark_exact_calendar_and_warmup": bool(benchmark_audit["complete"]),
         }
     )
     result["criteria_checklist"] = checklist
@@ -258,6 +321,14 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("RAW_DATASET_HASH_MISMATCH_OR_UNMOUNTED")
     if not coverage_fresh:
         warnings.append("DAILY_RAW_COVERAGE_STALE_OR_UNBOUND")
+    if not master_integrity["boundary_integrity"]:
+        warnings.append("SECURITY_MASTER_INTERVAL_BOUNDARY_INTEGRITY_FAILED")
+    if not master_integrity["delisted_register_complete"]:
+        warnings.append("HISTORICAL_DELISTED_REGISTER_RECONCILIATION_INCOMPLETE")
+    if not benchmark_audit["complete"]:
+        warnings.append("BENCHMARK_CALENDAR_OR_WARMUP_INCOMPLETE")
+    if not trading_rules["verified"]:
+        warnings.append("HISTORICAL_TRADING_RULE_RUNTIME_CHECK_FAILED")
     result["provider_warnings"] = list(dict.fromkeys(warnings))
     return result
 
