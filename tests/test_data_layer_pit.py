@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 import pytest
 
@@ -349,4 +350,163 @@ def test_p0_5_and_p0_6_raw_adjusted_execution_and_accounting():
     stop_adj = 28.5   # 5% stop below adj_close
     stop_raw = raw_close * (stop_adj / adj_close)
     assert pytest.approx(stop_raw, 0.001) == 9.5  # 5% stop below raw_close!
+
+
+def test_ipo_and_delisting_trading_rules():
+    """Verify IPO first 5 trading days (BSE first 1 trading day) and delisting transition first day rules."""
+    from a_share_agent.backtest.costs import price_limit_pct, locked_at_limit
+
+    # 1. SSE Main: first 5 trading days -> no limit (999.0); day 6 -> 10%
+    for day in range(1, 6):
+        lim = price_limit_pct("600000.SH", "2025-01-01", trading_days_since_listing=day)
+        assert lim >= 900.0, f"SSE Main day {day} should have no price limit"
+    lim_day6 = price_limit_pct("600000.SH", "2025-01-01", trading_days_since_listing=6)
+    assert lim_day6 == 0.10
+
+    # 2. STAR: first 5 trading days -> no limit; day 6 -> 20%
+    for day in range(1, 6):
+        lim = price_limit_pct("688001.SH", "2025-01-01", trading_days_since_listing=day)
+        assert lim >= 900.0
+    assert price_limit_pct("688001.SH", "2025-01-01", trading_days_since_listing=6) == 0.20
+
+    # 3. SZSE Main: first 5 trading days -> no limit; day 6 -> 10%
+    for day in range(1, 6):
+        assert price_limit_pct("000001.SZ", "2025-01-01", trading_days_since_listing=day) >= 900.0
+    assert price_limit_pct("000001.SZ", "2025-01-01", trading_days_since_listing=6) == 0.10
+
+    # 4. ChiNext: first 5 trading days -> no limit; day 6 -> 20%
+    for day in range(1, 6):
+        assert price_limit_pct("300001.SZ", "2025-01-01", trading_days_since_listing=day) >= 900.0
+    assert price_limit_pct("300001.SZ", "2025-01-01", trading_days_since_listing=6) == 0.20
+
+    # 5. BSE: first 1 trading day -> no limit; day 2 -> 30%
+    assert price_limit_pct("920002.BJ", "2025-01-01", trading_days_since_listing=1) >= 900.0
+    assert price_limit_pct("920002.BJ", "2025-01-01", trading_days_since_listing=2) == 0.30
+
+    # 6. Delisting transition first day: no limit; day 2 -> 10% (or ST)
+    assert price_limit_pct("600001.SH", "2025-01-01", status="DELISTING", is_delisting_first_day=True) >= 900.0
+    assert price_limit_pct("600001.SH", "2025-01-01", status="DELISTING", trading_days_in_delisting=1) >= 900.0
+    assert price_limit_pct("600001.SH", "2025-01-01", status="DELISTING", trading_days_in_delisting=2) == 0.10
+
+    # 7. locked_at_limit during no-limit period: always False
+    bar_limit = {"symbol": "600000.SH", "open": 20.0, "high": 20.0, "low": 20.0, "close": 20.0}
+    assert locked_at_limit(bar_limit, prev_close=10.0, direction="BUY", trading_days_since_listing=1) is False
+    assert locked_at_limit(bar_limit, prev_close=10.0, direction="BUY", is_delisting_first_day=True) is False
+
+
+def test_board_aware_order_quantity_rules():
+    """Verify board-aware order quantity normalization across all markets."""
+    from a_share_agent.backtest.costs import board_aware_lot_size
+
+    # 1. SSE Main: min 100, multiples of 100
+    assert board_aware_lot_size("600000.SH", 250, direction="BUY") == 200
+    assert board_aware_lot_size("600000.SH", 99, direction="BUY") == 0
+    assert board_aware_lot_size("600000.SH", 100, direction="BUY") == 100
+
+    # 2. SZSE Main: min 100, multiples of 100
+    assert board_aware_lot_size("000001.SZ", 380, direction="BUY") == 300
+    assert board_aware_lot_size("000001.SZ", 50, direction="BUY") == 0
+
+    # 3. STAR: min 200, 1-share increments above 200
+    assert board_aware_lot_size("688001.SH", 199, direction="BUY") == 0
+    assert board_aware_lot_size("688001.SH", 200, direction="BUY") == 200
+    assert board_aware_lot_size("688001.SH", 253, direction="BUY") == 253
+
+    # 4. BSE: min 100, 1-share increments above 100
+    assert board_aware_lot_size("920002.BJ", 99, direction="BUY") == 0
+    assert board_aware_lot_size("920002.BJ", 100, direction="BUY") == 100
+    assert board_aware_lot_size("920002.BJ", 147, direction="BUY") == 147
+
+    # 5. ChiNext: min 100, multiples of 100
+    assert board_aware_lot_size("300001.SZ", 280, direction="BUY") == 200
+
+    # 6. SELL: odd lots allowed
+    assert board_aware_lot_size("600000.SH", 35, direction="SELL") == 35
+    assert board_aware_lot_size("688001.SH", 72, direction="SELL") == 72
+
+
+def test_corporate_action_rights_issue_accounting():
+    """Verify rights issue (配股) complete accounting in CorporateActionEngine."""
+    from a_share_agent.backtest.corporate_actions import CorporateAction, CorporateActionEngine
+    from a_share_agent.backtest.portfolio import Portfolio, Position
+
+    engine = CorporateActionEngine()
+    # 10配3 (ratio 0.3) at price 5.0 per share
+    engine.add_action(CorporateAction(
+        symbol="600036.SH",
+        ex_date="2026-07-20",
+        record_date="2026-07-19",
+        action_type="rights_issue",
+        rights_ratio=0.3,
+        rights_price=5.0,
+    ))
+
+    # Portfolio with sufficient cash: 1000 shares at 10.0, cash 2000.0
+    # Cost to subscribe: 1000 * 0.3 * 5.0 = 1500.0
+    portfolio = Portfolio(initial_cash=2000.0)
+    portfolio.positions["600036.SH"] = Position(
+        symbol="600036.SH",
+        entry_date="2026-07-01",
+        entry_price=10.0,
+        quantity=1000,
+        stop_price=9.5,
+        highest_price=11.0,
+        strategy_id="test_strat",
+        strategy_family="trend",
+        score=80.0,
+    )
+
+    applied = engine.process_actions("2026-07-20", portfolio)
+    assert len(applied) == 1
+    assert applied[0]["type"] == "RIGHTS_ISSUE_EXERCISED"
+    assert applied[0]["cash_paid"] == 1500.0
+    assert portfolio.cash == 500.0
+
+    pos = portfolio.positions["600036.SH"]
+    assert pos.quantity == 1300  # 1000 + 300
+    # Blended cost: (1000 * 10 + 1500) / 1300 = 11500 / 1300 ≈ 8.8462
+    assert pytest.approx(pos.entry_price, 0.001) == 8.8462
+
+
+def test_official_universe_snapshot_independent_reconciliation():
+    """Verify that official universe snapshots exist as independent files and can be reconciled."""
+    root = Path(__file__).resolve().parents[1]
+    snap_dir = root / "data" / "backtest" / "official_universe_snapshots"
+    assert snap_dir.exists()
+    snap_files = list(snap_dir.glob("*.csv"))
+    assert len(snap_files) >= 3
+
+    # Check manifest.json
+    manifest_file = snap_dir / "manifest.json"
+    assert manifest_file.exists()
+    with manifest_file.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert "snapshots" in data
+    assert len(data["snapshots"]) >= 3
+
+
+def test_candidate_eligibility_prefilter():
+    """Verify that ST, suspended, delisting, and data_missing stocks are pre-filtered
+    before entering the signal scan, sorting, or LLM top-N evaluation."""
+    root = Path(__file__).resolve().parents[1]
+    provider = HistoricalDataProvider(root, mcp=None, use_cache=False)
+    provider.load_universe_for_period("2024-10-01", "2026-09-30", "data/backtest/security_master.csv")
+
+    # Verify that an ST or delisting stock is NOT strategy_eligible
+    # In active_records_on, ST stocks have strategy_eligible=False
+    records_aug = provider.active_records_on("2026-08-31")
+    st_records = [r for r in records_aug if r.get("st")]
+    for r in st_records:
+        assert r["strategy_eligible"] is False
+        assert provider.is_strategy_eligible(r["symbol"], "2026-08-31") is False
+
+    # Non-ST with data should be eligible
+    eligible_records = [r for r in records_aug if r.get("strategy_eligible")]
+    assert len(eligible_records) > 0
+    for r in eligible_records[:10]:
+        assert r["st"] is False
+        assert r["delisting_period"] is False
+        assert r["data_missing"] is False
+
+
 

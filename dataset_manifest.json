@@ -1,7 +1,7 @@
 {
-  "dataset_id": "ashare_pit_historical_v0.7.2",
-  "dataset_version": "0.7.2",
-  "generated_at": "2026-10-02T14:55:00+08:00",
+  "dataset_id": "ashare_pit_historical_v0.7.3",
+  "dataset_version": "0.7.3",
+  "generated_at": "2026-10-02T16:47:28.117312+08:00",
   "date_range": {
     "start": "2024-10-01",
     "end": "2026-09-30"
@@ -13,6 +13,13 @@
     "status_interval_count": 5742,
     "sector_interval_count": 5676,
     "corporate_action_count": 91
+  },
+  "external_dataset": {
+    "external_dataset_root": "data/backtest/raw_prices/",
+    "mounted": true,
+    "raw_bar_file_count_on_disk": 2323,
+    "status": "EXTERNAL_DATASET_REQUIRED",
+    "note": "clean_code.zip does NOT include raw CSV data. External dataset must be mounted at data/backtest/raw_prices/ before running backtests."
   },
   "readiness": {
     "formal_full_market_ready": false,
@@ -37,8 +44,16 @@
     "historical_sector_intervals": "946e3402ff365b4ef9d1e4bdd314d8db141a1846326aa01d15c4f8bf8128b6aa",
     "corporate_actions": "8cfc424e8d4e51873b96d66dc34798f9ca3220c0939310677bdc24c39ce220a7"
   },
+  "official_universe_snapshot_sha256": {
+    "2024-10-08": "1a39e76ac2c883a7d122700bdacf053db67aa705fc69e196d5770bd0f890d7c7",
+    "2025-09-29": "6603993e442302bacf51aaafb399bcb0af5101934848d79eaedb0c695fe64f32",
+    "2026-07-01": "b125ce11a3469e1da7a9e616e432ebbaebf0588cdaa3921a06ff1766a5a2ac43",
+    "2026-08-31": "bb581fc53e02f8dfab104caf3a5ef40e9f3d77ad5591a37ed8847bab33450040",
+    "2026-09-30": "406f648786f61841c06d4cba8b1b0f4a0bb3bf02066d24747985605f67673d71"
+  },
   "notes": [
     "Strict authentic data layer: zero synthetic bars, zero synthetic corporate actions.",
-    "Raw bar coverage is 41.04% (< 98.0%); formal_full_market_ready is strictly False."
+    "Raw bar coverage is 41.04% (< 98.0%); formal_full_market_ready is strictly False.",
+    "EXTERNAL_DATASET_REQUIRED: Raw CSV files must be mounted externally; clean_code.zip excludes them."
   ]
 }

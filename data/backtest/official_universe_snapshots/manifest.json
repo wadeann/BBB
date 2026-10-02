@@ -1,0 +1,106 @@
+{
+  "description": "Official universe snapshots from exchange listing registers",
+  "generated_at": "2026-10-02",
+  "snapshots": {
+    "2024-10-08": {
+      "file": "official_universe_snapshots/2024-10-08.csv",
+      "total_symbols": 5545,
+      "by_board": {
+        "SSE_MAIN": 1701,
+        "STAR": 614,
+        "SZSE_MAIN": 1488,
+        "CHINEXT": 1400,
+        "BSE": 342
+      },
+      "sha256": "1a39e76ac2c883a7d122700bdacf053db67aa705fc69e196d5770bd0f890d7c7",
+      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
+      "expected_counts": {
+        "SSE_MAIN": 1680,
+        "STAR": 612,
+        "SZSE_MAIN": 1480,
+        "CHINEXT": 1398,
+        "BSE": 310
+      }
+    },
+    "2025-09-29": {
+      "file": "official_universe_snapshots/2025-09-29.csv",
+      "total_symbols": 5554,
+      "by_board": {
+        "SSE_MAIN": 1700,
+        "STAR": 616,
+        "SZSE_MAIN": 1490,
+        "CHINEXT": 1406,
+        "BSE": 342
+      },
+      "sha256": "6603993e442302bacf51aaafb399bcb0af5101934848d79eaedb0c695fe64f32",
+      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
+      "expected_counts": {
+        "SSE_MAIN": 1695,
+        "STAR": 615,
+        "SZSE_MAIN": 1490,
+        "CHINEXT": 1403,
+        "BSE": 335
+      }
+    },
+    "2026-07-01": {
+      "file": "official_universe_snapshots/2026-07-01.csv",
+      "total_symbols": 5558,
+      "by_board": {
+        "SSE_MAIN": 1699,
+        "STAR": 616,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1406,
+        "BSE": 342
+      },
+      "sha256": "b125ce11a3469e1da7a9e616e432ebbaebf0588cdaa3921a06ff1766a5a2ac43",
+      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
+      "expected_counts": {
+        "SSE_MAIN": 1699,
+        "STAR": 616,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1406,
+        "BSE": 342
+      }
+    },
+    "2026-08-31": {
+      "file": "official_universe_snapshots/2026-08-31.csv",
+      "total_symbols": 5561,
+      "by_board": {
+        "SSE_MAIN": 1700,
+        "STAR": 617,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1407,
+        "BSE": 342
+      },
+      "sha256": "bb581fc53e02f8dfab104caf3a5ef40e9f3d77ad5591a37ed8847bab33450040",
+      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
+      "expected_counts": {
+        "SSE_MAIN": 1700,
+        "STAR": 617,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1407,
+        "BSE": 342
+      }
+    },
+    "2026-09-30": {
+      "file": "official_universe_snapshots/2026-09-30.csv",
+      "total_symbols": 5567,
+      "by_board": {
+        "SSE_MAIN": 1700,
+        "STAR": 616,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1408,
+        "BSE": 348
+      },
+      "sha256": "406f648786f61841c06d4cba8b1b0f4a0bb3bf02066d24747985605f67673d71",
+      "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
+      "expected_counts": {
+        "SSE_MAIN": 1700,
+        "STAR": 616,
+        "SZSE_MAIN": 1495,
+        "CHINEXT": 1408,
+        "BSE": 348
+      }
+    }
+  }
+}

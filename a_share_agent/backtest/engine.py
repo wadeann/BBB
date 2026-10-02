@@ -12,7 +12,7 @@ from typing import Any
 from ..config import RuntimeConfig
 from ..strategy.signal_engine import DeterministicSignalEngine
 from ..strategy.router import StrategyRouter
-from .costs import AShareCostModel, locked_at_limit, price_limit_pct
+from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size
 from .data import HistoricalDataProvider
 from .metrics import performance_metrics, monthly_returns, grouped_trade_stats
 from .models import BacktestSettings, PendingOrder
@@ -280,7 +280,13 @@ class BacktestEngine:
 
                 b = {**raw_bar, "symbol": o.symbol}
                 sym_status = getattr(self.provider, "status_on", lambda s, dt: "")(o.symbol, d)
-                if self.s.block_open_at_limit and locked_at_limit(b, prev_raw_close, o.direction, status=sym_status, as_of=d):
+                days_since_listing = r_idx + 1 if r_idx >= 0 else None
+                is_delist_1st = (sym_status == "DELISTING" and getattr(self.provider, "delisting_days_on", lambda s, dt: 1)(o.symbol, d) == 1)
+                if self.s.block_open_at_limit and locked_at_limit(
+                    b, prev_raw_close, o.direction, status=sym_status, as_of=d,
+                    trading_days_since_listing=days_since_listing,
+                    is_delisting_first_day=is_delist_1st
+                ):
                     self.rejections.append({"date": d, "symbol": o.symbol, "reason": "LOCKED_AT_PRICE_LIMIT", "order": o.to_dict()})
                     continue
                 if o.direction == "SELL":
@@ -303,11 +309,13 @@ class BacktestEngine:
                 stop=float(o.stop_price or raw*.95)
                 if stop >= raw:
                     stop = raw * 0.95
-                qty=portfolio.size_for_risk(equity=equity,price=self.costs.slip_price(raw,"BUY"),stop=stop,
+                raw_qty=portfolio.size_for_risk(equity=equity,price=self.costs.slip_price(raw,"BUY"),stop=stop,
                     risk_per_trade=self.s.risk_per_trade,max_single=self.s.max_single_position,max_total=self.s.max_total_position,
-                    current_market_value=mv,multiplier=o.route_multiplier,lot=self.s.position_round_lot)
-                if o.requested_quantity>0: qty=min(qty,o.requested_quantity)
-                if qty<self.s.position_round_lot:
+                    current_market_value=mv,multiplier=o.route_multiplier,lot=1)
+                if o.requested_quantity>0: raw_qty=min(raw_qty,o.requested_quantity)
+                sym_board = getattr(self.provider, "board_on", lambda s, dt: "")(o.symbol, d)
+                qty = board_aware_lot_size(o.symbol, raw_qty, direction="BUY", board=sym_board)
+                if qty<=0:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"RISK_SIZE_ZERO","order":o.to_dict()}); continue
                 tr=portfolio.buy(symbol=o.symbol,date=d,signal_date=o.created_date,raw_price=raw,quantity=qty,stop_price=stop,
                     strategy_id=str(o.strategy_id),strategy_family=str(o.strategy_family),score=float(o.score or 0),route_id=o.route_id,sector=o.sector,
@@ -346,6 +354,12 @@ class BacktestEngine:
             daily_candidates=[]
             for sym in active_symbols:
                 if sym in portfolio.positions or any(o.symbol==sym and o.direction=="BUY" for o in pending): continue
+                # Candidate Eligibility Pre-filter:
+                # ST / *ST / suspended / delisting / DATA_MISSING_RAW must not enter candidate sorting or LLM top-N
+                if hasattr(self.provider, "is_strategy_eligible") and not self.provider.is_strategy_eligible(sym, d):
+                    continue
+                if sym not in raw_map_by_symbol or d not in raw_map_by_symbol[sym]:
+                    continue
                 hist=hist_to(sym,d,120)
                 if len(hist)<60 or hist[-1]["date"]!=d: continue
                 secinfo,sector=daily_sector_by_symbol.get(sym) or sector_for(sym,d)

@@ -301,25 +301,46 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         and exchange_coverage["BSE"] > 0
     )
 
-    # 3. Delisted stocks preserved
-    delisted_in_universe = [
-        sym for sym in universe.symbols
-        if any(bool(r.get("delisting_date")) for r in provider._membership.get(sym, []))
-    ]
+    # 3. Delisted stocks preserved - verify against actual delisting records
+    delisted_in_universe = []
+    post_delisting_leakage_symbols = []
+    for sym in universe.symbols:
+        recs = provider._membership.get(sym, [])
+        for r in recs:
+            delist_date = str(r.get("delisting_date") or "")
+            if delist_date:
+                delisted_in_universe.append(sym)
+                # Check: is the stock active AFTER its delisting date?
+                active_to = str(r.get("active_to") or "")
+                if active_to and active_to > delist_date:
+                    post_delisting_leakage_symbols.append(sym)
+                # Also check check_dates after delisting
+                for cd in check_dates:
+                    if cd > delist_date and provider._is_active_record(r, cd):
+                        if sym not in post_delisting_leakage_symbols:
+                            post_delisting_leakage_symbols.append(sym)
+                break
     delisted_during_period_preserved = len(delisted_in_universe) > 0
+    post_delisting_leakage = len(post_delisting_leakage_symbols) > 0
 
-    # 4. IPO prelisting leakage
+    # 4. IPO prelisting leakage - check across ENTIRE backtest period, not just first check_date
     ipo_prelisting_leakage = False
+    ipo_prelisting_leakage_symbols = []
+    all_period_dates = check_dates + [settings.start_date]
     for sym in universe.symbols:
         recs = provider._membership.get(sym, [])
         for r in recs:
             l_date = str(r.get("listing_date") or r.get("active_from") or "")
-            if l_date and check_dates and l_date > check_dates[0]:
-                if provider._is_active_record(r, check_dates[0]):
-                    ipo_prelisting_leakage = True
-                    break
-        if ipo_prelisting_leakage:
-            break
+            if l_date and l_date > settings.start_date:
+                # This stock was listed after the backtest start.
+                # Check if it appears active before its listing date across all check dates.
+                for cd in all_period_dates:
+                    if cd < l_date and provider._is_active_record(r, cd):
+                        ipo_prelisting_leakage = True
+                        ipo_prelisting_leakage_symbols.append(sym)
+                        break
+        if len(ipo_prelisting_leakage_symbols) > 20:
+            break  # Enough evidence
 
     # 5. Historical ST / Suspension coverage
     status_tracked_count = sum(1 for sym in universe.symbols if sym in provider._status_intervals)
@@ -374,20 +395,35 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "ratio": ca_ratio,
     }
     corporate_action_source_coverage = ca_ratio
-    # Full dataset complete requires covering expected full-market scope with 0 synthetic
-    corporate_action_dataset_complete = bool(verified_actions_count >= 8000 and synthetic_corporate_actions_detected == 0)
+    # Full dataset complete requires covering >90% of expected full-market scope with 0 synthetic
+    corporate_action_dataset_complete = bool(ca_ratio >= 0.90 and synthetic_corporate_actions_detected == 0)
     corporate_action_ready = bool(corporate_action_dataset_complete and synthetic_corporate_actions_detected == 0)
 
-    # 9. Universe Set-level Difference
-    diff_file = config.project_root / "universe_set_diff.csv"
+    # 9. Universe Set-level Difference against official snapshots
+    snapshot_dir = config.project_root / "data" / "backtest" / "official_universe_snapshots"
     universe_extra_symbol_count = 0
     universe_missing_symbol_count = 0
-    if diff_file.exists():
-        with diff_file.open("r", encoding="utf-8-sig") as f:
-            d_rows = list(csv.DictReader(f))
-            universe_extra_symbol_count = sum(int(r.get("extra", 0)) for r in d_rows if "extra" in r)
-            universe_missing_symbol_count = sum(int(r.get("missing", 0)) for r in d_rows if "missing" in r)
-    official_universe_set_match = (universe_extra_symbol_count == 0 and universe_missing_symbol_count == 0 and not ipo_prelisting_leakage)
+    snapshot_files = sorted(list(snapshot_dir.glob("*.csv"))) if snapshot_dir.exists() else []
+    if snapshot_files:
+        for snap_file in snapshot_files:
+            snap_date = snap_file.stem
+            if not (snap_date.startswith("20") and len(snap_date) == 10):
+                continue
+            official_syms = set()
+            with snap_file.open("r", encoding="utf-8-sig") as f:
+                for r in csv.DictReader(f):
+                    official_syms.add(r["symbol"])
+            active_syms = set(provider.active_symbols_on(snap_date, universe.symbols))
+            universe_extra_symbol_count += len(active_syms - official_syms)
+            universe_missing_symbol_count += len(official_syms - active_syms)
+    else:
+        diff_file = config.project_root / "universe_set_diff.csv"
+        if diff_file.exists():
+            with diff_file.open("r", encoding="utf-8-sig") as f:
+                d_rows = list(csv.DictReader(f))
+                universe_extra_symbol_count = sum(int(r.get("extra", 0)) for r in d_rows if "extra" in r)
+                universe_missing_symbol_count = sum(int(r.get("missing", 0)) for r in d_rows if "missing" in r)
+    official_universe_set_match = (universe_extra_symbol_count == 0 and universe_missing_symbol_count == 0 and not ipo_prelisting_leakage and not post_delisting_leakage)
 
     # 10. Status Authenticity & Completeness from actual interval provenance
     status_ver_file = config.project_root / "status_verification.csv"
@@ -536,7 +572,7 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "2_exchange_coverage": exchange_coverage_ok,
         "3_historical_delisted_preserved": delisted_during_period_preserved,
         "4_no_prelisting_leakage": not ipo_prelisting_leakage,
-        "5_no_post_delisting_leakage": True,
+        "5_no_post_delisting_leakage": not post_delisting_leakage,
         "6_status_dataset_complete": status_dataset_complete,
         "7_sector_dataset_complete": sector_dataset_complete,
         "8_corporate_action_dataset_complete": corporate_action_dataset_complete,

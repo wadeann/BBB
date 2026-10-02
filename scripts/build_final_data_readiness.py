@@ -69,7 +69,7 @@ def get_trading_calendar():
 # 2. Dynamic Universe Set Reconciliation
 # =========================================================================
 def reconcile_universe_sets():
-    print("Reconciling universe sets dynamically...")
+    print("Reconciling universe sets from independent official snapshots...")
     master_path = BACKTEST_DIR / "security_master.csv"
     with master_path.open("r", encoding="utf-8-sig") as f:
         master_rows = list(csv.DictReader(f))
@@ -83,49 +83,37 @@ def reconcile_universe_sets():
             return False
         return True
 
-    # Audited benchmark dates
-    dates = ["2026-07-01", "2026-08-31", "2026-09-30"]
-
-    # Official known listed stocks per exchange/board from official monthly registers
-    # Known official statistics:
-    # 2026-08-31: SSE A-shares=2315 (Main: 1698, STAR: 617); SZSE=2901 (Main: 1495, ChiNext: 1406); BSE=339.
-    # 2026-07-01: SSE A-shares=2312 (Main: 1697, STAR: 615); SZSE=2898 (Main: 1494, ChiNext: 1404); BSE=335.
-    # 2026-09-30: SSE A-shares=2315 (Main: 1698, STAR: 617); SZSE=2901 (Main: 1495, ChiNext: 1406); BSE=348.
+    snapshot_dir = BACKTEST_DIR / "official_universe_snapshots"
     diff_records = []
 
-    for d in dates:
+    # Load all available official snapshot dates
+    snapshot_files = sorted(snapshot_dir.glob("*.csv"))
+    if not snapshot_files:
+        print("ERROR: No official_universe_snapshots/*.csv found. Cannot reconcile.")
+        return
+
+    for snap_file in snapshot_files:
+        d = snap_file.stem  # e.g. "2026-08-31"
+        if not (d.startswith("20") and len(d) == 10):
+            continue
+
+        # Load independent official set from snapshot file
+        official_by_board = defaultdict(set)
+        with snap_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                official_by_board[r["board"]].add(r["symbol"])
+
+        # Load local active set
         active_local_rows = [r for r in master_rows if is_active(r, d)]
         local_by_board = defaultdict(set)
         for r in active_local_rows:
             local_by_board[r["board"]].add(r["symbol"])
 
         for board in ["SSE_MAIN", "STAR", "SZSE_MAIN", "CHINEXT", "BSE"]:
+            official_set = official_by_board[board]
             local_set = local_by_board[board]
 
-            # Construct official set based on official listing register
-            # Differences arise from delisting transition period stocks and pre-listing allocations
-            official_set = set(local_set)
-            if d == "2026-08-31":
-                if board == "SSE_MAIN":
-                    # Official excluded delisting transitions: 601198.SH (absorbed), 600190.SH
-                    official_set = official_set - {"601198.SH", "600190.SH"}
-                elif board == "CHINEXT":
-                    official_set = official_set - {"300379.SZ"}
-                elif board == "BSE":
-                    official_set = official_set - {"920036.BJ", "920037.BJ", "920038.BJ"}
-            elif d == "2026-07-01":
-                if board == "SSE_MAIN":
-                    official_set = official_set - {"601198.SH", "600190.SH", "600083.SH", "600293.SH"}
-                elif board == "STAR":
-                    official_set = official_set - {"688001.SH_TEST"} if "688001.SH_TEST" in official_set else official_set
-                elif board == "SZSE_MAIN":
-                    official_set = official_set - {"000016.SZ", "000595.SZ", "000851.SZ"}
-                elif board == "CHINEXT":
-                    official_set = official_set - {"300379.SZ", "300496.SZ_TEST"} if "300496.SZ_TEST" in official_set else official_set - {"300379.SZ"}
-                elif board == "BSE":
-                    official_set = official_set - {"920030.BJ", "920031.BJ", "920032.BJ", "920033.BJ", "920034.BJ", "920035.BJ", "920036.BJ"}
-
-            # Perform dynamic set algebra
+            # Genuine independent set algebra
             missing_set = official_set - local_set
             extra_set = local_set - official_set
             intersection = official_set & local_set
@@ -160,7 +148,7 @@ def reconcile_universe_sets():
         w.writeheader()
         w.writerows(diff_records)
 
-    print(f"Generated {diff_path} via dynamic set algebra.")
+    print(f"Generated {diff_path} from independent official snapshots.")
 
 
 # =========================================================================
@@ -384,6 +372,7 @@ def build_authentic_status_and_sector():
 # =========================================================================
 def generate_dataset_manifest(raw_count, tot_symbols, raw_cov):
     print("Generating dataset_manifest.json...")
+    from datetime import datetime as dt
     raw_files = list(RAW_PRICES_DIR.glob("*.csv"))
     raw_row_count = 0
     for rf in raw_files:
@@ -398,10 +387,31 @@ def generate_dataset_manifest(raw_count, tot_symbols, raw_cov):
     sec_path = BACKTEST_DIR / "historical_sector_intervals.csv"
     ca_path = BACKTEST_DIR / "corporate_actions.csv"
 
+    # Count actual intervals and events
+    st_count = 0
+    if st_path.exists():
+        with st_path.open("r", encoding="utf-8-sig") as f:
+            st_count = sum(1 for _ in csv.DictReader(f))
+    sec_count = 0
+    if sec_path.exists():
+        with sec_path.open("r", encoding="utf-8-sig") as f:
+            sec_count = sum(1 for _ in csv.DictReader(f))
+    ca_count = 0
+    if ca_path.exists():
+        with ca_path.open("r", encoding="utf-8-sig") as f:
+            ca_count = sum(1 for _ in csv.DictReader(f))
+
+    # Official universe snapshot hashes
+    snap_dir = BACKTEST_DIR / "official_universe_snapshots"
+    snap_hashes = {}
+    if snap_dir.exists():
+        for sf in sorted(snap_dir.glob("*.csv")):
+            snap_hashes[sf.stem] = sha256_file(sf)
+
     manifest = {
-        "dataset_id": "ashare_pit_historical_v0.7.2",
-        "dataset_version": "0.7.2",
-        "generated_at": "2026-10-02T14:55:00+08:00",
+        "dataset_id": "ashare_pit_historical_v0.7.3",
+        "dataset_version": "0.7.3",
+        "generated_at": dt.now().astimezone().isoformat(),
         "date_range": {
             "start": "2024-10-01",
             "end": "2026-09-30"
@@ -410,9 +420,16 @@ def generate_dataset_manifest(raw_count, tot_symbols, raw_cov):
             "symbol_count": tot_symbols,
             "raw_bar_file_count": len(raw_files),
             "raw_bar_row_count": raw_row_count,
-            "status_interval_count": 5742,
-            "sector_interval_count": 5676,
-            "corporate_action_count": 91
+            "status_interval_count": st_count,
+            "sector_interval_count": sec_count,
+            "corporate_action_count": ca_count
+        },
+        "external_dataset": {
+            "external_dataset_root": "data/backtest/raw_prices/",
+            "mounted": len(raw_files) > 0,
+            "raw_bar_file_count_on_disk": len(raw_files),
+            "status": "EXTERNAL_DATASET_REQUIRED" if len(raw_files) < tot_symbols else "DATASET_PRESENT",
+            "note": "clean_code.zip does NOT include raw CSV data. External dataset must be mounted at data/backtest/raw_prices/ before running backtests."
         },
         "readiness": {
             "formal_full_market_ready": False,
@@ -437,9 +454,11 @@ def generate_dataset_manifest(raw_count, tot_symbols, raw_cov):
             "historical_sector_intervals": sha256_file(sec_path),
             "corporate_actions": sha256_file(ca_path)
         },
+        "official_universe_snapshot_sha256": snap_hashes,
         "notes": [
             "Strict authentic data layer: zero synthetic bars, zero synthetic corporate actions.",
-            "Raw bar coverage is 41.04% (< 98.0%); formal_full_market_ready is strictly False."
+            f"Raw bar coverage is {raw_cov*100:.2f}% (< 98.0%); formal_full_market_ready is strictly False.",
+            "EXTERNAL_DATASET_REQUIRED: Raw CSV files must be mounted externally; clean_code.zip excludes them."
         ]
     }
 

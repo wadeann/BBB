@@ -173,4 +173,50 @@ class CorporateActionEngine:
                 applied.append(event)
                 self.logs.append(event)
 
+            # 4. Rights issue (配股)
+            if act.rights_ratio > 0 and (act.action_type == "rights_issue" or act.rights_price > 0):
+                cost_needed = round(pos.quantity * act.rights_ratio * act.rights_price, 2)
+                old_qty = pos.quantity
+                if portfolio.cash >= cost_needed and cost_needed > 0:
+                    portfolio.cash = float(portfolio.cash or 0.0) - cost_needed
+                    added_shares = int(round(old_qty * act.rights_ratio))
+                    new_qty = old_qty + added_shares
+                    total_orig_cost = old_qty * pos.entry_price
+                    new_entry_price = round((total_orig_cost + cost_needed) / new_qty, 4)
+                    ratio_factor = (1.0 + act.rights_ratio)
+                    pos.quantity = new_qty
+                    pos.entry_price = new_entry_price
+                    if pos.stop_price > 0:
+                        pos.stop_price = round(pos.stop_price / ratio_factor, 4)
+                    pos.highest_price = round(pos.highest_price / ratio_factor, 4)
+                    if pos.lowest_price:
+                        pos.lowest_price = round(pos.lowest_price / ratio_factor, 4)
+                    event = {
+                        "date": date,
+                        "symbol": act.symbol,
+                        "type": "RIGHTS_ISSUE_EXERCISED",
+                        "old_quantity": old_qty,
+                        "new_quantity": new_qty,
+                        "rights_ratio": act.rights_ratio,
+                        "rights_price": act.rights_price,
+                        "cash_paid": cost_needed,
+                    }
+                    applied.append(event)
+                    self.logs.append(event)
+                    logger.info("corporate_action_rights_issue_exercised: %s new_qty=%d cash_paid=%.2f", act.symbol, new_qty, cost_needed)
+                else:
+                    event = {
+                        "date": date,
+                        "symbol": act.symbol,
+                        "type": "RIGHTS_ISSUE_INSUFFICIENT_CASH",
+                        "rights_ratio": act.rights_ratio,
+                        "rights_price": act.rights_price,
+                        "cash_needed": cost_needed,
+                        "cash_available": portfolio.cash,
+                        "warning": "STRICT_RESEARCH_INVALID: rights issue unexercised due to insufficient cash",
+                    }
+                    applied.append(event)
+                    self.logs.append(event)
+                    logger.warning("corporate_action_rights_issue_insufficient_cash: %s cash_needed=%.2f cash_avail=%.2f", act.symbol, cost_needed, portfolio.cash)
+
         return applied

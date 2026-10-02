@@ -1,4 +1,4 @@
-# A股 Agent Runtime + Web Workbench v0.7.0
+# A股 Agent Runtime + Web Workbench v0.7.3
 
 > Gemini 接力测试优先阅读 `GEMINI_HANDOFF_V07.md`，完成后按 `VALIDATION_REPORT_TEMPLATE.md` 输出。
 
