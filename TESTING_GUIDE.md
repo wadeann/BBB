@@ -1,12 +1,33 @@
-# v0.6.1 Research Lab — 部署、回测与反馈测试手册
+# v0.7 测试入口说明
 
-本文件是 **v0.6.1 的标准测试流程**。目标是让不同机器、不同 LLM、不同数据源跑出来的结果能够被比较，而不是只看某一次“收益率”。
+> Gemini 接力时优先阅读 `GEMINI_HANDOFF_V07.md`，最终必须按 `VALIDATION_REPORT_TEMPLATE.md` 填写 `VALIDATION_REPORT_COMPLETED.md`。
+> 推荐使用 `scripts/run_gemini_v07_validation.sh` 分阶段执行；完成后运行 `scripts/collect_gemini_feedback.sh`。
+
+# v0.7 测试说明补充
+
+正式全市场历史验证请以 `GEMINI_FULL_MARKET_TEST_PLAN.md` 为准。旧的63只/静态 universe 流程仅保留为 diagnostic。
+
+最短流程：
+
+```bash
+PYTHONPATH=. pytest -q
+bash scripts/run_full_market_validation.sh
+```
+
+输出优先反馈：
+
+```text
+data/diagnostics/latest_research_preflight.json
+data/research/runs/<latest>/feedback_bundle.zip
+```
+
+---
+
+# v0.6 Research Lab — 部署、回测与反馈测试手册
+
+本文件是 **v0.6 的标准测试流程**。目标是让不同机器、不同 LLM、不同数据源跑出来的结果能够被比较，而不是只看某一次“收益率”。
 
 > 研究原则：任何报告如果被标记为 `DIAGNOSTIC_ONLY`，只能用于排查和消融，不应当作为“策略已证明赚钱”的依据。
-
-> **Gemini/其他 LLM 接力测试请优先阅读：`GEMINI_CONTINUATION_TEST_PLAN.md`。**
-> v0.6.1 的修复原因与旧实验为何无效，见 `CHANGELOG_V0.6.1.md` 和 `AUDIT_REVIEW_GEMINI.md`。
-> 一键三个月标准复测脚本：`bash scripts/run_gemini_validation.sh`。
 
 ## 0. 输出目录先记住
 
@@ -80,7 +101,7 @@ python3 -m venv .venv
 预期：
 
 ```text
-0.6.1
+0.6.0
 ```
 
 ## 2. 配置 `.env`
@@ -475,20 +496,3 @@ bash scripts/run_research_validation.sh
 ```
 
 脚本结束会打印 `feedback_bundle.zip` 的准确位置。
-
----
-
-# v0.6.1 LLM Gate 复测要求
-
-先阅读 `AUDIT_REVIEW_GEMINI.md`。
-
-旧版 LLM 三个月结果存在大量 `LLM_FILTER_ERROR -> REJECT`，不得继续作为 LLM Alpha 证据。
-v0.6.1 以后只有 `llm_filter_stats.failures == 0` 且 `error_candidates == 0` 的 LLM 实验才允许比较收益。
-
-推荐先运行：
-
-```bash
-bash scripts/reset_llm_research_cache.sh
-```
-
-然后按 `AUDIT_REVIEW_GEMINI.md` 中 B -> C -> D 顺序测试。

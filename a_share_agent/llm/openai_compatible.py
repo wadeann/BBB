@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 import httpx
-from jsonschema import ValidationError, validate as validate_json_schema
+from jsonschema import validate as validate_json_schema
 
 from .base import LLMClient
 
@@ -165,22 +165,24 @@ class OpenAICompatibleLLMClient(LLMClient):
                 if not isinstance(content, str):
                     raise LLMTransportError("LLM response content is missing")
                 out = _extract_json(content)
+                # Compatibility normalization for providers that honor JSON-only but
+                # shape the root object differently than the requested schema.
                 if schema is not None and isinstance(out, dict):
                     if "decisions" in schema.get("properties", {}) and "decisions" not in out:
                         if "candidates" in out and isinstance(out["candidates"], list):
                             out["decisions"] = out.pop("candidates")
-                        elif all(isinstance(v, dict) and "candidate_id" in v for v in out.values()):
+                        elif out and all(isinstance(v, dict) and "candidate_id" in v for v in out.values()):
                             out = {"decisions": list(out.values())}
                     if "decisions" in out and isinstance(out["decisions"], list):
                         for item in out["decisions"]:
                             if isinstance(item, dict) and "confidence" in item:
-                                if isinstance(item["confidence"], (int, float)) and 0.0 < item["confidence"] <= 1.0:
-                                    item["confidence"] = round(item["confidence"] * 100.0, 1)
-                if schema is not None:
+                                value = item["confidence"]
+                                if isinstance(value, (int, float)) and 0.0 < value <= 1.0:
+                                    item["confidence"] = round(value * 100.0, 1)
                     try:
                         validate_json_schema(instance=out, schema=schema)
-                    except ValidationError as exc:
-                        raise LLMTransportError(f"LLM JSON schema validation failed: {exc.message}") from exc
+                    except Exception as exc:
+                        raise LLMTransportError(f"LLM JSON schema validation failed: {type(exc).__name__}") from exc
                 return out
             except LLMTransportError as exc:
                 last_error = exc

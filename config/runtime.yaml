@@ -1,7 +1,7 @@
-version: 0.6.0
+version: 0.7.0
 backend: fake                 # fake | production; production must be an explicit deployment choice
 mode: paper
-code_version: runtime-v0.6.0
+code_version: runtime-v0.7.0
 model_id: external-llm
 strategy_version: skill-v5.0.0
 
@@ -11,7 +11,7 @@ mcp:
   transport: streamable_http
   protocol_version: "2025-06-18"
   client_name: a-share-agent
-  client_version: "0.6.0"
+  client_version: "0.7.0"
   timeout_seconds: 20
   verify_tls: true
   services:
@@ -58,8 +58,8 @@ llm:
   temperature: 0.0
   max_tokens: 4096
   structured_output: json_schema     # auto | json_schema | json_object | none
-  # Historical research should fail fast and stay cheap/reproducible. These values
-  # override only the Research Lab client; live/runtime settings above remain unchanged.
+  # Historical research uses a separate profile: tolerate slower local reasoning
+  # models, but structured output remains strict and reproducible.
   research_overrides:
     timeout_seconds: 180
     retries: 1

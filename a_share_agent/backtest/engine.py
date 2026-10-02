@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import json
 import math
 import uuid
@@ -15,7 +16,6 @@ from .costs import AShareCostModel, locked_at_limit, price_limit_pct
 from .data import HistoricalDataProvider
 from .metrics import performance_metrics, monthly_returns, grouped_trade_stats
 from .models import BacktestSettings, PendingOrder
-from .portfolio import Portfolio
 from .portfolio import Portfolio
 from .regime import market_context_from_benchmarks, sector_context_from_history
 from .scoring import deterministic_score
@@ -112,35 +112,80 @@ class BacktestEngine:
         if not dates:
             raise RuntimeError("no benchmark trading dates in requested range")
 
+        # v0.7: symbols is a fallback/seed universe only. In point-in-time mode the
+        # provider returns a different active universe for every historical date.
+        seed_symbols=list(dict.fromkeys(symbols))
         bars_by_symbol: dict[str,list[dict[str,Any]]]={}
+        bar_dates_by_symbol: dict[str,list[str]]={}
         map_by_symbol: dict[str,dict[str,dict[str,Any]]]={}
-        sector_by_symbol: dict[str,dict[str,Any]]={}
+        invalid_symbols: set[str]=set()
         sector_bars: dict[str,list[dict[str,Any]]]={}
-        valid=[]
-        required_start_index=max(0,next((i for i,b in enumerate(benchmark) if b["date"]>=self.s.start_date),0)-self.s.warmup_bars)
-        oldest_needed=benchmark[required_start_index]["date"]
-        for sym in symbols:
-            bars=self.provider.bars(sym,count=max(900,self.s.warmup_bars+550))
-            if len(bars)<60 or bars[-1]["date"] < self.s.start_date:
-                self.data_quality["missing_bars"].append(sym); continue
-            bars_by_symbol[sym]=bars; map_by_symbol[sym]=_bar_map(bars); valid.append(sym)
-            sec=self.provider.sector_info(sym); sector_by_symbol[sym]=sec
-            code=sec.get("code")
-            if code and code not in sector_bars:
-                sector_bars[code]=self.provider.sector_bars(str(code))
-        symbols=valid
+        sector_context_cache: dict[tuple[str,str],dict[str,Any]]={}
         sector_sources: dict[str,int]={}
-        for info in sector_by_symbol.values():
-            src=str(info.get("source") or "unknown"); sector_sources[src]=sector_sources.get(src,0)+1
-        self.data_quality["sector_mapping_sources"]=sector_sources
-        self.data_quality["historical_sector_membership_point_in_time"]=bool(sector_sources) and all(src.startswith("historical") for src in sector_sources)
+        sector_heat_daily: list[dict[str,Any]]=[]
+        universe_daily: list[dict[str,Any]]=[]
+        seen_symbols: set[str]=set()
+        sector_symbols_seen: set[tuple[str,str]] = set()
+        sector_symbols_checked: set[str] = set()
+        sector_symbols_mapped: set[str] = set()
+        sector_symbols_historical: set[str] = set()
+
+        def ensure_symbol(sym: str) -> bool:
+            if sym in bars_by_symbol:
+                return True
+            if sym in invalid_symbols:
+                return False
+            rows=self.provider.bars(sym,count=max(900,self.s.warmup_bars+550))
+            if len(rows)<60 or rows[-1]["date"] < self.s.start_date:
+                invalid_symbols.add(sym)
+                if sym not in self.data_quality["missing_bars"]:
+                    self.data_quality["missing_bars"].append(sym)
+                return False
+            bars_by_symbol[sym]=rows
+            bar_dates_by_symbol[sym]=[str(x["date"]) for x in rows]
+            map_by_symbol[sym]=_bar_map(rows)
+            return True
+
+        def hist_to(sym: str, d: str, limit: int | None = None) -> list[dict[str,Any]]:
+            if not ensure_symbol(sym):
+                return []
+            idx=bisect.bisect_right(bar_dates_by_symbol[sym],d)
+            start=max(0,idx-limit) if limit else 0
+            return bars_by_symbol[sym][start:idx]
+
+        def sector_for(sym: str, d: str) -> tuple[dict[str,Any],dict[str,Any]]:
+            strict=self.s.sector_mode=="strict"
+            sector_on=getattr(self.provider,"sector_info_on",None)
+            info=sector_on(sym,d,strict=strict) if callable(sector_on) else self.provider.sector_info(sym)
+            source=str(info.get("source") or "unknown")
+            sector_symbols_checked.add(sym)
+            if info.get("code") or info.get("name"):
+                sector_symbols_mapped.add(sym)
+                if source.startswith("historical"):
+                    sector_symbols_historical.add(sym)
+            pair=(sym,source)
+            if pair not in sector_symbols_seen:
+                sector_sources[source]=sector_sources.get(source,0)+1
+                sector_symbols_seen.add(pair)
+            code=info.get("code")
+            if code and str(code) not in sector_bars:
+                sector_bars[str(code)]=self.provider.sector_bars(str(code))
+            sbars=sector_bars.get(str(code),[]) if code else []
+            if code and not sbars:
+                sc=str(code)
+                if sc not in self.data_quality["sector_history_missing"]:
+                    self.data_quality["sector_history_missing"].append(sc)
+            cache_key=(str(code or "NO_SECTOR"),d)
+            if cache_key not in sector_context_cache:
+                sector_context_cache[cache_key]=self._sector_context(sbars,d,info.get("name"))
+            return info,sector_context_cache[cache_key]
+
         portfolio=Portfolio(self.s.initial_cash)
         pending: list[PendingOrder]=[]
         equity_curve=[]
         candidates_count=0
         signal_count=0
         current_prices: dict[str,float]={}
-        regime_by_date: dict[str,str]={}
         route_stats: dict[str,int]={}
         signal_stats: dict[str,int]={}
         executed_entries_today: dict[str,int]={}
@@ -148,18 +193,66 @@ class BacktestEngine:
         for di,d in enumerate(dates):
             next_d=self._next_date(dates,di)
             market=market_context_from_benchmarks(benchmark_series,d)
-            regime_by_date[d]=str(market.get("market_regime"))
-            # Update prices for mark-to-market.
-            for sym in symbols:
+
+            # Historical point-in-time universe is reconstructed for each date.
+            active_fn=getattr(self.provider,"active_records_on",None)
+            active_records=active_fn(d,seed_symbols) if callable(active_fn) else [{"symbol":s,"tradable":True} for s in seed_symbols if self._eligible(s,d)]
+            active_symbols=[str(x["symbol"]) for x in active_records if x.get("symbol")]
+            seen_symbols.update(active_symbols)
+            meta_fn=getattr(self.provider,"daily_universe_meta",None)
+            umeta=meta_fn(d,seed_symbols) if callable(meta_fn) else {"date":d,"active_symbols":len(active_symbols),"source":"explicit_or_synthetic","point_in_time":False,"universe_hash":None}
+            universe_daily.append(umeta)
+            pit_enabled=bool(getattr(self.provider,"point_in_time_universe_enabled",False))
+            if self.s.universe_mode=="strict_point_in_time" and pit_enabled and not bool(umeta.get("point_in_time")):
+                raise RuntimeError(f"strict point-in-time universe lost at {d}")
+
+            # Update prices for active symbols plus current positions. Last known close
+            # remains in current_prices for suspended holdings.
+            mark_symbols=set(active_symbols)|set(portfolio.positions)
+            for sym in mark_symbols:
+                if not ensure_symbol(sym):
+                    continue
                 bar=map_by_symbol[sym].get(d)
-                if bar: current_prices[sym]=float(bar["close"])
+                if bar:
+                    current_prices[sym]=float(bar["close"])
+
+            # Build historical sector heat once per day. Strength is based on data
+            # available through d and, when enabled, relative rank among active sectors.
+            daily_sector_by_symbol: dict[str,tuple[dict[str,Any],dict[str,Any]]]={}
+            unique_sector_contexts: dict[str,dict[str,Any]]={}
+            if self.s.sector_mode != "disabled":
+                for sym in active_symbols:
+                    info,ctx=sector_for(sym,d)
+                    daily_sector_by_symbol[sym]=(info,ctx)
+                    code=str(info.get("code") or "")
+                    if code:
+                        unique_sector_contexts[code]=ctx
+                if self.s.sector_relative_ranking and unique_sector_contexts:
+                    ranked=sorted(unique_sector_contexts.items(),key=lambda kv:float(kv[1].get("sector_score",50.0)))
+                    n=len(ranked)
+                    for rank,(code,ctx) in enumerate(ranked):
+                        pct=(rank+1)/n
+                        score=float(ctx.get("sector_score",50.0))
+                        ctx["relative_percentile"]=round(pct,4)
+                        original=str(ctx.get("sector_strength","neutral"))
+                        if original != "unknown":
+                            if pct>=0.80 and score>=50:
+                                ctx["sector_strength"]="strong"
+                            elif pct<=0.20 or score<45:
+                                ctx["sector_strength"]="weak"
+                            else:
+                                ctx["sector_strength"]="neutral"
+                    top=sorted(ranked,key=lambda kv:float(kv[1].get("sector_score",50.0)),reverse=True)[:10]
+                    sector_heat_daily.append({"date":d,"top":[{"code":code,"name":ctx.get("sector"),"score":ctx.get("sector_score",50),"relative_percentile":ctx.get("relative_percentile"),"strength":ctx.get("sector_strength"),"lifecycle":ctx.get("sector_lifecycle")} for code,ctx in top]})
 
             # 1) Execute pending orders scheduled for today at today's open.
             todays=[o for o in pending if o.execute_date==d]
             pending=[o for o in pending if o.execute_date!=d]
             for o in todays:
+                if not ensure_symbol(o.symbol):
+                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
                 bar=map_by_symbol.get(o.symbol,{}).get(d)
-                prev_hist=[x for x in bars_by_symbol.get(o.symbol,[]) if x["date"]<d]
+                prev_hist=hist_to(o.symbol,d,2)[:-1] if map_by_symbol.get(o.symbol,{}).get(d) else hist_to(o.symbol,d,1)
                 if not bar or not prev_hist:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
                 b={**bar,"symbol":o.symbol}; prev_close=float(prev_hist[-1]["close"])
@@ -171,7 +264,7 @@ class BacktestEngine:
                     continue
                 if o.symbol in portfolio.positions:
                     continue
-                if not self._eligible(o.symbol,d):
+                if o.symbol not in set(active_symbols) or not self._eligible(o.symbol,d):
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NOT_POINT_IN_TIME_ELIGIBLE","order":o.to_dict()}); continue
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
@@ -191,6 +284,8 @@ class BacktestEngine:
 
             # 2) Intraday protective stop / position lifecycle. T+1: entry date cannot sell.
             for sym,pos in list(portfolio.positions.items()):
+                if not ensure_symbol(sym):
+                    continue
                 bar=map_by_symbol.get(sym,{}).get(d)
                 if not bar: continue
                 pos.highest_price=max(pos.highest_price,float(bar["high"])); pos.lowest_price=min(pos.lowest_price or pos.entry_price,float(bar["low"]));
@@ -200,13 +295,11 @@ class BacktestEngine:
                     tr=portfolio.sell(symbol=sym,date=d,signal_date=d,raw_price=raw,reason="STOP_LOSS",cost_model=self.costs)
                     if tr: self._log(d,"TRADE",trade=tr.to_dict())
 
-            # 3) Close-confirmed exits -> next open; then close-confirmed entries.
+            # 3) Close-confirmed exits -> next open.
             for sym,pos in list(portfolio.positions.items()):
-                hist=[x for x in bars_by_symbol[sym] if x["date"]<=d]
-                if len(hist)<60: continue
-                secinfo=sector_by_symbol.get(sym,{})
-                sbars=sector_bars.get(str(secinfo.get("code")),[]) if secinfo.get("code") else []
-                sector=self._sector_context(sbars,d,secinfo.get("name"))
+                hist=hist_to(sym,d,120)
+                if len(hist)<60 or hist[-1]["date"]!=d: continue
+                _secinfo,sector=daily_sector_by_symbol.get(sym) or sector_for(sym,d)
                 hits=self.signal_engine.scan(hist,market_regime=str(market.get("market_regime")),sector_strength=str(sector.get("sector_strength")))
                 ex=self._exit_hit(hits)
                 reason=None
@@ -216,18 +309,13 @@ class BacktestEngine:
                     pending.append(PendingOrder(sym,"SELL",d,next_d,reason,pos.strategy_id,pos.strategy_family,pos.score,pos.route_id,pos.sector))
                     self._log(d,"EXIT_SIGNAL",symbol=sym,reason=reason,execute_date=next_d)
 
-            # Entry scanning. Cap is intentionally applied after ranking all candidates for the day.
+            # 4) Full-market entry scan over this date's PIT universe.
             daily_candidates=[]
-            for sym in symbols:
-                if not self._eligible(sym,d): continue
+            for sym in active_symbols:
                 if sym in portfolio.positions or any(o.symbol==sym and o.direction=="BUY" for o in pending): continue
-                hist=[x for x in bars_by_symbol[sym] if x["date"]<=d]
+                hist=hist_to(sym,d,120)
                 if len(hist)<60 or hist[-1]["date"]!=d: continue
-                secinfo=sector_by_symbol.get(sym,{})
-                sbars=sector_bars.get(str(secinfo.get("code")),[]) if secinfo.get("code") else []
-                if not sbars and secinfo.get("code"):
-                    self.data_quality["sector_history_missing"].append(str(secinfo.get("code")))
-                sector=self._sector_context(sbars,d,secinfo.get("name"))
+                secinfo,sector=daily_sector_by_symbol.get(sym) or sector_for(sym,d)
                 route=self._route(market,sector)
                 route_stats[route["route_id"]]=route_stats.get(route["route_id"],0)+1
                 hits=self.signal_engine.scan(hist,market_regime=str(market.get("market_regime")),sector_strength=str(sector.get("sector_strength")))
@@ -235,10 +323,8 @@ class BacktestEngine:
                 for hit in hits:
                     sid0=str(hit.get("signal"))
                     if hit.get("strength")=="primary":
-                        if self.enabled_strategies and sid0 not in self.enabled_strategies:
-                            continue
-                        if sid0 in self.disabled_strategies:
-                            continue
+                        if self.enabled_strategies and sid0 not in self.enabled_strategies: continue
+                        if sid0 in self.disabled_strategies: continue
                     filtered_hits.append(hit)
                 prim=self._primary_hit(filtered_hits)
                 if not prim:
@@ -246,8 +332,7 @@ class BacktestEngine:
                         self.rejections.append({"date":d,"symbol":sym,"reason":"NO_ENABLED_PRIMARY_STRATEGY","strategies":[h.get("signal") for h in hits if h.get("strength")=="primary"]})
                     continue
                 hits=filtered_hits
-                sid=str(prim.get("signal"))
-                signal_count+=1; signal_stats[sid]=signal_stats.get(sid,0)+1
+                sid=str(prim.get("signal")); signal_count+=1; signal_stats[sid]=signal_stats.get(sid,0)+1
                 family=str(prim["family"])
                 allowed=set(route.get("allowed_strategy_families",[])); conditional=set(route.get("conditional_strategy_families",[]))
                 if family not in allowed and family not in conditional:
@@ -267,44 +352,38 @@ class BacktestEngine:
                 route_caps=[x["route"].get("max_new_positions_override") for x in daily_candidates if x["route"].get("max_new_positions_override") is not None]
                 if route_caps: max_new=min(max_new,max(0,max(int(x) for x in route_caps)))
                 room=max(0,self.s.max_positions-len(portfolio.positions)-sum(1 for o in pending if o.direction=="BUY"))
-                target_accept=min(max_new,room)
+                slots=min(max_new,room)
 
                 if self.s.llm_filter_enabled:
-                    if not self.llm_filter:
-                        raise RuntimeError("llm_filter_enabled but no HistoricalLLMFilter was provided")
+                    if not self.llm_filter: raise RuntimeError("llm_filter_enabled but no HistoricalLLMFilter was provided")
+                    # Only ask the LLM about candidates that can realistically fill the
+                    # remaining portfolio slots. Continue until slots are filled or the
+                    # configured review cap is exhausted.
                     gated=[]
-                    top_n=min(len(daily_candidates),max(1,int(self.s.llm_filter_top_n)))
-                    batch=max(1,int(self.s.llm_filter_batch_size))
+                    review_cap=min(len(daily_candidates),max(slots,int(self.s.llm_filter_top_n))) if slots>0 else 0
+                    for x in daily_candidates[review_cap:]:
+                        self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_TOP_N_CUTOFF","score":x["score"],"strategy":x["primary"]["signal"]})
                     reviewed=0
-                    # Review only as many ranked candidates as needed to fill actual portfolio capacity.
-                    # If the gate rejects some, continue down the ranking until capacity is filled or top_n is exhausted.
-                    while reviewed < top_n and len(gated) < target_accept:
-                        chunk=daily_candidates[reviewed:min(top_n,reviewed+batch)]
+                    batch_size=max(1,int(self.s.llm_filter_batch_size))
+                    while reviewed < review_cap and len(gated) < slots:
+                        chunk=daily_candidates[reviewed:min(review_cap,reviewed+batch_size)]
                         decisions=self.llm_filter.decide_batch(as_of=d,candidates=[(x["symbol"],x,x["recent_bars"]) for x in chunk]) if chunk else {}
                         for x in chunk:
-                            dec=decisions.get(x["symbol"],{
-                                "decision":"ERROR","confidence":0,"reasons_for":[],
-                                "reasons_against":["LLM_MISSING_DECISION"],"risk_flags":["MISSING_DECISION"]
-                            })
+                            dec=decisions.get(x["symbol"],{"decision":"ERROR","reasons_against":["LLM_MISSING_DECISION"]})
                             x["llm_filter"]=dec
                             decision=str(dec.get("decision") or "ERROR")
-                            if decision == "ERROR":
-                                self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_ERROR_EXCLUDED","score":x["score"],"strategy":x["primary"]["signal"],"llm":dec})
+                            if decision=="ERROR":
+                                self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_FILTER_ERROR","score":x["score"],"strategy":x["primary"]["signal"],"llm":dec})
                                 continue
                             if decision not in set(self.s.llm_filter_accept):
                                 self.rejections.append({"date":d,"symbol":x["symbol"],"reason":f"LLM_{decision}","score":x["score"],"strategy":x["primary"]["signal"],"llm":dec})
                                 continue
                             gated.append(x)
-                            if len(gated) >= target_accept:
-                                break
+                            if len(gated)>=slots: break
                         reviewed += len(chunk)
-                    for x in daily_candidates[reviewed:top_n]:
-                        self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_NOT_REVIEWED_CAPACITY_FILLED","score":x["score"],"strategy":x["primary"]["signal"]})
-                    for x in daily_candidates[top_n:]:
-                        self.rejections.append({"date":d,"symbol":x["symbol"],"reason":"LLM_TOP_N_CUTOFF","score":x["score"],"strategy":x["primary"]["signal"]})
                     daily_candidates=gated
 
-                for x in daily_candidates[:target_accept]:
+                for x in daily_candidates[:slots]:
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
@@ -312,11 +391,11 @@ class BacktestEngine:
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)
-            equity_curve.append({"date":d,"equity":equity,"cash":portfolio.cash,"market_value":portfolio.market_value(current_prices),"positions":len(portfolio.positions),"market_regime":market.get("market_regime")})
+            equity_curve.append({"date":d,"equity":equity,"cash":portfolio.cash,"market_value":portfolio.market_value(current_prices),"positions":len(portfolio.positions),"market_regime":market.get("market_regime"),"active_universe":len(active_symbols)})
 
-        # Liquidate remaining positions at final available close, marked as end-of-test.
         last_date=dates[-1]
         for sym in list(portfolio.positions):
+            if not ensure_symbol(sym): continue
             bar=map_by_symbol.get(sym,{}).get(last_date)
             if bar:
                 tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs)
@@ -333,12 +412,17 @@ class BacktestEngine:
         benchmark_return=(float(bperiod[-1]["close"])/float(bperiod[0]["close"])-1) if len(bperiod)>=2 and float(bperiod[0]["close"]) else 0.0
         metrics["benchmark_return"]=benchmark_return
         metrics["excess_return_vs_benchmark"]=float(metrics.get("total_return",0))-benchmark_return
-        metrics["monthly_target"]=target
-        metrics["months_total"]=len(months)
-        metrics["months_ge_target"]=target_hits
+        metrics["monthly_target"]=target; metrics["months_total"]=len(months); metrics["months_ge_target"]=target_hits
         metrics["months_ge_target_rate"]=target_hits/len(months) if months else 0.0
-        metrics["best_month"]=max((float(x["return"]) for x in months),default=0.0)
-        metrics["worst_month"]=min((float(x["return"]) for x in months),default=0.0)
+        metrics["best_month"]=max((float(x["return"]) for x in months),default=0.0); metrics["worst_month"]=min((float(x["return"]) for x in months),default=0.0)
+
+        active_counts=[int(x.get("active_symbols",0)) for x in universe_daily]
+        point_flags=[bool(x.get("point_in_time")) for x in universe_daily]
+        self.data_quality["sector_mapping_sources"]=sector_sources
+        checked=max(1,len(sector_symbols_checked))
+        self.data_quality["sector_mapping_coverage"]=len(sector_symbols_mapped)/checked if sector_symbols_checked else 0.0
+        self.data_quality["historical_sector_mapping_coverage"]=len(sector_symbols_historical)/checked if sector_symbols_checked else 0.0
+        self.data_quality["historical_sector_membership_point_in_time"]=bool(sector_symbols_checked) and len(sector_symbols_historical)==len(sector_symbols_checked)
         report={
             "run_id":f"bt-{uuid.uuid4().hex[:12]}","created_at":datetime.now().astimezone().isoformat(),
             "settings":self.s.to_dict(),"metrics":metrics,"monthly_returns":months,"equity_curve":equity_curve,"trades":trades,
@@ -346,11 +430,19 @@ class BacktestEngine:
             "by_strategy":grouped_trade_stats(trades,"strategy_id"),"by_family":grouped_trade_stats(trades,"strategy_family"),
             "by_route":grouped_trade_stats(trades,"route_id"),"by_sector":grouped_trade_stats(trades,"sector"),
             "by_market_regime":grouped_trade_stats(trades,"entry_market_regime"),"by_sector_strength":grouped_trade_stats(trades,"entry_sector_strength"),
-            "coverage":{"requested_symbols":len(valid)+len(self.data_quality["missing_bars"]),"tested_symbols":len(valid),"missing_symbols":len(self.data_quality["missing_bars"]),"signal_count":signal_count,"deterministic_candidate_count":candidates_count,"candidate_count":candidates_count},
+            "coverage":{
+                "requested_symbols":len(seen_symbols),"tested_symbols":len(bars_by_symbol),"missing_symbols":len(invalid_symbols),
+                "signal_count":signal_count,"deterministic_candidate_count":candidates_count,"candidate_count":candidates_count,
+                "dynamic_universe_days":len(universe_daily),"active_universe_min":min(active_counts) if active_counts else 0,
+                "active_universe_max":max(active_counts) if active_counts else 0,"active_universe_avg":(sum(active_counts)/len(active_counts)) if active_counts else 0.0,
+            },
+            "universe_daily":universe_daily,"sector_heat_daily":sector_heat_daily,
             "data_quality":{
                 **self.data_quality,"provider_warnings":self.provider.warnings,
+                "point_in_time_universe_all_days":bool(point_flags) and all(point_flags),
+                "dynamic_universe_daily":bool(getattr(self.provider,"dynamic_universe_enabled",False)),
                 "historical_market_context":"derived_from_multiple_benchmark_prices",
-                "historical_sector_context":"derived_from_sector_price_history_when_available",
+                "historical_sector_context":"derived_from_historical_sector_membership_and_sector_price_history_when_available",
                 "present_day_market_health_used":False,"present_day_mainline_used":False,
             },
             "methodology":{
@@ -358,8 +450,8 @@ class BacktestEngine:
                 "protective_stop":"intraday_daily_bar_low; T+1 enforced","lookahead_protection":True,"llm_used":bool(self.s.llm_filter_enabled),
                 "decision_engine":"deterministic + historical LLM candidate gate" if self.s.llm_filter_enabled else "deterministic rule/scoring engine for reproducibility",
                 "llm_filter_stats":self.llm_filter.stats() if self.llm_filter else None,
-                "route_mode":self.s.route_mode,"sector_mode":self.s.sector_mode,"enabled_strategies":list(self.enabled_strategies),"disabled_strategies":list(self.disabled_strategies),"research_tag":self.s.research_tag,
-                "market_benchmarks":benchmark_symbols,
+                "route_mode":self.s.route_mode,"sector_mode":self.s.sector_mode,"sector_relative_ranking":bool(self.s.sector_relative_ranking),"enabled_strategies":list(self.enabled_strategies),"disabled_strategies":list(self.disabled_strategies),"research_tag":self.s.research_tag,
+                "market_benchmarks":benchmark_symbols,"universe_method":"daily_point_in_time_dynamic" if (bool(getattr(self.provider,"dynamic_universe_enabled",False)) and all(point_flags)) else "static_or_diagnostic_fallback",
             },
         }
         return report

@@ -1,30 +1,48 @@
-# A股 Agent Runtime + Web Workbench v0.6.1
+# A股 Agent Runtime + Web Workbench v0.7.0
 
-## v0.6.1 接力测试入口（Gemini / 其他 LLM）
+> Gemini 接力测试优先阅读 `GEMINI_HANDOFF_V07.md`，完成后按 `VALIDATION_REPORT_TEMPLATE.md` 输出。
 
-如果本包交给另一个 LLM 继续测试，**不要先自行改策略**。请按以下顺序：
+## v0.7 重点：全市场动态历史选股回测
 
-1. `GEMINI_CONTINUATION_TEST_PLAN.md` — 唯一接力测试入口与成功/作废标准；
-2. `CHANGELOG_V0.6.1.md` — 修复记录、旧三个月 LLM A/B 为什么无效；
-3. `AUDIT_REVIEW_GEMINI.md` — 对上一轮审计结论的代码/数据复核；
-4. `TESTING_GUIDE.md` — 完整测试命令和报告目录。
+v0.7 不再把固定 `universe.txt` 当作正式两年回测股票池。正式 Research 使用每个历史交易日的 Point-in-Time 全A股 universe，结合当时证券状态、历史行业归属和行业历史走势重新筛选。
 
-推荐先执行三个月标准复测：
+正式验证请先阅读：
+
+- `FULL_MARKET_BACKTEST.md`
+- `GEMINI_FULL_MARKET_TEST_PLAN.md`
+- `MCP_HISTORICAL_DATA_CONTRACT.md`
+- `CHANGELOG_V0.7.md`
+
+
+### Gemini 分阶段测试脚本
+
+不要一次性盲跑所有阶段。使用：
 
 ```bash
-bash scripts/run_gemini_validation.sh
+PHASE=test      bash scripts/run_gemini_v07_validation.sh
+PHASE=mcp       bash scripts/run_gemini_v07_validation.sh
+PHASE=preflight bash scripts/run_gemini_v07_validation.sh
+PHASE=smoke     bash scripts/run_gemini_v07_validation.sh
+PHASE=perf      bash scripts/run_gemini_v07_validation.sh
+PHASE=full3m    bash scripts/run_gemini_v07_validation.sh
+PHASE=llm3m     bash scripts/run_gemini_v07_validation.sh
+PHASE=full2y    bash scripts/run_gemini_v07_validation.sh
+PHASE=collect   bash scripts/run_gemini_v07_validation.sh
 ```
 
-测试完成后反馈两个核心文件：
+`full2y` 只能在 `preflight + full3m` 达到 `RESEARCH_GRADE` 后执行。
+测试结束后 `PHASE=collect` 会打包回传材料。
 
-```text
-data/diagnostics/latest_research_preflight.json
-data/research/runs/<latest_suite>/feedback_bundle.zip
+一键三个月全市场验证：
+
+```bash
+bash scripts/run_full_market_validation.sh
 ```
 
-LLM 实验只有在 `failures=0`、`error_candidates=0` 且 `llm_experiment_valid=true` 时才允许解释收益差异。
+正式收益测试必须使用 `--universe-mode strict_point_in_time` 且不设置 `--max-universe`。`max_universe=50/500` 只用于接口和性能冒烟测试。
 
----
+Gemini commit `e2d700a` 的 JSON Schema / reasoning-token 兼容修改已经合并，同时保留 LLM ERROR != REJECT、Schema 强校验和 compact historical features。
+
 
 v0.4 把系统从“Web 页面驱动的 Runtime”升级成**独立后台 Worker + 只读 Web Workbench**，并加入生产 MCP HTTP Adapter、OpenAI-compatible LLM Client、SSE 实时事件流、可靠消息通知和部署前探针。
 
@@ -108,7 +126,7 @@ Web 进程**不会初始化 LLM Client**。只有 Worker 持有 LLM 凭证。
 推荐 Python 3.11+：
 
 ```bash
-cd a_share_agent_app_v6
+cd a_share_agent_app_v7
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -822,21 +840,3 @@ Backtest no-exec safety        PASS
 ```
 
 完整测试流程见 `TESTING_GUIDE.md`。
-
----
-
-## v0.6.1：LLM Research Integrity Patch
-
-本版本根据真实三个月 LLM Gate 回测审计修正研究方法。核心变化：
-
-- LLM 超时/Schema/网络错误不再伪装成 `REJECT`；
-- 任一 LLM ERROR 会使对应 Research 实验标记为无效/诊断用途；
-- OpenAI-compatible 返回结果增加本地 JSON Schema 强校验；
-- 旧的不完整 LLM 缓存自动失效；
-- LLM 历史输入默认改为 compact features；
-- 只审核实际可能占用组合仓位的排名候选，减少调用量；
-- Research LLM 默认 `retries=0`，避免超时重试把回测拖成数小时；
-- TDX F10 行业字段增加嵌套/中文 key 解析；
-- 旧 `code=null` sector cache 会自动刷新。
-
-详细审计结论和推荐复测命令见：`AUDIT_REVIEW_GEMINI.md`。

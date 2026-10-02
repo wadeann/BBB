@@ -69,19 +69,31 @@ def test_openai_compatible_json_client(monkeypatch):
     assert out == {"ok": True}
 
 
-def test_openai_compatible_client_enforces_schema_locally(monkeypatch):
+def test_openai_decision_schema_compat_normalizes_root_and_confidence(monkeypatch):
     monkeypatch.setenv("TEST_LLM_URL", "https://llm.invalid")
     monkeypatch.setenv("TEST_LLM_KEY", "secret-key")
     monkeypatch.setenv("TEST_LLM_MODEL", "model-x")
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"choices":[{"message":{"content":"{\"ok\": true}"}}]})
-    client = OpenAICompatibleLLMClient({
-        "base_url_env":"TEST_LLM_URL", "api_key_env":"TEST_LLM_KEY", "model_env":"TEST_LLM_MODEL",
-        "structured_output":"json_object", "retries":0,
-    }, transport=httpx.MockTransport(handler))
-    import pytest
-    from a_share_agent.llm.openai_compatible import LLMTransportError
-    with pytest.raises(LLMTransportError):
-        client.complete_json(system_prompt="json", user_payload={"x":1}, schema={
-            "type":"object","properties":{"must":{"type":"string"}},"required":["must"],"additionalProperties":False
-        })
+        body = json.loads(request.content)
+        assert body["response_format"]["type"] == "json_schema"
+        content = json.dumps({"candidates":[{
+            "candidate_id":"abc", "decision":"PASS", "confidence":0.85,
+            "reasons_for":["ok"], "reasons_against":["risk"], "risk_flags":[]
+        }]})
+        return httpx.Response(200, json={"choices":[{"message":{"content":content}}]})
+
+    schema={
+        "type":"object",
+        "properties":{"decisions":{"type":"array","items":{"type":"object","properties":{
+            "candidate_id":{"type":"string"},"decision":{"type":"string"},"confidence":{"type":"number"},
+            "reasons_for":{"type":"array"},"reasons_against":{"type":"array"},"risk_flags":{"type":"array"}},
+            "required":["candidate_id","decision","confidence","reasons_for","reasons_against","risk_flags"],"additionalProperties":False}}},
+        "required":["decisions"],"additionalProperties":False,
+    }
+    client=OpenAICompatibleLLMClient({
+        "base_url_env":"TEST_LLM_URL","api_key_env":"TEST_LLM_KEY","model_env":"TEST_LLM_MODEL",
+        "structured_output":"json_schema",
+    },transport=httpx.MockTransport(handler))
+    out=client.complete_json(system_prompt="json",user_payload={"x":1},schema=schema)
+    assert out["decisions"][0]["confidence"] == 85.0

@@ -26,6 +26,7 @@ class BacktestSettings:
     slippage_bps: float = 5.0
     block_open_at_limit: bool = True
     sector_mode: str = "historical_or_neutral"  # strict | historical_or_neutral | disabled
+    sector_relative_ranking: bool = True
     route_mode: str = "enabled"  # enabled | disabled
     position_round_lot: int = 100
     decision_engine: str = "deterministic"  # deterministic | deterministic_plus_llm_filter
@@ -40,12 +41,9 @@ class BacktestSettings:
     disabled_strategies: list[str] = field(default_factory=list)
     llm_filter_enabled: bool = False
     llm_filter_top_n: int = 20
-    llm_filter_batch_size: int = 1
+    llm_filter_batch_size: int = 10
     llm_filter_accept: list[str] = field(default_factory=lambda: ["PASS"])
     llm_filter_anonymize_symbol: bool = True
-    llm_filter_payload_mode: str = "compact_features"  # compact_features | bars
-    llm_filter_max_bars: int = 20
-    llm_filter_failure_policy: str = "exclude_and_invalidate"
     research_tag: str = "baseline"
 
     def to_dict(self) -> dict[str, Any]:

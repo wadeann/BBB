@@ -10,14 +10,14 @@ from a_share_agent.diagnostics import write_diagnostic_report
 
 def test_project_env_loads_without_overriding_existing(tmp_path: Path, monkeypatch):
     (tmp_path / ".env").write_text(
-        "ASHARE_TEST_A=from_file\nASHARE_TEST_B=$apr1$literal$value\n",
+        "ASHARE_TEST_A=from_file\nASHARE_TEST_B=$literal$dollar$value\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ASHARE_TEST_A", "from_process")
     monkeypatch.delenv("ASHARE_TEST_B", raising=False)
     load_project_env(tmp_path)
     assert os.environ["ASHARE_TEST_A"] == "from_process"
-    assert os.environ["ASHARE_TEST_B"] == "$apr1$literal$value"
+    assert os.environ["ASHARE_TEST_B"] == "$literal$dollar$value"
 
 
 def test_diagnostic_report_redacts_and_updates_latest(tmp_path: Path):

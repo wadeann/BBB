@@ -227,7 +227,7 @@ def cmd_backtest(args) -> None:
     if not symbols: raise SystemExit("回测股票池为空：请填写 data/backtest/universe.txt，或使用 production backend 获取股票池")
     def run_one(ss):
         report=BacktestEngine(cfg,provider,ss).run(symbols)
-        if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records}
+        if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"seed_symbols":len(symbols),"tested_union_symbols":report.get("coverage",{}).get("tested_symbols",0),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records,"dynamic_daily":uni.dynamic_daily,"dataset_version":uni.dataset_version,"coverage":uni.coverage}
         return report
     report=run_one(settings); path=BacktestReportWriter(root).write(report)
     out={"run_id":report["run_id"],"report_dir":str(path),"metrics":report["metrics"],"coverage":report["coverage"],"data_quality":report["data_quality"]}
@@ -251,13 +251,15 @@ def cmd_research_preflight(args) -> None:
     _emit_diagnostic(root,"research_preflight",result,ok=bool(result.get("ok")))
     if not result.get("ok"):
         raise SystemExit(2)
+    if getattr(args, "require_research_grade", False) and not bool(result.get("formal_full_market_ready")):
+        raise SystemExit(3)
 
 def cmd_research_suite(args) -> None:
     root=_project_root(args.root); cfg=load_config(root)
     backend=getattr(args,"backend",None) or cfg.runtime.get("backend","fake")
     mcp=create_mcp_invoker(cfg,backend=backend)
     include_llm=bool(args.include_llm)
-    llm=create_llm_client(cfg,required=True,purpose="research") if include_llm else None
+    llm=create_llm_client(cfg,required=True,profile="research") if include_llm else None
     overrides={k:v for k,v in {
         "start_date":args.start,"end_date":args.end,"initial_cash":args.cash,"benchmark":args.benchmark,
         "min_score":args.min_score,"max_universe":args.max_universe,"universe_file":args.universe_file,
@@ -341,6 +343,7 @@ def main() -> None:
     s.add_argument("--start"); s.add_argument("--end"); s.add_argument("--universe-file"); s.add_argument("--max-universe", type=int)
     s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
     s.add_argument("--sample-size", type=int, default=30)
+    s.add_argument("--require-research-grade", action="store_true", help="exit nonzero unless full-market PIT data is research-grade ready")
     s.set_defaults(func=cmd_research_preflight)
 
     s = sub.add_parser("research-suite", help="run standardized A/B and ablation backtest experiments")

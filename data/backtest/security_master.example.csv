@@ -1,3 +1,5 @@
-symbol,active_from,active_to,tradable,st,suspended,board
-600000.SH,1999-11-10,,1,0,0,SSE_MAIN
-000001.SZ,1991-04-03,,1,0,0,SZSE_MAIN
+symbol,active_from,active_to,tradable,st,suspended,board,industry_code,industry_name
+600000.SH,2024-01-01,2024-12-31,1,0,0,SSE_MAIN,BK0475,银行
+600000.SH,2025-01-01,,1,0,0,SSE_MAIN,BK0475,银行
+600001.SH,2024-06-01,2025-03-01,1,0,0,SSE_MAIN,BK0001,示例行业
+600001.SH,2025-03-02,2025-03-15,0,1,0,SSE_MAIN,BK0001,示例行业

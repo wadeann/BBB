@@ -1,4 +1,4 @@
-# Implementation Status — v0.5.0
+# Implementation Status — v0.7.0
 
 ## 已完成
 
@@ -256,36 +256,47 @@ v0.6 新增覆盖：
 - `feedback_bundle.zip` generation/contents: **PASS**
 - Backtest execution safety (no Exec MCP order calls): **PASS**
 
-# v0.6.1 Research integrity patch
 
-- [x] LLM transport/schema failure separated from intelligent REJECT
-- [x] LLM experiment invalidated when any candidate is excluded by LLM ERROR
-- [x] local JSON Schema enforcement for OpenAI-compatible JSON output
-- [x] legacy malformed LLM caches ignored
-- [x] compact historical feature payload for LLM research
-- [x] capacity-aware candidate review to reduce LLM calls
-- [x] dedicated research timeout/retry/token configuration
-- [x] nested TDX F10 sector parser + null-cache refresh
-- [x] sector parser diagnostics in research preflight
-- [x] additional automated regression tests
+# v0.7 Full-Market PIT implementation status
 
----
+## 已完成
 
-## v0.6.1 Gemini 接力测试交付补充
+- 回测按历史交易日动态调用 `active_records_on(date)`，不再固定一组 symbols。
+- 支持 local security master / MCP interval membership / MCP daily PIT 三种历史 universe 路径。
+- strict PIT 模式禁止静默退回 current/static universe。
+- 历史上市/退市/ST/停牌状态可按有效期参与每日资格过滤。
+- `sector_info_on(symbol, as_of)` 使用历史行业归属，current F10 只允许 diagnostic fallback。
+- 每日 universe count/hash/dataset version 可进入研究质量报告。
+- 合并 Gemini commit e2d700a structured-output 兼容修复。
+- 保留 LLM ERROR != REJECT、JSON Schema 本地强校验、匿名 security id、compact features。
+- 新增 Full-Market PIT 专项测试。
+- 新增 Gemini 接力入口、固定报告模板、分阶段脚本和反馈收集脚本。
 
-新增文档/脚本：
+## 正式研究要求
 
-- `CHANGELOG_V0.6.1.md`：逐项修复记录、旧问题、代码语义、验收门槛；
-- `GEMINI_CONTINUATION_TEST_PLAN.md`：给 Gemini/其他 LLM 的标准接力测试协议；
-- `scripts/run_gemini_validation.sh`：默认跑 2026-07-01 ~ 2026-09-30 的 preflight + deterministic A/B + LLM A/B；
-- `TESTING_GUIDE.md`：版本与接力入口更新为 v0.6.1；
-- `README.md`：加入接力测试入口和反馈文件位置。
+正式收益结论必须满足：
 
-接力测试硬规则：
+```text
+strict_point_in_time
+max_universe=0
+point_in_time_universe_all_days=true
+survivorship_bias=false
+historical sector coverage >= configured research threshold
+LLM experiments: failures=0 and error_candidates=0
+```
 
-1. 复测前重置旧 LLM research cache；
-2. LLM API/schema error 不得解释为 REJECT；
-3. LLM A/B 只有 `failures=0`、`error_candidates=0`、`llm_experiment_valid=true` 才有效；
-4. Sector mapping coverage 为 0 时不得声明 sector router 已验证；
-5. 不允许根据当前诊断数据直接把生产仓位提高到 30%~40%/80%~100%；
-6. 下一轮优先比较 `no_triple_golden_cross` vs `llm_gate_no_triple`。
+否则只能标记 `DIAGNOSTIC_ONLY` 或 `INVALID`。
+
+## Gemini 回传
+
+测试结束后运行：
+
+```bash
+PHASE=collect bash scripts/run_gemini_v07_validation.sh
+```
+
+回传：
+
+1. `data/diagnostics/latest_research_preflight.json`
+2. 生成的 `data/research/gemini_feedback_*.zip`
+3. `VALIDATION_REPORT_COMPLETED.md`

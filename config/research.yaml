@@ -3,6 +3,7 @@ version: 1.0
 baseline_id: baseline
 min_symbols_for_research_grade: 500
 max_neutral_sector_share_for_research_grade: 0.85
+min_historical_sector_mapping_coverage: 0.80
 experiments:
   - id: baseline
     description: Current deterministic strategy/router baseline.

@@ -53,7 +53,7 @@ class BacktestService:
             def run_one(ss:BacktestSettings):
                 e=BacktestEngine(self.config,provider,ss); r=e.run(symbols)
                 if uni:
-                    r["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"symbols":len(symbols),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records}
+                    r["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"seed_symbols":len(symbols),"tested_union_symbols":r.get("coverage",{}).get("tested_symbols",0),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records,"dynamic_daily":uni.dynamic_daily,"dataset_version":uni.dataset_version,"coverage":uni.coverage}
                 return r
             report=run_one(s); path=self.writer.write(report)
             wf=None

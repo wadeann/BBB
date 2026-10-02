@@ -188,3 +188,72 @@ mcp_intel_get_historical_sector_membership
 - `prefer_point_in_time` 允许显式降级并记录 survivorship-bias warning。
 
 `mcp_intel_get_historical_sector_membership` 当前仅完成工具映射，Engine 的按日期 sector membership interval 重建仍是下一阶段任务；因此当前 F10/current sector mapping 会导致 Research Validity 降级。
+
+
+---
+
+## v0.7 Runtime 已实现的调用策略
+
+### Fast path：周期有效区间
+
+为了两年全市场性能，Runtime **优先**尝试：
+
+```json
+{
+  "start_date": "2024-10-01",
+  "end_date": "2026-09-30",
+  "mode": "membership_intervals",
+  "include_status": true
+}
+```
+
+建议响应返回每个证券状态有效期：
+
+```json
+{
+  "point_in_time": true,
+  "dataset_version": "...",
+  "data_quality": {"coverage": 0.999},
+  "data": [
+    {
+      "symbol": "600000.SH",
+      "effective_from": "2024-01-01",
+      "effective_to": null,
+      "tradable": true,
+      "risk_warning": false,
+      "suspended": false,
+      "delisting_period": false,
+      "industry_code": "BK0001",
+      "industry_name": "银行"
+    }
+  ]
+}
+```
+
+如果服务端支持该模式，正式两年回测只需一次/少量 universe 拉取。
+
+### Fallback：逐交易日分页
+
+若 interval 模式不支持，Runtime 会按 benchmark 交易日调用本文前述 `date/page/limit` 接口，并缓存到 `data/backtest/cache/daily_universe/`。
+
+### 强烈建议 universe 直接包含行业字段
+
+全市场回测若每只股票每天单独查行业会非常慢。建议 `mcp_intel_get_historical_universe` 每条记录直接返回：
+
+```text
+industry_code
+industry_name
+```
+
+如果只能通过 `mcp_intel_get_historical_sector_membership` 返回行业，推荐包含 `effective_from/effective_to`，Runtime 会把区间按 symbol 缓存。
+
+### Strict 行为
+
+`strict_point_in_time` 下：
+
+- `point_in_time=false` -> FAIL
+- 分页数量与 `total` 不一致 -> FAIL
+- 无 historical universe -> FAIL
+- 不允许退回当前问财股票池
+
+这正是正式收益验证应使用的模式。
