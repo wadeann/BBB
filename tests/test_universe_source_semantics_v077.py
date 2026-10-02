@@ -27,7 +27,7 @@ def _write_semantics(root: Path, *, allow_sse: bool) -> None:
                         "raw_date_field": "暂停上市日期",
                         "normalized_field": "delisting_date",
                         "semantic_status": (
-                            "SOURCE_WIDE_VERIFIED_TERMINATION_EFFECTIVE_DATE"
+                            "SOURCE_WIDE_VERIFIED"
                             if allow_sse
                             else "PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE"
                         ),
@@ -51,25 +51,28 @@ def test_sample_matches_do_not_promote_ambiguous_source(tmp_path: Path):
     _write_semantics(raw, allow_sse=False)
     audit = validate_universe_source_semantics(raw)
     assert audit["sse_sample_evidence_valid"] is True
+    assert audit["sse_sample_evidence_hash_bound"] is False
     assert audit["sse_verification_sample_count"] == 1
     assert audit["source_wide_verified"] is False
     assert audit["ready"] is False
-    assert audit["reason"] == "SSE_DELISTING_DATE_FIELD_SEMANTICS_NOT_SOURCE_WIDE_VERIFIED"
-    with pytest.raises(RuntimeError, match="unverified delisting-date semantics"):
+    assert audit["reason"] == "DELISTING_DATE_SOURCE_SEMANTICS_NOT_INDEPENDENTLY_VERIFIED"
+    with pytest.raises(RuntimeError, match="unverified source-wide delisting-date semantics"):
         require_delisting_field_semantics(raw, "sse_delisted_register.csv")
 
 
-def test_source_wide_semantics_contract_allows_mapping(tmp_path: Path):
+def test_local_source_wide_flag_does_not_allow_mapping_without_independent_evidence(tmp_path: Path):
     raw = tmp_path / "raw_registers"
     _write_semantics(raw, allow_sse=True)
     audit = validate_universe_source_semantics(raw)
-    assert audit["source_wide_verified"] is True
-    assert audit["ready"] is True
-    entry = require_delisting_field_semantics(raw, "sse_delisted_register.csv")
-    assert entry["raw_date_field"] == "暂停上市日期"
+    assert audit["sse_sample_evidence_valid"] is True
+    assert audit["source_wide_verified"] is False
+    assert audit["ready"] is False
+    assert audit["unverified_source_wide_evidence"]
+    with pytest.raises(RuntimeError, match="unverified source-wide delisting-date semantics"):
+        require_delisting_field_semantics(raw, "sse_delisted_register.csv")
 
 
-def test_repo_semantics_remain_fail_closed_until_sse_source_wide_verification():
+def test_repo_semantics_remain_fail_closed_until_independent_source_wide_verification():
     root = Path(__file__).resolve().parents[1]
     raw = root / "data" / "backtest" / "official_universe_snapshots" / "raw_registers"
     audit = validate_universe_source_semantics(raw)
@@ -79,6 +82,7 @@ def test_repo_semantics_remain_fail_closed_until_sse_source_wide_verification():
     assert audit["sources"]["szse_delisted_register.csv"]["allow_as_delisting_date"] is True
     assert audit["sources"]["sse_delisted_register.csv"]["allow_as_delisting_date"] is False
     assert audit["source_wide_verified"] is False
+    assert audit["ready"] is False
 
 
 def test_snapshot_generator_refuses_current_ambiguous_sse_mapping():
