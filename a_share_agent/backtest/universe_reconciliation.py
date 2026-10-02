@@ -69,12 +69,15 @@ def universe_sets_for_date(
 def reconcile_universe_snapshot_counts(master_path: Path, snapshot_dir: Path) -> dict[str, Any]:
     """Reconcile all dated official snapshots against the local security master.
 
-    Counts are summed per snapshot, matching the detailed provenance audit output.
-    This helper is the single set-construction source used by Preflight and tests.
+    ``missing_total``/``extra_total`` are *observations summed across snapshots* for
+    backward compatibility.  The unique-symbol fields must be used for data-remediation
+    workloads so the same historical security is not fetched or inserted repeatedly.
     """
     master_rows = read_csv_rows(master_path)
     missing_total = 0
     extra_total = 0
+    missing_unique: set[str] = set()
+    extra_unique: set[str] = set()
     snapshot_count = 0
     per_snapshot: list[dict[str, Any]] = []
 
@@ -87,6 +90,8 @@ def reconcile_universe_snapshot_counts(master_path: Path, snapshot_dir: Path) ->
         extra = sorted(local_set - official_set)
         missing_total += len(missing)
         extra_total += len(extra)
+        missing_unique.update(missing)
+        extra_unique.update(extra)
         snapshot_count += 1
         per_snapshot.append(
             {
@@ -104,6 +109,12 @@ def reconcile_universe_snapshot_counts(master_path: Path, snapshot_dir: Path) ->
         "snapshot_count": snapshot_count,
         "missing_total": missing_total,
         "extra_total": extra_total,
+        "missing_observation_count": missing_total,
+        "extra_observation_count": extra_total,
+        "unique_missing_symbol_count": len(missing_unique),
+        "unique_extra_symbol_count": len(extra_unique),
+        "unique_missing_symbols": sorted(missing_unique),
+        "unique_extra_symbols": sorted(extra_unique),
         "match": bool(snapshot_count and missing_total == 0 and extra_total == 0),
         "per_snapshot": per_snapshot,
     }
