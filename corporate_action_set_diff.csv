@@ -1,2 +1,2 @@
-﻿status,symbol,action_type,ex_date,record_date,official_cash_div,loaded_cash_div,official_bonus,loaded_bonus,detail
-OFFICIAL_REGISTER_UNAVAILABLE,,,,,,,,,INDEPENDENT_OFFICIAL_CA_REGISTER_OR_MANIFEST_MISSING
+﻿status,symbol,action_type,ex_date,record_date,detail
+OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED,,,,,OFFICIAL_CA_REGISTER_OR_MANIFEST_MISSING
