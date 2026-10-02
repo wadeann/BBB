@@ -3,7 +3,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from a_share_agent.backtest.missing_history_readiness import assess_missing_history_candidate
+from a_share_agent.backtest.missing_history_readiness import (
+    assess_missing_history_candidate,
+    audit_missing_history_candidates,
+)
 
 
 def _sha(path: Path) -> str:
@@ -101,3 +104,14 @@ def test_raw_file_without_manifest_binding_is_not_execution_ready(tmp_path: Path
     assert result["raw_manifest_hash_present"] is False
     assert result["raw_file_hash_match"] is False
     assert result["execution_ready"] is False
+
+
+def test_committed_candidate_matrix_has_expected_readiness_split():
+    root = Path(__file__).resolve().parents[1]
+    audit = audit_missing_history_candidates(root)
+    assert audit["candidate_count"] == 35
+    assert audit["membership_ready_count"] == 17
+    assert audit["blocked_membership_count"] == 18
+    # The repository deliberately does not package the external Raw dataset and
+    # currently has no complete Status/Sector provenance sidecars for these symbols.
+    assert audit["execution_ready_count"] == 0
