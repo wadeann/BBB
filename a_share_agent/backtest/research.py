@@ -1,8 +1,9 @@
-"""v0.7.7+ fail-closed research preflight wrapper.
+"""Fail-closed research preflight for formal full-market A-share research.
 
 The v0.7.4 research implementation is retained in ``research_legacy``. This wrapper
-adds non-bypassable provenance, temporal-coverage, security-master, benchmark and
-trading-rule checks around formal full-market research readiness.
+adds independent provenance, temporal coverage, security-master, benchmark-calendar,
+trading-rule and dataset-integrity gates. No report/coverage artifact may define its
+own expected trading calendar.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from .provenance_audit import (
 )
 from .security_master_integrity import audit_security_master_integrity
 from .service import settings_from
+from .trusted_research_sources import audit_official_trading_calendar, audit_trading_rule_provenance
 from .universe_reconciliation import reconcile_universe_snapshot_counts
 from .universe_source_semantics import validate_universe_source_semantics
 
@@ -99,6 +101,7 @@ def _daily_coverage_audit(root: Path, actual_raw_hash: str | None) -> dict[str, 
         "days_below_98pct": sum(1 for value in values if value < 0.98),
         "days": len(values),
         "dates": sorted(set(dates)),
+        "duplicate_date_rows": max(0, len(dates) - len(set(dates))),
         "by_exchange": {board: (min(board_values[board]) if board_values[board] else 0.0) for board in board_values},
     }
 
@@ -107,17 +110,20 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result = _ORIGINAL_PREFLIGHT(config, mcp, overrides=overrides, sample_size=sample_size)
     root = config.project_root
     settings = settings_from(config, overrides or {})
+    research_start = str(settings.start_date)
+    research_end = str(settings.end_date)
 
     universe_audit = _official_universe_reconciliation(config)
-    universe_set_match_raw = bool(universe_audit["match"])
+    universe_set_match_integrity_bound = bool(universe_audit["match"])
     extra = int(universe_audit["extra_total"])
     missing = int(universe_audit["missing_total"])
     semantics = validate_universe_source_semantics(
         root / "data" / "backtest" / "official_universe_snapshots" / "raw_registers"
     )
     semantics_ready = bool(semantics["ready"])
-    trusted_universe_match = bool(universe_set_match_raw and semantics_ready)
-    result["official_universe_set_match_raw"] = universe_set_match_raw
+    trusted_universe_match = bool(universe_set_match_integrity_bound and semantics_ready)
+    result["official_universe_set_match_raw"] = bool(universe_audit.get("set_match_ignoring_integrity"))
+    result["official_universe_snapshot_integrity_ready"] = bool(universe_audit.get("official_snapshot_integrity_ready"))
     result["official_universe_set_match"] = trusted_universe_match
     result["official_universe_source_semantics_verified"] = semantics_ready
     result["official_universe_source_semantics_audit"] = semantics
@@ -144,6 +150,32 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     raw_match = bool(raw.get("raw_dataset_hash_match"))
     coverage = _daily_coverage_audit(root, raw.get("actual_raw_dataset_hash"))
     coverage_fresh = coverage["fresh"]
+
+    calendar_audit = audit_official_trading_calendar(
+        root,
+        research_start=research_start,
+        research_end=research_end,
+    )
+    calendar_ready = bool(calendar_audit["verified"])
+    trading_dates = list(calendar_audit["trading_dates"]) if calendar_ready else []
+    coverage_window_dates = sorted(
+        d for d in coverage["dates"] if research_start <= d <= research_end
+    )
+    calendar_set = set(trading_dates)
+    coverage_set = set(coverage_window_dates)
+    coverage_calendar_missing = sorted(calendar_set - coverage_set)
+    coverage_calendar_extra = sorted(coverage_set - calendar_set)
+    coverage_calendar_exact = bool(
+        calendar_ready
+        and coverage_fresh
+        and not coverage_calendar_missing
+        and not coverage_calendar_extra
+        and not coverage["duplicate_date_rows"]
+        and len(coverage_window_dates) == len(trading_dates)
+    )
+
+    result["trusted_trading_calendar_audit"] = calendar_audit
+    result["trusted_trading_calendar_verified"] = calendar_ready
     result["raw_dataset_hash_match"] = raw_match
     result["daily_raw_coverage_fresh"] = coverage_fresh
     result["raw_dataset_integrity"] = raw
@@ -156,12 +188,11 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         "p05_daily_raw_coverage": coverage["p05"],
         "days_below_98pct": coverage["days_below_98pct"],
         "total_evaluated_days": coverage["days"],
+        "duplicate_date_rows": coverage["duplicate_date_rows"],
+        "trusted_calendar_exact_match": coverage_calendar_exact,
+        "missing_trading_dates": coverage_calendar_missing,
+        "extra_coverage_dates": coverage_calendar_extra,
     }
-
-    trading_dates = [
-        d for d in coverage["dates"]
-        if str(settings.start_date) <= d <= str(settings.end_date)
-    ] if coverage_fresh else []
 
     status_source = audit_interval_provenance(
         root / "data" / "backtest" / "historical_status_intervals.csv",
@@ -200,6 +231,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     raw_ready = bool(
         raw_match
         and coverage_fresh
+        and calendar_ready
+        and coverage_calendar_exact
         and coverage["min"] >= 0.98
         and coverage["days"] > 0
         and coverage["days_below_98pct"] == 0
@@ -210,8 +243,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     master_integrity = audit_security_master_integrity(
         root / "data" / "backtest" / "security_master.csv",
         root / "data" / "backtest" / "official_universe_snapshots",
-        research_start=str(settings.start_date),
-        research_end=str(settings.end_date),
+        research_start=research_start,
+        research_end=research_end,
         trading_dates=trading_dates,
     )
     result["security_master_integrity_audit"] = master_integrity
@@ -235,8 +268,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     benchmark_audit = audit_benchmark_calendar(
         [str(row.get("date") or "") for row in benchmark_bars],
         trading_dates,
-        research_start=str(settings.start_date),
-        research_end=str(settings.end_date),
+        research_start=research_start,
+        research_end=research_end,
         warmup_required=int(settings.warmup_bars),
     )
     result["benchmark_strict_coverage_audit"] = benchmark_audit
@@ -245,13 +278,22 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         result["benchmark"]["missing_trading_dates"] = benchmark_audit["missing_trading_dates"]
         result["benchmark"]["warmup_bars"] = benchmark_audit["benchmark_warmup_bars"]
 
-    trading_rules = audit_trading_rules_runtime()
-    result["historical_trading_rules_audit"] = trading_rules
-    result["historical_trading_rules_verified"] = trading_rules["verified"]
+    trading_rules_runtime = audit_trading_rules_runtime()
+    trading_rule_provenance = audit_trading_rule_provenance(
+        root,
+        list((trading_rules_runtime.get("checks") or {}).keys()),
+    )
+    trading_rules_verified = bool(
+        trading_rules_runtime["verified"] and trading_rule_provenance["verified"]
+    )
+    result["historical_trading_rules_audit"] = trading_rules_runtime
+    result["historical_trading_rule_provenance_audit"] = trading_rule_provenance
+    result["historical_trading_rules_verified"] = trading_rules_verified
 
     min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 5000))
     daily_active_universe_ok = bool(
-        trading_dates
+        calendar_ready
+        and trading_dates
         and master_integrity["min_daily_active_symbols"] >= min_symbols
     )
     result["daily_active_universe_audit"] = {
@@ -259,6 +301,7 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         "min_daily_active_symbols": master_integrity["min_daily_active_symbols"],
         "max_daily_active_symbols": master_integrity["max_daily_active_symbols"],
         "min_symbols_required": min_symbols,
+        "trusted_calendar_verified": calendar_ready,
         "complete": daily_active_universe_ok,
     }
 
@@ -274,25 +317,34 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
             "8_corporate_action_dataset_complete": ca["complete"],
             "9_raw_execution_price_ready": raw_ready,
             "10_daily_raw_bar_coverage": bool(
-                coverage["min"] >= 0.98 and coverage["days"] > 0 and coverage["days_below_98pct"] == 0
+                coverage_calendar_exact
+                and coverage["min"] >= 0.98
+                and coverage["days"] > 0
+                and coverage["days_below_98pct"] == 0
             ),
             "11_each_exchange_raw_coverage": bool(
-                coverage["by_exchange"] and all(value >= 0.98 for value in coverage["by_exchange"].values())
+                coverage_calendar_exact
+                and coverage["by_exchange"]
+                and all(value >= 0.98 for value in coverage["by_exchange"].values())
             ),
             "12_official_universe_set_match": trusted_universe_match,
-            "13_historical_trading_rules_verified": bool(trading_rules["verified"]),
-            "14_benchmark_coverage": bool(benchmark_audit["complete"]),
+            "13_historical_trading_rules_verified": trading_rules_verified,
+            "14_benchmark_coverage": bool(calendar_ready and benchmark_audit["complete"]),
             "15_survivorship_bias": no_survivorship_bias,
             "16_raw_dataset_hash_match": raw_match,
             "17_daily_raw_coverage_fresh": coverage_fresh,
             "18_status_provenance_sidecar": bool(status_source["provenance_sidecar_present"]),
             "19_sector_provenance_sidecar": bool(sector_source["provenance_sidecar_present"]),
             "20_official_universe_source_semantics_verified": semantics_ready,
-            "21_status_full_window_pit_coverage": bool(status_pit["dataset_complete"]),
-            "22_sector_full_window_pit_coverage": bool(sector_pit["dataset_complete"]),
+            "21_status_full_window_pit_coverage": bool(calendar_ready and status_pit["dataset_complete"]),
+            "22_sector_full_window_pit_coverage": bool(calendar_ready and sector_pit["dataset_complete"]),
             "23_security_master_interval_integrity": bool(master_integrity["boundary_integrity"]),
             "24_delisted_register_reconciliation_complete": bool(master_integrity["delisted_register_complete"]),
-            "25_benchmark_exact_calendar_and_warmup": bool(benchmark_audit["complete"]),
+            "25_benchmark_exact_calendar_and_warmup": bool(calendar_ready and benchmark_audit["complete"]),
+            "26_trusted_trading_calendar_verified": calendar_ready,
+            "27_daily_raw_coverage_exact_calendar": coverage_calendar_exact,
+            "28_official_snapshot_and_register_hashes_verified": bool(universe_audit.get("official_snapshot_integrity_ready")),
+            "29_trading_rule_provenance_verified": bool(trading_rule_provenance["verified"]),
         }
     )
     result["criteria_checklist"] = checklist
@@ -301,10 +353,16 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result["research_grade_candidate"] = formal
 
     warnings = list(result.get("provider_warnings") or [])
+    if not universe_audit.get("official_snapshot_integrity_ready"):
+        warnings.append("OFFICIAL_UNIVERSE_SNAPSHOT_OR_REGISTER_HASH_INTEGRITY_FAILED")
     if not semantics_ready:
         warnings.append("OFFICIAL_UNIVERSE_SOURCE_DATE_SEMANTICS_UNVERIFIED")
     if not ca["official_register_valid"]:
         warnings.append("CORPORATE_ACTION_OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED")
+    if not calendar_ready:
+        warnings.append("TRUSTED_TRADING_CALENDAR_UNAVAILABLE_OR_UNVERIFIED")
+    if not coverage_calendar_exact:
+        warnings.append("DAILY_RAW_COVERAGE_TRADING_CALENDAR_MISMATCH")
     if not status_source["provenance_sidecar_present"]:
         warnings.append("STATUS_PROVENANCE_SIDECAR_MISSING")
     elif not status_source["dataset_complete"]:
@@ -327,8 +385,10 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("HISTORICAL_DELISTED_REGISTER_RECONCILIATION_INCOMPLETE")
     if not benchmark_audit["complete"]:
         warnings.append("BENCHMARK_CALENDAR_OR_WARMUP_INCOMPLETE")
-    if not trading_rules["verified"]:
+    if not trading_rules_runtime["verified"]:
         warnings.append("HISTORICAL_TRADING_RULE_RUNTIME_CHECK_FAILED")
+    if not trading_rule_provenance["verified"]:
+        warnings.append("HISTORICAL_TRADING_RULE_PROVENANCE_INCOMPLETE")
     result["provider_warnings"] = list(dict.fromkeys(warnings))
     return result
 
