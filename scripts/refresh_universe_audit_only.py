@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from audit_historical_data_provenance import (
     AUDIT_JSON,
@@ -27,23 +26,37 @@ def _patch_latest_preflight(universe: dict) -> None:
     if not path.exists():
         return
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        document = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return
-    data["official_universe_set_match"] = bool(universe["match"])
-    data["universe_missing_symbol_count"] = int(universe["missing_total"])
-    data["universe_extra_symbol_count"] = int(universe["extra_total"])
-    data["universe_reconciliation"] = universe
-    checklist = dict(data.get("criteria_checklist") or {})
+
+    # CLI output is normally wrapped as {report_type, generated_at, ok, payload:{...}},
+    # while older fixtures may be a bare payload. Patch the actual payload in either
+    # representation and keep wrapper metadata intact.
+    payload = document.get("payload") if isinstance(document, dict) else None
+    if not isinstance(payload, dict):
+        payload = document
+    if not isinstance(payload, dict):
+        raise RuntimeError("latest_research_preflight.json is not an object/payload wrapper")
+
+    payload["official_universe_set_match"] = bool(universe["match"])
+    payload["universe_missing_symbol_count"] = int(universe["missing_total"])
+    payload["universe_extra_symbol_count"] = int(universe["extra_total"])
+    payload["universe_unique_missing_symbol_count"] = int(universe.get("unique_missing_symbol_count", 0))
+    payload["universe_unique_extra_symbol_count"] = int(universe.get("unique_extra_symbol_count", 0))
+    payload["universe_reconciliation"] = universe
+
+    checklist = dict(payload.get("criteria_checklist") or {})
     checklist["12_official_universe_set_match"] = bool(universe["match"])
-    data["criteria_checklist"] = checklist
+    payload["criteria_checklist"] = checklist
     # The overall gate remains computed from all criteria. Never promote readiness
     # from a partial Universe-only artifact refresh.
-    data["formal_full_market_ready"] = bool(checklist and all(checklist.values()))
-    data["research_grade_candidate"] = data["formal_full_market_ready"]
-    data["universe_reconciliation_refreshed_at"] = datetime.now(timezone.utc).isoformat()
-    data["partial_refresh_scope"] = "UNIVERSE_ONLY_OTHER_PREFLIGHT_FIELDS_CARRIED_FORWARD"
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload["formal_full_market_ready"] = bool(checklist and all(checklist.values()))
+    payload["research_grade_candidate"] = payload["formal_full_market_ready"]
+    payload["universe_reconciliation_refreshed_at"] = datetime.now(timezone.utc).isoformat()
+    payload["partial_refresh_scope"] = "UNIVERSE_ONLY_OTHER_PREFLIGHT_FIELDS_CARRIED_FORWARD"
+
+    path.write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def main() -> int:
