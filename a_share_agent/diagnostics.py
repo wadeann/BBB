@@ -39,12 +39,23 @@ def write_diagnostic_report(
     stamp = ts.strftime("%Y%m%d_%H%M%S_%f")
     report = redact({
         "report_type": safe_type,
-        "generated_at": ts.isoformat(),
+        "generated_at": payload.get("generated_at") or ts.isoformat(),
         "ok": bool(ok) if ok is not None else None,
+        "git_commit_sha": payload.get("git_commit_sha"),
+        "git_branch": payload.get("git_branch"),
+        "working_tree_clean": payload.get("working_tree_clean"),
+        "producer_git_commit": payload.get("producer_git_commit") or payload.get("git_commit_sha"),
+        "producer_code_version": payload.get("producer_code_version"),
+        "research_start": payload.get("research_start"),
+        "research_end": payload.get("research_end"),
+        "preflight_artifact_current": payload.get("preflight_artifact_current"),
+        "artifact_stale": payload.get("artifact_stale"),
         "payload": payload,
     })
     dated = out_dir / f"{safe_type}_{stamp}.json"
     latest = out_dir / f"latest_{safe_type}.json"
     _atomic_json_write(dated, report)
     _atomic_json_write(latest, report)
+    if safe_type == "research_preflight":
+        _atomic_json_write(root / "latest_research_preflight.json", report)
     return {"report": str(dated), "latest": str(latest)}

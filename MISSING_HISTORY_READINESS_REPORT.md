@@ -1,180 +1,136 @@
 # Missing History Readiness Report
 
-**Generated At**: 2026-10-02T20:40:00+08:00  
-**Audit Scope**: v0.7.8 Missing History Readiness Audit (Membership Readiness vs. Execution Readiness)
+**Generated At**: 2026-10-02T22:58:00+08:00  
+**Audit Scope**: Latest Master Research Readiness Audit (Criteria 1–29, Code Version Binding, and Missing History Readiness)
 
 ---
 
 ## 1. Git State
 
 - **Branch**: `master`
-- **HEAD Commit**: `f21e5127753178442812b60ffb3f45e6921f5099` (`Merge pull request #11 from wadeann/fix/v078-missing-history-readiness`)
+- **HEAD Commit**: `2c9b99e81be139b84c8919828f3ebc3213fc660c` (`Merge pull request #18 from wadeann/fix/v081-raw-ohlcv-provenance`)
 - **Recent Commits**:
-  - `f21e512` Merge pull request #11 from wadeann/fix/v078-missing-history-readiness
-  - `1a02dcb` test: bind committed missing-history readiness split
-  - `0b326f9` test: distinguish PIT membership readiness from execution readiness
-  - `10e6a1b` feat(data): add missing-history readiness audit CLI
-  - `275e9d2` feat(data): add fail-closed missing-history readiness audit
-- **Working Tree**: Clean (Auditing-only, no business/strategy code modifications)
+  - `2c9b99e` Merge pull request #18 from wadeann/fix/v081-raw-ohlcv-provenance
+  - `0f41c62` feat(data): add per-file Raw OHLCV provenance audit
+  - `977bf5a` Merge PR #17: independent research provenance gates
+  - `6e260e6` test: prove evidence-backed source gates have reachable PASS paths
+  - `c7a34f5` fix(data): preserve runtime rule diagnostic while gating research on provenance
+  - `71f190c` test: stop treating local semantics flags as independent evidence
+  - `1ed3d03` fix(data): separate sample validity from evidence binding
+- **Working Tree**: Auditing & readiness version binding code only (zero modifications to strategy, signal, router, scoring, position, stop loss, or LLM prompts).
 
 ---
 
-## 2. Tests
+## 2. Test Execution
 
 - **Command**: `pytest -q`
 - **Result**:
-  - `passed`: 74
+  - `passed`: 100
   - `failed`: 0
   - `xfailed`: 1 (`test_strict_research_gate_blocks_incomplete_production_actions`)
   - `warnings`: 1 (StarletteDeprecationWarning regarding httpx testclient)
-  - `runtime`: 7.32s
+  - `runtime`: 11.92s
 - **Status**: 100% Passed / 0 Errors
 
 ---
 
-## 3. Universe
+## 3. Code Version Binding & Artifact Currency
 
-- **Snapshot Count**: 5 snapshots (2024-10-08, 2025-09-29, 2026-07-01, 2026-08-31, 2026-09-30)
-- **Legacy Schema Snapshots**: 0
-- **Missing Observations Total**: 59
-- **Unique Missing Symbols**: 35
-- **Extra Observations Total**: 0
-- **Unique Extra Symbols**: 0
-- **Official Universe Source Semantics Verified**: `False` (Pending complete SSE delisting date resolution across all register records)
-- **Detailed Diff File**: `official_universe_set_diff_detailed.csv`
+All formal readiness artifacts now bind to their producing Git commit:
 
----
+| Artifact File | Producer Git Commit | Producer Version | Stale |
+| :--- | :--- | :--- | :--- |
+| `latest_research_preflight.json` | `2c9b99e81be139b84c8919828f3ebc3213fc660c` | `0.7.7` | `False` |
+| `historical_data_provenance_audit.json` | `2c9b99e81be139b84c8919828f3ebc3213fc660c` | `0.7.7` | `False` |
+| `security_master_missing_history_readiness_summary.json` | `2c9b99e81be139b84c8919828f3ebc3213fc660c` | `0.7.7` | `False` |
+| `daily_raw_coverage_manifest.json` | `2c9b99e81be139b84c8919828f3ebc3213fc660c` | `0.7.7` | `False` |
+| `raw_dataset_manifest.json` | `2c9b99e81be139b84c8919828f3ebc3213fc660c` | `0.7.7` | `False` |
 
-## 4. Candidate Membership Readiness
-
-- **Candidate Count**: 35
-- **Membership Ready Count**: 17
-- **Membership Blocked Count**: 18
-
-> **Definition**: `membership_ready` indicates that independent exchange register records contain explicit listing and termination dates with verified source semantics. It represents reference-data PIT membership readiness only and does **not** grant strategy trading eligibility.
-
-### Membership-Ready Symbols (17 SZSE Stocks)
-
-All 17 stocks originate from `szse_delisted_register.csv` with explicit `终止上市日期` (`EXPLICIT_TERMINATION_FIELD`):
-
-| Symbol | Listing Date | Delisting Date | Source File | Source Semantic Status | Membership Ready | Execution Ready | Blockers |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `000584.SZ` | 1995-11-28 | 2025-07-11 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `000622.SZ` | 1996-11-07 | 2025-07-16 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `000627.SZ` | 1996-11-12 | 2025-09-30 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `000638.SZ` | 1996-11-26 | 2026-06-03 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `002231.SZ` | 2008-05-12 | 2026-03-27 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `002336.SZ` | 2010-01-13 | 2025-07-04 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `002750.SZ` | 2015-03-24 | 2025-06-27 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `002808.SZ` | 2016-08-12 | 2026-07-14 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `002898.SZ` | 2017-09-12 | 2026-07-17 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300029.SZ` | 2009-12-25 | 2026-07-10 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300108.SZ` | 2010-08-25 | 2025-05-29 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300117.SZ` | 2010-09-02 | 2025-04-30 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300208.SZ` | 2011-04-26 | 2025-07-21 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300280.SZ` | 2011-12-29 | 2025-10-14 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300344.SZ` | 2012-08-01 | 2026-04-22 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300391.SZ` | 2014-08-01 | 2026-04-13 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
-| `300630.SZ` | 2017-03-28 | 2025-05-22 | `szse_delisted_register.csv` | `EXPLICIT_TERMINATION_FIELD` | True | False | `RAW_OHLCV_NOT_MANIFEST_VERIFIED;HISTORICAL_STATUS_PROVENANCE_INCOMPLETE;HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` |
+- **`preflight_artifact_current`**: `True` (`git_commit_sha == 当前运行代码 HEAD`)
+- **`artifact_stale`**: `False`
 
 ---
 
-## 5. Candidate Membership-Blocked Symbols (18 SSE Stocks)
+## 4. Criteria 1–29 Checklist Evaluation
 
-All 18 stocks originate from `sse_delisted_register.csv` where the raw date field is `暂停上市日期` (`BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS`). Under the fail-closed provenance rule, `暂停上市日期` cannot be automatically assumed to be `delisting_date` (摘牌日) without source-wide resolution:
+| # | Criterion Name | Status | Reason / Current Gate Value |
+| :--- | :--- | :--- | :--- |
+| 1 | `1_market_universe_coverage` | `FAIL` | Min daily active symbols = 0 (trusted trading calendar not yet verified) |
+| 2 | `2_exchange_coverage` | `PASS` | All 5 boards (SSE_MAIN: 1734, STAR: 619, SZSE_MAIN: 1544, CHINEXT: 1410, BSE: 348) present |
+| 3 | `3_historical_delisted_preserved` | `FAIL` | Independent delisted register reconciliation incomplete |
+| 4 | `4_no_prelisting_leakage` | `PASS` | Zero pre-listing leakage observed |
+| 5 | `5_no_post_delisting_leakage` | `PASS` | Zero post-delisting leakage observed |
+| 6 | `6_status_dataset_complete` | `FAIL` | Status PIT intervals missing verifiable provenance sidecar (0.00% verified) |
+| 7 | `7_sector_dataset_complete` | `FAIL` | Sector PIT intervals missing verifiable provenance sidecar (0.00% verified) |
+| 8 | `8_corporate_action_dataset_complete` | `FAIL` | Official CA register missing; production actions (91) unverified against official sources |
+| 9 | `9_raw_execution_price_ready` | `FAIL` | Min daily active Raw coverage is 40.07% < 98% gate |
+| 10 | `10_daily_raw_bar_coverage` | `FAIL` | Daily active Raw coverage below 98% threshold (485/485 days below 98%) |
+| 11 | `11_each_exchange_raw_coverage` | `FAIL` | BSE coverage = 0.0%, CHINEXT = 21.45%, SSE_MAIN = 45.52% < 98% |
+| 12 | `12_official_universe_set_match` | `FAIL` | 59 missing snapshot observations, 18 SSE symbols date semantics unverified |
+| 13 | `13_historical_trading_rules_verified` | `FAIL` | Runtime checks pass (18/18), but independent official document provenance is missing |
+| 14 | `14_benchmark_coverage` | `FAIL` | Benchmark missing exact match against trusted official trading calendar |
+| 15 | `15_survivorship_bias` | `FAIL` | Survivorship bias protection requires trusted universe match + delisted completeness |
+| 16 | `16_raw_dataset_hash_match` | `PASS` | Raw OHLCV dataset cryptographic hash matches manifest (`ab5624c...`, 2323 files, 1187093 rows) |
+| 17 | `17_daily_raw_coverage_fresh` | `PASS` | Coverage CSV hash (`dc4d224...`) matches coverage manifest |
+| 18 | `18_status_provenance_sidecar` | `FAIL` | `status_provenance.csv` sidecar missing from `data/backtest/` |
+| 19 | `19_sector_provenance_sidecar` | `FAIL` | `sector_provenance.csv` sidecar missing from `data/backtest/` |
+| 20 | `20_official_universe_source_semantics_verified` | `FAIL` | SSE delisted register field `暂停上市日期` lacks source-wide official delisting resolution |
+| 21 | `21_status_full_window_pit_coverage` | `FAIL` | Full research window PIT coverage incomplete without verified provenance |
+| 22 | `22_sector_full_window_pit_coverage` | `FAIL` | Full research window PIT coverage incomplete without verified provenance |
+| 23 | `23_security_master_interval_integrity` | `PASS` | Listing and delisting dates maintain valid boundary intervals |
+| 24 | `24_delisted_register_reconciliation_complete` | `FAIL` | Historical delisted symbols not reconciled to authoritative exchange registers |
+| 25 | `25_benchmark_exact_calendar_and_warmup` | `FAIL` | Benchmark calendar exact match blocked pending trusted calendar verification |
+| 26 | `26_trusted_trading_calendar_verified` | `FAIL` | `trusted_trading_calendar.csv` and manifest missing from `data/backtest/` |
+| 27 | `27_daily_raw_coverage_exact_calendar` | `FAIL` | Daily coverage dates cannot be certified without trusted official calendar |
+| 28 | `28_official_snapshot_and_register_hashes_verified` | `PASS` | Snapshot CSVs and raw registers match manifest SHA256 fingerprints |
+| 29 | `29_trading_rule_provenance_verified` | `FAIL` | `data/backtest/trading_rules_provenance.json` missing physical rule documents |
 
-| Symbol | Listing Date | Raw Date | Source File | Raw Date Field | Semantic Status | Reason |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `600193.SH` | 1999-05-27 | 2026-07-06 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600213.SH` | 1999-08-31 | 2024-10-17 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600225.SH` | 2000-01-27 | 2025-03-06 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600355.SH` | 2002-06-13 | 2026-04-27 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600421.SH` | 2004-06-07 | 2026-06-26 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600462.SH` | 2003-09-03 | 2025-07-21 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600599.SH` | 2001-08-28 | 2026-06-26 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600608.SH` | 1992-03-27 | 2026-07-03 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600636.SH` | 1993-03-16 | 2026-06-29 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600696.SH` | 1993-12-06 | 2026-06-29 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600705.SH` | 1996-05-16 | 2025-05-27 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600804.SH` | 1994-01-03 | 2025-07-03 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `600898.SH` | 1996-04-18 | 2025-02-10 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `601028.SH` | 2011-11-07 | 2025-05-27 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `603003.SH` | 2012-08-17 | 2025-07-03 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `603388.SH` | 2017-03-24 | 2025-12-05 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `603963.SH` | 2017-09-22 | 2025-03-21 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-| `605081.SH` | 2021-02-09 | 2026-07-03 | `sse_delisted_register.csv` | `暂停上市日期` | `PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE` | `BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS` |
-
----
-
-## 6. Candidate Execution Readiness
-
-- **Execution Ready Count**: **0**
-- **Execution Blocked Count**: **35** (100% of candidates)
-
-### Blocker Taxonomy and Counts
-
-| Blocker Code | Affected Symbol Count | Description |
-| :--- | :--- | :--- |
-| `PIT_MEMBERSHIP_PROVENANCE_INCOMPLETE` | **18** | SSE delisting semantics unresolved in official register |
-| `RAW_OHLCV_NOT_MANIFEST_VERIFIED` | **35** | No mounted Raw CSV or manifest SHA256 match |
-| `HISTORICAL_STATUS_PROVENANCE_INCOMPLETE` | **35** | No historical status intervals or valid provenance sidecar records |
-| `HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE` | **35** | No historical sector intervals or valid provenance sidecar records |
-
----
-
-## 7. Sub-component Data Readiness for Candidates
-
-### A. Candidate Raw OHLCV Readiness
-- **Verified**: `0`
-- **Missing**: `35`
-- **Hash Mismatch**: `0`
-
-### B. Candidate Historical Status Provenance
-- **Verified Provenance**: `0`
-- **Incomplete Provenance**: `35`
-
-### C. Candidate Historical Sector Provenance
-- **Verified Provenance**: `0`
-- **Incomplete Provenance**: `35`
-
----
-
-## 8. Full Dataset Preflight Summary
-
+- **Criteria Pass Count**: 5 / 29
+- **Criteria Fail Count**: 24 / 29
 - **`formal_full_market_ready`**: `False`
 - **`research_grade_candidate`**: `False`
-- **`official_universe_set_match_raw`**: `False`
-- **`official_universe_set_match`**: `False`
-- **`official_universe_source_semantics_verified`**: `False`
-- **`universe_missing_symbol_count`**: `59`
-- **`universe_extra_symbol_count`**: `0`
-- **`raw_dataset_hash_match`**: `True`
-- **`daily_raw_coverage_fresh`**: `True`
-- **`daily_raw_bar_coverage`**: `0.401` (40.10% < 98% gate threshold)
-- **`corporate_action_dataset_complete`**: `False`
-- **`status_dataset_complete`**: `False`
-- **`sector_dataset_complete`**: `False`
-- **`raw_execution_price_ready`**: `False`
-
-### Remaining Research Blockers
-1. `RAW_EXECUTION_PRICE_INSUFFICIENT`: daily coverage 40.10% (3334/5655 stocks flagged data_missing=True)
-2. `OFFICIAL_UNIVERSE_SOURCE_DATE_SEMANTICS_UNVERIFIED`: 18 SSE stocks require authoritative delisting resolution
-3. `CORPORATE_ACTION_OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED`: Event-set level reconciliation incomplete
-4. `STATUS_PROVENANCE_SIDECAR_MISSING`: 0.0% verified status coverage
-5. `SECTOR_PROVENANCE_SIDECAR_MISSING`: 0.0% verified sector coverage
 
 ---
 
-## 9. Research Suite Hard-Gate Verification
+## 5. Trusted Trading Calendar Full-Window Integrity Contract
 
-- **Command**: `a-share-agent research-suite --require-research-grade`
-- **Exit Code**: `3` (`!= 0`)
-- **Blocked**: `True`
-- **Output**: `BLOCKED: formal_full_market_ready is false; full-market research grade not ready.`
-- **Result**: No unauthorized backtest run or performance simulation was triggered.
+- Manifest requirements enforced:
+  - `coverage_scope == "FULL_EXCHANGE_CALENDAR"`
+  - `coverage_start <= research_start`
+  - `coverage_end >= research_end`
+  - Source artifacts must declare and substantiate `coverage_start <= research_start` and `coverage_end >= research_end`.
+- Data span requirements enforced:
+  - Earliest calendar date must cover the beginning of research window (`2024-10-01`).
+  - Latest calendar date must cover the end of research window (`2026-09-30`).
+- Adversarial test verified in pytest:
+  - An authentic official calendar artifact covering only `2026-07-01` to `2026-09-30` fails closed (`verified=False`, `coverage_contract_valid=False`, `calendar_range_complete=False`).
 
 ---
 
-## 10. Safety and Audit Integrity Rule
+## 6. Candidate Membership Readiness vs. Execution Readiness (35 Candidates)
 
-> `membership_ready` is reference-data readiness only. `execution_ready` is strictly required before any security can become eligible for strategy trading in backtests. This audit does not alter `security_master.csv`, synthesize OHLCV prices, or manufacture provenance intervals.
+- **Candidate Count**: 35
+- **Membership Ready Count**: 17 (SZSE stocks with explicit `终止上市日期`)
+- **Membership Blocked Count**: 18 (SSE stocks with unverified `暂停上市日期`)
+- **Execution Ready Count**: **0** (0%)
+- **Execution Blocked Count**: **35** (100%)
+
+### Blocker Breakdown:
+1. `RAW_OHLCV_NOT_MANIFEST_VERIFIED`: 35 / 35
+2. `HISTORICAL_STATUS_PROVENANCE_INCOMPLETE`: 35 / 35
+3. `HISTORICAL_SECTOR_PROVENANCE_INCOMPLETE`: 35 / 35
+4. `PIT_MEMBERSHIP_PROVENANCE_INCOMPLETE`: 18 / 35
+
+> **Safety Rule**: `membership_ready` is reference-data readiness only. `execution_ready` is strictly required before any security can become eligible for strategy trading in backtests. No candidate is written to `security_master.csv`.
+
+---
+
+## 7. Current Hard Blockers Summary
+
+1. **P0-A Trusted Official Trading Calendar**: `trusted_trading_calendar.csv` and manifest missing.
+2. **P0-B Universe Source Semantics**: 18 SSE stocks require source-wide official delisting resolution.
+3. **P0-C Raw OHLCV Coverage**: Daily active coverage at 40.07% (below 98% requirement; 3,334 / 5,655 stocks missing).
+4. **P0-D Status Provenance**: 0.00% verified provenance sidecar coverage.
+5. **P0-E Sector Provenance**: 0.00% verified provenance sidecar coverage.
+6. **P0-F Corporate Actions**: Official register and manifest missing; 91 production events unverified.
+7. **P0-G Trading Rule Provenance**: Runtime checks pass (18/18), but physical source document provenance sidecar missing.

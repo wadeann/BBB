@@ -1,7 +1,9 @@
 {
-  "dataset_id": "ashare_raw_ohlcv_v0.7.4",
-  "dataset_version": "0.7.4",
-  "generated_at": "2026-10-02T17:15:00+08:00",
+  "dataset_id": "ashare_raw_ohlcv_external",
+  "dataset_version": "0.7.5",
+  "producer_git_commit": "2c9b99e81be139b84c8919828f3ebc3213fc660c",
+  "producer_code_version": "0.7.7",
+  "generated_at": "2026-10-02T15:43:07.616183+00:00",
   "date_range": {
     "start": "2024-10-01",
     "end": "2026-09-30"
@@ -14,8 +16,8 @@
   "packaging": {
     "clean_code_zip_includes_raw_data": false,
     "external_mount_path": "data/backtest/raw_prices/",
-    "mounted": false,
-    "verification_rule": "If external raw dataset is mounted, its overall_dataset_hash must match manifest. If unmounted or mismatch, Preflight FAIL."
+    "mounted_at_generation": true,
+    "verification_rule": "Preflight recomputes current file hashes and fails on any file/count/hash mismatch."
   },
   "file_hashes": {
     "000001_SZ.csv": "5be3853ec6b6d213edf6826db22da23f7be59cfb918368c20e1f588b6dc49e01",

@@ -24,6 +24,7 @@ from a_share_agent.backtest.provenance_audit import (
     reconcile_corporate_action_sets,
     write_source_audit_csv,
 )
+from a_share_agent.git_utils import get_git_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKTEST = ROOT / "data" / "backtest"
@@ -303,8 +304,11 @@ def main() -> int:
     write_ca_diff(ca)
     raw = verify_raw_dataset_manifest(BACKTEST / "raw_prices", RAW_MANIFEST)
     coverage = verify_coverage_binding(COVERAGE, COVERAGE_MANIFEST, raw.get("actual_raw_dataset_hash"))
+    git_meta = get_git_metadata(ROOT)
     audit = {
         "audit_version": "0.7.6",
+        "producer_git_commit": git_meta.get("git_commit_sha"),
+        "producer_code_version": git_meta.get("producer_code_version"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "universe": universe,
         "raw_dataset": raw,

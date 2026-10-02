@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
 from a_share_agent.backtest.missing_history_readiness import audit_missing_history_candidates
+from a_share_agent.git_utils import get_git_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_CSV = ROOT / "security_master_missing_history_readiness.csv"
@@ -63,6 +65,10 @@ def main() -> int:
             out["blockers"] = ";".join(row.get("blockers") or [])
             writer.writerow(out)
 
+    git_meta = get_git_metadata(ROOT)
+    audit["producer_git_commit"] = git_meta.get("git_commit_sha")
+    audit["producer_code_version"] = git_meta.get("producer_code_version")
+    audit["generated_at"] = datetime.now(timezone.utc).isoformat()
     audit["output_csv"] = OUT_CSV.name
     audit["safety_rule"] = (
         "membership_ready is independently re-derived from current hash-bound exchange source artifacts. "

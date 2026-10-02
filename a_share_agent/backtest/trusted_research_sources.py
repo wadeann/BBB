@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from datetime import date as dt_date
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +163,49 @@ def audit_official_trading_calendar(
         seen.add(date)
     window = sorted(date for date in seen if research_start <= date <= research_end)
 
+    coverage_scope = str(manifest.get("coverage_scope") or "").strip().upper()
+    coverage_start = str(manifest.get("coverage_start") or "").strip()
+    coverage_end = str(manifest.get("coverage_end") or "").strip()
+
+    scope_ok = (coverage_scope == "FULL_EXCHANGE_CALENDAR")
+    range_contract_ok = bool(
+        coverage_start
+        and coverage_end
+        and coverage_start <= research_start
+        and coverage_end >= research_end
+    )
+
+    source_range_ok = True
+    for item in sources:
+        if isinstance(item, dict):
+            src_start = str(item.get("coverage_start") or "").strip()
+            src_end = str(item.get("coverage_end") or "").strip()
+            if src_start and src_start > research_start:
+                source_range_ok = False
+            if src_end and src_end < research_end:
+                source_range_ok = False
+
+    min_date = min(all_dates) if all_dates else ""
+    max_date = max(all_dates) if all_dates else ""
+
+    content_span_ok = False
+    if min_date and max_date:
+        if semantics == "DATE_WITH_IS_OPEN":
+            content_span_ok = bool(min_date <= research_start and max_date >= research_end)
+        else:  # OPEN_DATES_ONLY
+            try:
+                d_min = dt_date.fromisoformat(min_date)
+                d_r_start = dt_date.fromisoformat(research_start)
+                d_max = dt_date.fromisoformat(max_date)
+                d_r_end = dt_date.fromisoformat(research_end)
+                start_ok = bool(d_min <= d_r_start or 0 <= (d_min - d_r_start).days <= 10)
+                end_ok = bool(d_max >= d_r_end or 0 <= (d_r_end - d_max).days <= 10)
+                content_span_ok = bool(start_ok and end_ok)
+            except Exception:
+                content_span_ok = False
+
+    range_covered = bool(scope_ok and range_contract_ok and source_range_ok and content_span_ok)
+
     expected_count = manifest.get("row_count")
     try:
         expected_count_int = int(expected_count)
@@ -181,11 +225,15 @@ def audit_official_trading_calendar(
         and not duplicates
         and window
         and sources_ok
+        and range_covered
     )
     result.update(
         {
             "verified": verified,
-            "reason": "OK" if verified else "TRUSTED_TRADING_CALENDAR_PROVENANCE_OR_CONTENT_INVALID",
+            "reason": "OK" if verified else (
+                "TRUSTED_TRADING_CALENDAR_COVERAGE_RANGE_INCOMPLETE" if not range_covered
+                else "TRUSTED_TRADING_CALENDAR_PROVENANCE_OR_CONTENT_INVALID"
+            ),
             "source_type": source_type or None,
             "source_dataset_id": source_dataset_id or None,
             "calendar_semantics": semantics or None,
@@ -194,6 +242,16 @@ def audit_official_trading_calendar(
             "manifest_row_count": expected_count_int,
             "actual_row_count": len(rows),
             "row_count_match": count_match,
+            "coverage_scope": coverage_scope or None,
+            "coverage_start": coverage_start or None,
+            "coverage_end": coverage_end or None,
+            "calendar_data_start": min_date or None,
+            "calendar_data_end": max_date or None,
+            "coverage_scope_valid": scope_ok,
+            "coverage_contract_valid": range_contract_ok,
+            "source_artifacts_range_valid": source_range_ok,
+            "calendar_data_range_valid": content_span_ok,
+            "calendar_range_complete": range_covered,
             "trading_dates": window,
             "trading_day_count": len(window),
             "duplicate_dates": sorted(set(duplicates)),

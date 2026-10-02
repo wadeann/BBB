@@ -8,8 +8,11 @@ own expected trading calendar.
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 from typing import Any
+
+from ..git_utils import check_artifact_stale, get_git_metadata
 
 from . import research_legacy as _legacy
 from .data import HistoricalDataProvider
@@ -346,7 +349,52 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         }
     )
     result["criteria_checklist"] = checklist
-    formal = bool(checklist and all(checklist.values()))
+
+    git_meta = get_git_metadata(root)
+    current_head = git_meta.get("git_commit_sha")
+    result["git_commit_sha"] = current_head
+    result["git_branch"] = git_meta.get("git_branch")
+    result["working_tree_clean"] = git_meta.get("working_tree_clean")
+    result["generated_at"] = git_meta.get("generated_at")
+    result["research_start"] = research_start
+    result["research_end"] = research_end
+    result["producer_git_commit"] = current_head
+    result["producer_code_version"] = git_meta.get("producer_code_version")
+
+    def _read_json_file(path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    stale_artifacts: list[str] = []
+    manifest_raw = _read_json_file(root / "raw_dataset_manifest.json")
+    if (root / "raw_dataset_manifest.json").exists() and check_artifact_stale(manifest_raw, current_head, repo_root=root):
+        stale_artifacts.append("raw_dataset_manifest.json")
+
+    manifest_cov = _read_json_file(root / "daily_raw_coverage_manifest.json")
+    if (root / "daily_raw_coverage_manifest.json").exists() and check_artifact_stale(manifest_cov, current_head, repo_root=root):
+        stale_artifacts.append("daily_raw_coverage_manifest.json")
+
+    audit_prov = _read_json_file(root / "historical_data_provenance_audit.json")
+    if (root / "historical_data_provenance_audit.json").exists() and check_artifact_stale(audit_prov, current_head, repo_root=root):
+        stale_artifacts.append("historical_data_provenance_audit.json")
+
+    summary_miss = _read_json_file(root / "security_master_missing_history_readiness_summary.json")
+    if (root / "security_master_missing_history_readiness_summary.json").exists() and check_artifact_stale(summary_miss, current_head, repo_root=root):
+        stale_artifacts.append("security_master_missing_history_readiness_summary.json")
+
+    any_stale = bool(stale_artifacts)
+    preflight_current = bool(current_head)
+
+    result["preflight_artifact_current"] = preflight_current
+    result["artifact_stale"] = any_stale
+    result["stale_readiness_artifacts"] = stale_artifacts
+
+    formal = bool(checklist and all(checklist.values()) and not any_stale and preflight_current)
     result["formal_full_market_ready"] = formal
     result["research_grade_candidate"] = formal
 
@@ -387,6 +435,10 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
         warnings.append("HISTORICAL_TRADING_RULE_RUNTIME_CHECK_FAILED")
     if not trading_rule_provenance["verified"]:
         warnings.append("HISTORICAL_TRADING_RULE_PROVENANCE_INCOMPLETE")
+    if any_stale:
+        warnings.append(f"STALE_READINESS_ARTIFACTS_DETECTED: {','.join(stale_artifacts)}")
+    if not preflight_current:
+        warnings.append("PREFLIGHT_ARTIFACT_NOT_CURRENT_WITH_HEAD")
     result["provider_warnings"] = list(dict.fromkeys(warnings))
     return result
 
