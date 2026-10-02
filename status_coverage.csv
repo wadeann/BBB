@@ -1,8 +1,8 @@
 ﻿status_type,interval_count,source_coverage_pct,sample_verified_count,dataset_complete
-*ST,97,100.00%,10,True
-DELISTED,74,100.00%,0,True
-DELISTING,10,100.00%,10,True
-ST,112,100.00%,10,True
-SUSPENDED,13,100.00%,10,True
-TRADABLE,5436,100.00%,14,True
-TOTAL_ALL_STATUS_INTERVALS,5742,100.00%,54,True
+*ST,97,0.94%,10,False
+DELISTED,74,0.94%,0,False
+DELISTING,10,0.94%,10,False
+ST,112,0.94%,10,False
+SUSPENDED,13,0.94%,10,False
+TRADABLE,5436,0.94%,14,False
+TOTAL_ALL_STATUS_INTERVALS,5742,0.94%,54,False

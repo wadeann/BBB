@@ -1,7 +1,7 @@
 ﻿exchange_board,expected_events,loaded_events,source_coverage_pct,verified_sample_events,dataset_complete
-SSE_MAIN,2664,2664,100.00%,46,True
-STAR,948,948,100.00%,46,True
-SZSE_MAIN,2455,2455,100.00%,42,True
-CHINEXT,2183,2183,100.00%,42,True
-BSE,539,539,100.00%,3,True
-FULL_MARKET_TOTAL,8789,8789,100.00%,91,True
+SSE_MAIN,2664,42,1.58%,42,False
+STAR,948,4,0.42%,4,False
+SZSE_MAIN,2455,25,1.02%,25,False
+CHINEXT,2183,17,0.78%,17,False
+BSE,539,3,0.56%,3,False
+FULL_MARKET_TOTAL,8789,91,1.04%,91,False

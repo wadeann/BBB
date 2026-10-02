@@ -118,6 +118,7 @@ class BacktestEngine:
         bars_by_symbol: dict[str,list[dict[str,Any]]]={}
         raw_bars_by_symbol: dict[str,list[dict[str,Any]]]={}
         bar_dates_by_symbol: dict[str,list[str]]={}
+        raw_dates_by_symbol: dict[str,list[str]]={}
         map_by_symbol: dict[str,dict[str,dict[str,Any]]]={}
         raw_map_by_symbol: dict[str,dict[str,dict[str,Any]]]={}
         invalid_symbols: set[str]=set()
@@ -145,9 +146,10 @@ class BacktestEngine:
                 return False
             bars_by_symbol[sym]=rows
             raw_fn = getattr(self.provider, "raw_bars", None)
-            raw_rows = raw_fn(sym, count=max(900, self.s.warmup_bars+550)) if callable(raw_fn) else rows
+            raw_rows = raw_fn(sym, count=max(900, self.s.warmup_bars+550)) if callable(raw_fn) else []
             raw_bars_by_symbol[sym]=raw_rows
             raw_map_by_symbol[sym]=_bar_map(raw_rows)
+            raw_dates_by_symbol[sym]=[str(x.get("date") or x.get("time")) for x in raw_rows]
             bar_dates_by_symbol[sym]=[str(x["date"]) for x in rows]
             map_by_symbol[sym]=_bar_map(rows)
             return True
@@ -225,7 +227,7 @@ class BacktestEngine:
             for sym in mark_symbols:
                 if not ensure_symbol(sym):
                     continue
-                raw_bar=raw_map_by_symbol.get(sym,{}).get(d) or map_by_symbol[sym].get(d)
+                raw_bar=raw_map_by_symbol.get(sym,{}).get(d)
                 if raw_bar:
                     current_prices[sym]=float(raw_bar["close"])
 
@@ -264,14 +266,21 @@ class BacktestEngine:
             for o in todays:
                 if not ensure_symbol(o.symbol):
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
-                raw_bar=raw_map_by_symbol.get(o.symbol,{}).get(d) or map_by_symbol.get(o.symbol,{}).get(d)
-                prev_hist=hist_to(o.symbol,d,2)[:-1] if map_by_symbol.get(o.symbol,{}).get(d) else hist_to(o.symbol,d,1)
-                if not raw_bar or not prev_hist:
-                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
+                raw_bar=raw_map_by_symbol.get(o.symbol,{}).get(d)
+                if not raw_bar:
+                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"DATA_MISSING_RAW","order":o.to_dict()}); continue
+                
+                # Retrieve previous raw bar to check price limits in pure raw space
+                r_dates = raw_dates_by_symbol.get(o.symbol, [])
+                r_idx = bisect.bisect_left(r_dates, d)
+                if r_idx <= 0:
+                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"DATA_MISSING_RAW_PREV","order":o.to_dict()}); continue
+                prev_raw_bar = raw_bars_by_symbol[o.symbol][r_idx - 1]
+                prev_raw_close = float(prev_raw_bar["close"])
+
                 b = {**raw_bar, "symbol": o.symbol}
-                prev_close = float(prev_hist[-1]["close"])
                 sym_status = getattr(self.provider, "status_on", lambda s, dt: "")(o.symbol, d)
-                if self.s.block_open_at_limit and locked_at_limit(b, prev_close, o.direction, status=sym_status):
+                if self.s.block_open_at_limit and locked_at_limit(b, prev_raw_close, o.direction, status=sym_status, as_of=d):
                     self.rejections.append({"date": d, "symbol": o.symbol, "reason": "LOCKED_AT_PRICE_LIMIT", "order": o.to_dict()})
                     continue
                 if o.direction == "SELL":
@@ -290,7 +299,10 @@ class BacktestEngine:
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
                 equity=portfolio.equity(current_prices); mv=portfolio.market_value(current_prices)
-                raw=float(raw_bar["open"]); stop=float(o.stop_price or raw*.95)
+                raw=float(raw_bar["open"])
+                stop=float(o.stop_price or raw*.95)
+                if stop >= raw:
+                    stop = raw * 0.95
                 qty=portfolio.size_for_risk(equity=equity,price=self.costs.slip_price(raw,"BUY"),stop=stop,
                     risk_per_trade=self.s.risk_per_trade,max_single=self.s.max_single_position,max_total=self.s.max_total_position,
                     current_market_value=mv,multiplier=o.route_multiplier,lot=self.s.position_round_lot)
@@ -307,13 +319,13 @@ class BacktestEngine:
             for sym,pos in list(portfolio.positions.items()):
                 if not ensure_symbol(sym):
                     continue
-                bar=map_by_symbol.get(sym,{}).get(d)
-                if not bar: continue
-                pos.highest_price=max(pos.highest_price,float(bar["high"])); pos.lowest_price=min(pos.lowest_price or pos.entry_price,float(bar["low"]));
+                raw_b=raw_map_by_symbol.get(sym,{}).get(d)
+                if not raw_b: continue
+                pos.highest_price=max(pos.highest_price,float(raw_b["high"])); pos.lowest_price=min(pos.lowest_price or pos.entry_price,float(raw_b["low"]));
                 if d>pos.entry_date: pos.holding_days += 1
-                if d>pos.entry_date and float(bar["low"]) <= pos.stop_price:
-                    raw=min(float(bar["open"]),pos.stop_price) if float(bar["open"])<pos.stop_price else pos.stop_price
-                    tr=portfolio.sell(symbol=sym,date=d,signal_date=d,raw_price=raw,reason="STOP_LOSS",cost_model=self.costs)
+                if d>pos.entry_date and float(raw_b["low"]) <= pos.stop_price:
+                    raw_exec=min(float(raw_b["open"]),pos.stop_price) if float(raw_b["open"])<pos.stop_price else pos.stop_price
+                    tr=portfolio.sell(symbol=sym,date=d,signal_date=d,raw_price=raw_exec,reason="STOP_LOSS",cost_model=self.costs)
                     if tr: self._log(d,"TRADE",trade=tr.to_dict())
 
             # 3) Close-confirmed exits -> next open.
@@ -363,9 +375,15 @@ class BacktestEngine:
                 if family in conditional: threshold += 3
                 if score < threshold:
                     self.rejections.append({"date":d,"symbol":sym,"reason":"SCORE_BELOW_THRESHOLD","score":score,"threshold":threshold,"strategy":prim["signal"],"route_id":route["route_id"]}); continue
-                candidates_count+=1
-                stop=self._stop_for_entry(hist,float(hist[-1]["close"]))
-                daily_candidates.append({"symbol":sym,"score":score,"breakdown":breakdown,"primary":prim,"hits":hits,"route":route,"market":market,"sector":sector,"sector_name":secinfo.get("name"),"stop":stop,"recent_bars":hist[-80:]})
+                stop_adj=self._stop_for_entry(hist,float(hist[-1]["close"]))
+                adj_close=float(hist[-1]["close"])
+                raw_b_today=raw_map_by_symbol.get(sym,{}).get(d)
+                if raw_b_today and float(raw_b_today.get("close",0) or 0)>0 and adj_close>0:
+                    raw_close=float(raw_b_today["close"])
+                    stop_raw=raw_close * (stop_adj / adj_close)
+                else:
+                    stop_raw=stop_adj
+                daily_candidates.append({"symbol":sym,"score":score,"breakdown":breakdown,"primary":prim,"hits":hits,"route":route,"market":market,"sector":sector,"sector_name":secinfo.get("name"),"stop":stop_raw,"recent_bars":hist[-80:]})
 
             if next_d:
                 daily_candidates.sort(key=lambda x:(x["score"],float(x["sector"].get("sector_score",50))),reverse=True)
@@ -417,9 +435,9 @@ class BacktestEngine:
         last_date=dates[-1]
         for sym in list(portfolio.positions):
             if not ensure_symbol(sym): continue
-            bar=map_by_symbol.get(sym,{}).get(last_date)
-            if bar:
-                tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs)
+            raw_bar=raw_map_by_symbol.get(sym,{}).get(last_date)
+            if raw_bar:
+                tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(raw_bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs)
                 if tr: self._log(last_date,"TRADE",trade=tr.to_dict())
         if equity_curve:
             equity_curve[-1]["equity"]=portfolio.equity(current_prices); equity_curve[-1]["cash"]=portfolio.cash; equity_curve[-1]["market_value"]=portfolio.market_value(current_prices); equity_curve[-1]["positions"]=0

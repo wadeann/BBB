@@ -766,9 +766,34 @@ class HistoricalDataProvider:
             if rows:
                 self._raw_bars_mem[symbol] = rows
                 return rows
-        bars = self.bars(symbol, count=count)
-        self._raw_bars_mem[symbol] = bars
-        return bars
+        # STRICT: Never fallback to self.bars(symbol). If raw bars do not exist on disk,
+        # return empty list to signal DATA_MISSING_RAW.
+        self.warnings.append(f"DATA_MISSING_RAW:{symbol}")
+        self._raw_bars_mem[symbol] = []
+        return []
+
+    def adjustment_factor_on(self, symbol: str, as_of: str) -> float:
+        """Return adjustment factor (adj_close / raw_close) on or before as_of date.
+        Used to convert signal-space stop/target prices to raw execution space.
+        """
+        adj_bars = self.bars(symbol)
+        raw_b = self.raw_bars(symbol)
+        if not adj_bars or not raw_b:
+            return 1.0
+        adj_close = None
+        for b in reversed(adj_bars):
+            if str(b.get("date") or b.get("time", "")) <= as_of:
+                adj_close = float(b.get("close", 0) or 0)
+                break
+        raw_close = None
+        for b in reversed(raw_b):
+            if str(b.get("date") or b.get("time", "")) <= as_of:
+                raw_close = float(b.get("close", 0) or 0)
+                break
+        if adj_close is not None and raw_close is not None and raw_close > 0:
+            return adj_close / raw_close
+        return 1.0
+
 
     @staticmethod
     def _recursive_dicts(raw: Any, *, max_nodes: int = 200) -> list[dict[str, Any]]:

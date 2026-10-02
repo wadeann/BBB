@@ -345,32 +345,37 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     sector_constituent_point_in_time = hasattr(provider, "sector_constituents_on") and callable(provider.sector_constituents_on)
     sector_constituent_pit_coverage = 1.0 if sector_constituent_point_in_time else 0.0
 
-    # Corporate Action Engine & Authenticity
+    # Corporate Action Engine & Authenticity from actual dataset
+    ca_prod_file = config.project_root / "data" / "backtest" / "corporate_actions.csv"
     ca_ver_file = config.project_root / "corporate_action_verification.csv"
-    ca_cov_file = config.project_root / "corporate_action_coverage.csv"
     corporate_action_data_verified = ca_ver_file.exists()
     corporate_action_invalid_count = 0
     synthetic_corporate_actions_detected = 0
-    corporate_action_source_coverage = 1.0 if ca_cov_file.exists() else 0.0
-    corporate_action_dataset_complete = ca_cov_file.exists()
-    corporate_action_expected_vs_loaded: dict[str, Any] = {"expected_events": 8789, "loaded_events": 8789, "ratio": 1.0}
-    if ca_cov_file.exists():
-        with ca_cov_file.open("r", encoding="utf-8-sig") as f:
+
+    verified_actions_count = 0
+    loaded_ca_events = 0
+    if ca_prod_file.exists():
+        with ca_prod_file.open("r", encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
-                if r.get("exchange_board") == "FULL_MARKET_TOTAL":
-                    exp = int(r.get("expected_events", 0))
-                    lod = int(r.get("loaded_events", 0))
-                    corporate_action_expected_vs_loaded = {
-                        "expected_events": exp,
-                        "loaded_events": lod,
-                        "ratio": round(lod / exp, 4) if exp else 1.0,
-                    }
-    if provider.corporate_actions is not None:
-        for acts in provider.corporate_actions._actions_by_date.values():
-            for a in acts:
-                if "SYNTHETIC" in (a.source or "").upper():
+                loaded_ca_events += 1
+                src = str(r.get("source") or "")
+                doc_id = str(r.get("source_url_or_document_id") or "")
+                ver_flag = str(r.get("verified", "")).lower() in ("true", "1")
+                if "SYNTHETIC" in src.upper() or "SYNTHETIC" in doc_id.upper():
                     synthetic_corporate_actions_detected += 1
-    # Corporate actions ready when full-market dataset is complete and verified
+                elif ver_flag and doc_id:
+                    verified_actions_count += 1
+
+    expected_ca_events = 8789
+    ca_ratio = round(verified_actions_count / expected_ca_events, 4) if expected_ca_events else 0.0
+    corporate_action_expected_vs_loaded = {
+        "expected_events": expected_ca_events,
+        "loaded_events": verified_actions_count,
+        "ratio": ca_ratio,
+    }
+    corporate_action_source_coverage = ca_ratio
+    # Full dataset complete requires covering expected full-market scope with 0 synthetic
+    corporate_action_dataset_complete = bool(verified_actions_count >= 8000 and synthetic_corporate_actions_detected == 0)
     corporate_action_ready = bool(corporate_action_dataset_complete and synthetic_corporate_actions_detected == 0)
 
     # 9. Universe Set-level Difference
@@ -384,60 +389,79 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
             universe_missing_symbol_count = sum(int(r.get("missing", 0)) for r in d_rows if "missing" in r)
     official_universe_set_match = (universe_extra_symbol_count == 0 and universe_missing_symbol_count == 0 and not ipo_prelisting_leakage)
 
-    # 10. Status Authenticity & Completeness
+    # 10. Status Authenticity & Completeness from actual interval provenance
     status_ver_file = config.project_root / "status_verification.csv"
-    status_cov_file = config.project_root / "status_coverage.csv"
-    status_sample_verified = status_ver_file.exists()
-    status_data_verified = status_sample_verified
-    status_dataset_complete = status_cov_file.exists()
-    status_source_count = 0
+    verified_status_count = 0
+    total_status_intervals = 0
     for sym, intervals in provider._status_intervals.items():
-        if any(bool(it.get("source")) for it in intervals):
-            status_source_count += 1
-    status_source_coverage = round(status_source_count / total_records, 4) if total_records else 0.0
-    if status_dataset_complete:
-        status_source_coverage = 1.0
+        total_status_intervals += len(intervals)
+        for it in intervals:
+            src = str(it.get("source") or "")
+            # Only genuine notice/document ID counts as verified provenance
+            if any(k in src.upper() for k in ["NOTICE_", "SUSP_", "ANNOUNCEMENT_"]):
+                verified_status_count += 1
 
-    # 11. Sector Authenticity & Completeness
+    status_source_coverage = round(verified_status_count / total_status_intervals, 4) if total_status_intervals else 0.0
+    status_sample_verified = status_ver_file.exists() and verified_status_count >= 50
+    status_data_verified = status_sample_verified
+    status_dataset_complete = (status_source_coverage >= 0.95)
+
+    # 11. Sector Authenticity & Completeness from actual interval provenance
     sector_ver_file = config.project_root / "sector_change_verification.csv"
-    sector_cov_file = config.project_root / "sector_coverage.csv"
     sector_schema_supports_pit = True
     sector_change_event_count = 0
     sector_change_events_in_backtest_period = 0
+    verified_sector_count = 0
+    total_sector_intervals = 0
+    for sym, intervals in provider._sector_intervals_map.items():
+        total_sector_intervals += len(intervals)
+        for it in intervals:
+            src = str(it.get("source") or "")
+            if any(k in src.upper() for k in ["RECLASS", "RECLASSIFICATION"]):
+                verified_sector_count += 1
+
     if sector_ver_file.exists():
         with sector_ver_file.open("r", encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
                 sector_change_event_count += 1
                 if r.get("in_backtest_period") in ("True", "true", "1") or ("2024-10-01" <= r.get("effective_from", "") <= "2026-09-30"):
                     sector_change_events_in_backtest_period += 1
-    sector_data_verified_pit = sector_change_event_count > 0
-    sector_dataset_complete = sector_cov_file.exists()
-    sector_source_coverage = 1.0 if sector_dataset_complete else 0.0
 
-    # 12. Raw Price Coverage Assessment by Exchange & Full Market
-    raw_cov_file = config.project_root / "raw_price_coverage.csv"
+    sector_source_coverage = round(verified_sector_count / total_sector_intervals, 4) if total_sector_intervals else 0.0
+    sector_data_verified_pit = sector_change_event_count >= 10
+    sector_dataset_complete = (sector_source_coverage >= 0.95)
+
+    # 12. Raw Price Coverage dynamically scanned from actual files on disk
+    raw_dir = config.project_root / "data" / "backtest" / "raw_prices"
+    raw_by_board = {"SSE_MAIN": 0, "STAR": 0, "SZSE_MAIN": 0, "CHINEXT": 0, "BSE": 0}
+    tot_by_board = {"SSE_MAIN": 0, "STAR": 0, "SZSE_MAIN": 0, "CHINEXT": 0, "BSE": 0}
+
+    for sym in universe.symbols:
+        s = sym.upper()
+        recs = provider._membership.get(sym, [])
+        board = (recs[0].get("board") if recs else None) or ""
+        b_key = board if board in raw_by_board else (
+            "BSE" if s.endswith(".BJ") or s.startswith(("4", "8", "92")) else (
+                "STAR" if s.startswith(("688", "689")) or (s.endswith(".SH") and s.startswith(("688", "689"))) else (
+                    "CHINEXT" if s.startswith(("300", "301")) or (s.endswith(".SZ") and s.startswith(("300", "301"))) else (
+                        "SSE_MAIN" if s.startswith(("600", "601", "603", "605")) or s.endswith(".SH") else "SZSE_MAIN"
+                    )
+                )
+            )
+        )
+        tot_by_board[b_key] += 1
+        safe_sym = sym.replace(".", "_")
+        csv_file = raw_dir / f"{safe_sym}.csv"
+        is_missing = any(bool(r.get("data_missing") in ("1", "True", "true", True, 1)) for r in recs)
+        if csv_file.exists() and not is_missing:
+            raw_by_board[b_key] += 1
+
     raw_bar_coverage_by_exchange = {
-        "SSE_MAIN": 0.9862,
-        "STAR": 0.9855,
-        "SZSE_MAIN": 0.9858,
-        "CHINEXT": 0.9858,
-        "BSE": 0.9856,
+        b: round(raw_by_board[b] / tot_by_board[b], 4) if tot_by_board[b] else 0.0
+        for b in raw_by_board
     }
-    daily_raw_bar_coverage = 0.9859
-    if raw_cov_file.exists():
-        with raw_cov_file.open("r", encoding="utf-8-sig") as f:
-            for r in csv.DictReader(f):
-                board = r.get("exchange_or_board")
-                pct_str = r.get("raw_bar_coverage_pct", "0%").rstrip("%")
-                try:
-                    val = round(float(pct_str) / 100.0, 4)
-                except Exception:
-                    val = 0.0
-                if board in raw_bar_coverage_by_exchange:
-                    raw_bar_coverage_by_exchange[board] = val
-                elif board == "FULL_MARKET_TOTAL":
-                    daily_raw_bar_coverage = val
-
+    total_has_raw = sum(raw_by_board.values())
+    daily_raw_bar_coverage = round(total_has_raw / total_records, 4) if total_records else 0.0
     each_exchange_raw_coverage_ok = all(v >= 0.98 for v in raw_bar_coverage_by_exchange.values())
 
     # 13. Dynamic Trading Rule Verification (including 2026-07-06 switchover)

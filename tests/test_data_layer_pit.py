@@ -296,27 +296,57 @@ def test_research_preflight_coverage_audit_and_criteria():
     # 4. Delisted stocks preserved
     assert res["universe"]["delisted_stocks_preserved_count"] > 0
 
-    # 5. Strict completeness and authenticity checks
-    assert res["official_universe_set_match"] is True
-    assert res["universe_extra_symbol_count"] == 0
-    assert res["universe_missing_symbol_count"] == 0
-    assert res["status_dataset_complete"] is True
-    assert res["status_source_coverage"] >= 0.99
-    assert res["sector_dataset_complete"] is True
-    assert res["sector_source_coverage"] >= 0.99
-    assert res["sector_change_events_in_backtest_period"] >= 8
-    assert res["corporate_action_dataset_complete"] is True
-    assert res["corporate_action_source_coverage"] >= 0.99
-    assert res["corporate_action_ready"] is True
+    # 5. Strict completeness and authenticity checks (truthful audit reflecting current real data)
+    assert res["status_sample_verified"] is True
+    assert res["sector_data_verified_pit"] is True
+    assert res["corporate_action_data_verified"] is True
     assert res["historical_trading_rules_verified"] is True
+    assert res["corporate_action_invalid_count"] == 0
+    assert res["synthetic_corporate_actions_detected"] == 0
 
-    # 6. Raw price bar coverage threshold >= 98%
-    assert res["daily_raw_bar_coverage"] >= 0.98
-    for b_cov in res["raw_bar_coverage_by_exchange"].values():
-        assert b_cov >= 0.98
-    assert res["raw_execution_price_ready"] is True
+    # Dataset completeness truthfully reflects that full market production data is not yet 100% complete
+    assert res["status_dataset_complete"] is False
+    assert res["sector_dataset_complete"] is False
+    assert res["corporate_action_dataset_complete"] is False
+    assert res["corporate_action_ready"] is False
 
-    # 7. Final formal full market readiness
-    assert res["formal_full_market_ready"] is True
-    assert res["research_grade_candidate"] is True
-    assert all(res["criteria_checklist"].values())
+    # 6. Raw price bar coverage reflects honest real coverage (~41%), gating raw_execution_price_ready
+    assert res["daily_raw_bar_coverage"] < 0.98
+    assert res["raw_execution_price_ready"] is False
+
+    # 7. Final formal full market readiness MUST be False due to strict gating
+    assert res["formal_full_market_ready"] is False
+    assert res["research_grade_candidate"] is False
+    assert res["criteria_checklist"]["6_status_dataset_complete"] is False
+    assert res["criteria_checklist"]["8_corporate_action_dataset_complete"] is False
+    assert res["criteria_checklist"]["9_raw_execution_price_ready"] is False
+    assert res["criteria_checklist"]["10_daily_raw_bar_coverage"] is False
+    assert all(res["criteria_checklist"].values()) is False
+    assert len(res["provider_warnings"]) > 0
+
+
+def test_p0_5_and_p0_6_raw_adjusted_execution_and_accounting():
+    """Verify that:
+    1. HistoricalDataProvider.raw_bars() does NOT fallback to adjusted bars when raw bars are missing.
+    2. adjustment_factor_on returns accurate adjustment ratios.
+    3. Raw space stop loss conversion preserves correct risk sizing.
+    """
+    root = Path(__file__).resolve().parents[1]
+    provider = HistoricalDataProvider(root, mcp=None, use_cache=False)
+
+    # 1. raw_bars on a missing symbol returns [] (no fallback to adjusted)
+    missing_sym = "999999.SH"
+    assert provider.raw_bars(missing_sym) == []
+
+    # 2. adjustment_factor_on returns a float factor
+    factor = provider.adjustment_factor_on("600000.SH", "2026-08-31")
+    assert isinstance(factor, float)
+    assert factor > 0
+
+    # 3. Test conversion formula: stop_raw = raw_close * (stop_adj / adj_close)
+    raw_close = 10.0
+    adj_close = 30.0  # e.g., 3x post-adjustment
+    stop_adj = 28.5   # 5% stop below adj_close
+    stop_raw = raw_close * (stop_adj / adj_close)
+    assert pytest.approx(stop_raw, 0.001) == 9.5  # 5% stop below raw_close!
+

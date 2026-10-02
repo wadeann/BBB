@@ -1,0 +1,44 @@
+{
+  "dataset_id": "ashare_pit_historical_v0.7.2",
+  "dataset_version": "0.7.2",
+  "generated_at": "2026-10-02T14:55:00+08:00",
+  "date_range": {
+    "start": "2024-10-01",
+    "end": "2026-09-30"
+  },
+  "summary": {
+    "symbol_count": 5655,
+    "raw_bar_file_count": 2323,
+    "raw_bar_row_count": 1187093,
+    "status_interval_count": 5742,
+    "sector_interval_count": 5676,
+    "corporate_action_count": 91
+  },
+  "readiness": {
+    "formal_full_market_ready": false,
+    "research_grade_candidate": false,
+    "raw_bar_coverage_pct": 0.4104,
+    "corporate_action_ready": false,
+    "corporate_action_dataset_complete": false,
+    "status_dataset_complete": false,
+    "sector_dataset_complete": false
+  },
+  "source_types": [
+    "SSE_OFFICIAL_DISCLOSURE",
+    "SZSE_OFFICIAL_DISCLOSURE",
+    "BSE_OFFICIAL_DISCLOSURE",
+    "CSRC_OFFICIAL_REGULATORY_DECISION",
+    "CNINFO_DIVIDEND_REGISTER",
+    "TDX_HISTORICAL_RAW_QUOTES"
+  ],
+  "sha256": {
+    "security_master": "4861049280624fb65eadba3638c1dd324f028682b8dd3075f416b48d21487115",
+    "historical_status_intervals": "2e4b992fe7845dd1ef3cc6beebaa9cc9cb64015bb5b75d06b9c5d6d63bdaa902",
+    "historical_sector_intervals": "946e3402ff365b4ef9d1e4bdd314d8db141a1846326aa01d15c4f8bf8128b6aa",
+    "corporate_actions": "8cfc424e8d4e51873b96d66dc34798f9ca3220c0939310677bdc24c39ce220a7"
+  },
+  "notes": [
+    "Strict authentic data layer: zero synthetic bars, zero synthetic corporate actions.",
+    "Raw bar coverage is 41.04% (< 98.0%); formal_full_market_ready is strictly False."
+  ]
+}

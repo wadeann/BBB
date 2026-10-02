@@ -33,6 +33,7 @@ class SyntheticProvider:
                 rows.append({"date":ds,"open":o,"high":h,"low":l,"close":c,"volume":vol})
             self._bars[sym]=rows
     def bars(self,symbol,**kwargs): return self._bars.get(symbol,[])
+    def raw_bars(self,symbol,**kwargs): return self._bars.get(symbol,[])
     def sector_info(self,symbol): return {"name":"测试板块","code":None,"source":"synthetic"}
     def sector_bars(self,code): return []
 

@@ -1,6 +1,6 @@
 {
   "report_type": "research_preflight",
-  "generated_at": "2026-10-02T14:18:46.468988+08:00",
+  "generated_at": "2026-10-02T14:57:26.796040+08:00",
   "ok": true,
   "payload": {
     "ok": true,
@@ -8,8 +8,8 @@
       "start": "2024-10-01",
       "end": "2026-09-30"
     },
-    "formal_full_market_ready": true,
-    "research_grade_candidate": true,
+    "formal_full_market_ready": false,
+    "research_grade_candidate": false,
     "universe_market_coverage_ratio": 1.0,
     "exchange_coverage": {
       "SSE_MAIN": 1734,
@@ -22,38 +22,38 @@
     "sector_label_coverage": 1.0,
     "sector_membership_pit_coverage": 1.0,
     "sector_constituent_pit_coverage": 1.0,
-    "raw_execution_price_ready": true,
-    "corporate_action_ready": true,
-    "official_universe_set_match": true,
-    "universe_extra_symbol_count": 0,
+    "raw_execution_price_ready": false,
+    "corporate_action_ready": false,
+    "official_universe_set_match": false,
+    "universe_extra_symbol_count": 4,
     "universe_missing_symbol_count": 0,
     "status_sample_verified": true,
     "status_data_verified": true,
-    "status_source_coverage": 1.0,
-    "status_dataset_complete": true,
+    "status_source_coverage": 0.0089,
+    "status_dataset_complete": false,
     "sector_schema_supports_pit": true,
-    "sector_source_coverage": 1.0,
+    "sector_source_coverage": 0.0037,
     "sector_data_verified_pit": true,
     "sector_change_event_count": 23,
     "sector_change_events_in_backtest_period": 9,
-    "sector_dataset_complete": true,
-    "corporate_action_source_coverage": 1.0,
+    "sector_dataset_complete": false,
+    "corporate_action_source_coverage": 0.0104,
     "corporate_action_expected_vs_loaded": {
       "expected_events": 8789,
-      "loaded_events": 8789,
-      "ratio": 1.0
+      "loaded_events": 91,
+      "ratio": 0.0104
     },
-    "corporate_action_dataset_complete": true,
+    "corporate_action_dataset_complete": false,
     "corporate_action_data_verified": true,
     "corporate_action_invalid_count": 0,
     "synthetic_corporate_actions_detected": 0,
-    "daily_raw_bar_coverage": 0.9859,
+    "daily_raw_bar_coverage": 0.4104,
     "raw_bar_coverage_by_exchange": {
-      "SSE_MAIN": 0.9862,
-      "STAR": 0.9855,
-      "SZSE_MAIN": 0.9858,
-      "CHINEXT": 0.9858,
-      "BSE": 0.9856
+      "SSE_MAIN": 0.4717,
+      "STAR": 0.6785,
+      "SZSE_MAIN": 0.5039,
+      "CHINEXT": 0.2163,
+      "BSE": 0.0
     },
     "historical_trading_rules_verified": true,
     "criteria_checklist": {
@@ -62,13 +62,13 @@
       "3_historical_delisted_preserved": true,
       "4_no_prelisting_leakage": true,
       "5_no_post_delisting_leakage": true,
-      "6_status_dataset_complete": true,
-      "7_sector_dataset_complete": true,
-      "8_corporate_action_dataset_complete": true,
-      "9_raw_execution_price_ready": true,
-      "10_daily_raw_bar_coverage": true,
-      "11_each_exchange_raw_coverage": true,
-      "12_official_universe_set_match": true,
+      "6_status_dataset_complete": false,
+      "7_sector_dataset_complete": false,
+      "8_corporate_action_dataset_complete": false,
+      "9_raw_execution_price_ready": false,
+      "10_daily_raw_bar_coverage": false,
+      "11_each_exchange_raw_coverage": false,
+      "12_official_universe_set_match": false,
       "13_historical_trading_rules_verified": true,
       "14_benchmark_coverage": true,
       "15_survivorship_bias": true
@@ -89,10 +89,10 @@
         {
           "date": "2024-10-08",
           "active_symbols": 5545,
-          "tradable_symbols": 5512,
-          "market_tradable_symbols": 5512,
-          "strategy_eligible_symbols": 5310,
-          "missing_data_symbols": 33,
+          "tradable_symbols": 2245,
+          "market_tradable_symbols": 2245,
+          "strategy_eligible_symbols": 2158,
+          "missing_data_symbols": 3300,
           "st_symbols": 205,
           "suspended_symbols": 0,
           "source": "security_master:/home/wade/workspace/ai/codexA/src/data/backtest/security_master.csv",
@@ -104,10 +104,10 @@
         {
           "date": "2025-09-29",
           "active_symbols": 5554,
-          "tradable_symbols": 5522,
-          "market_tradable_symbols": 5522,
-          "strategy_eligible_symbols": 5322,
-          "missing_data_symbols": 32,
+          "tradable_symbols": 2242,
+          "market_tradable_symbols": 2242,
+          "strategy_eligible_symbols": 2158,
+          "missing_data_symbols": 3312,
           "st_symbols": 202,
           "suspended_symbols": 0,
           "source": "security_master:/home/wade/workspace/ai/codexA/src/data/backtest/security_master.csv",
@@ -119,10 +119,10 @@
         {
           "date": "2026-09-30",
           "active_symbols": 5567,
-          "tradable_symbols": 5533,
-          "market_tradable_symbols": 5533,
-          "strategy_eligible_symbols": 5335,
-          "missing_data_symbols": 29,
+          "tradable_symbols": 2233,
+          "market_tradable_symbols": 2233,
+          "strategy_eligible_symbols": 2152,
+          "missing_data_symbols": 3334,
           "st_symbols": 199,
           "suspended_symbols": 5,
           "source": "security_master:/home/wade/workspace/ai/codexA/src/data/backtest/security_master.csv",
@@ -134,7 +134,7 @@
       ],
       "checked_union_symbols": 5585,
       "delisted_stocks_preserved_count": 88,
-      "data_missing_count": 80
+      "data_missing_count": 3334
     },
     "sample": {
       "size": 30,
@@ -543,6 +543,9 @@
       "start": "2024-10-08",
       "end": "2026-09-30"
     },
-    "provider_warnings": []
+    "provider_warnings": [
+      "RAW_EXECUTION_PRICE_INSUFFICIENT: daily_raw_bar_coverage=41.04% < 98% (3334/5655 symbols flagged data_missing=True; prices required for full-market execution)",
+      "CORPORATE_ACTIONS_NOT_READY: Corporate actions gated pending complete production historical verification"
+    ]
   }
 }
