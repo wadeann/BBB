@@ -116,8 +116,10 @@ class BacktestEngine:
         # provider returns a different active universe for every historical date.
         seed_symbols=list(dict.fromkeys(symbols))
         bars_by_symbol: dict[str,list[dict[str,Any]]]={}
+        raw_bars_by_symbol: dict[str,list[dict[str,Any]]]={}
         bar_dates_by_symbol: dict[str,list[str]]={}
         map_by_symbol: dict[str,dict[str,dict[str,Any]]]={}
+        raw_map_by_symbol: dict[str,dict[str,dict[str,Any]]]={}
         invalid_symbols: set[str]=set()
         sector_bars: dict[str,list[dict[str,Any]]]={}
         sector_context_cache: dict[tuple[str,str],dict[str,Any]]={}
@@ -142,6 +144,10 @@ class BacktestEngine:
                     self.data_quality["missing_bars"].append(sym)
                 return False
             bars_by_symbol[sym]=rows
+            raw_fn = getattr(self.provider, "raw_bars", None)
+            raw_rows = raw_fn(sym, count=max(900, self.s.warmup_bars+550)) if callable(raw_fn) else rows
+            raw_bars_by_symbol[sym]=raw_rows
+            raw_map_by_symbol[sym]=_bar_map(raw_rows)
             bar_dates_by_symbol[sym]=[str(x["date"]) for x in rows]
             map_by_symbol[sym]=_bar_map(rows)
             return True
@@ -206,15 +212,22 @@ class BacktestEngine:
             if self.s.universe_mode=="strict_point_in_time" and pit_enabled and not bool(umeta.get("point_in_time")):
                 raise RuntimeError(f"strict point-in-time universe lost at {d}")
 
+            # 0) Process point-in-time Corporate Actions for day d
+            ca_engine = getattr(self.provider, "corporate_actions", None)
+            if ca_engine is not None and hasattr(ca_engine, "process_actions"):
+                ca_events = ca_engine.process_actions(d, portfolio)
+                for ev in ca_events:
+                    self._log(d, "CORPORATE_ACTION", **ev)
+
             # Update prices for active symbols plus current positions. Last known close
             # remains in current_prices for suspended holdings.
             mark_symbols=set(active_symbols)|set(portfolio.positions)
             for sym in mark_symbols:
                 if not ensure_symbol(sym):
                     continue
-                bar=map_by_symbol[sym].get(d)
-                if bar:
-                    current_prices[sym]=float(bar["close"])
+                raw_bar=raw_map_by_symbol.get(sym,{}).get(d) or map_by_symbol[sym].get(d)
+                if raw_bar:
+                    current_prices[sym]=float(raw_bar["close"])
 
             # Build historical sector heat once per day. Strength is based on data
             # available through d and, when enabled, relative rank among active sectors.
@@ -251,15 +264,15 @@ class BacktestEngine:
             for o in todays:
                 if not ensure_symbol(o.symbol):
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
-                bar=map_by_symbol.get(o.symbol,{}).get(d)
+                raw_bar=raw_map_by_symbol.get(o.symbol,{}).get(d) or map_by_symbol.get(o.symbol,{}).get(d)
                 prev_hist=hist_to(o.symbol,d,2)[:-1] if map_by_symbol.get(o.symbol,{}).get(d) else hist_to(o.symbol,d,1)
-                if not bar or not prev_hist:
+                if not raw_bar or not prev_hist:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
-                b={**bar,"symbol":o.symbol}; prev_close=float(prev_hist[-1]["close"])
+                b={**raw_bar,"symbol":o.symbol}; prev_close=float(prev_hist[-1]["close"])
                 if self.s.block_open_at_limit and locked_at_limit(b,prev_close,o.direction):
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"LOCKED_AT_PRICE_LIMIT","order":o.to_dict()}); continue
                 if o.direction=="SELL":
-                    tr=portfolio.sell(symbol=o.symbol,date=d,signal_date=o.created_date,raw_price=float(bar["open"]),reason=o.reason,cost_model=self.costs)
+                    tr=portfolio.sell(symbol=o.symbol,date=d,signal_date=o.created_date,raw_price=float(raw_bar["open"]),reason=o.reason,cost_model=self.costs)
                     if tr: self._log(d,"TRADE",trade=tr.to_dict())
                     continue
                 if o.symbol in portfolio.positions:
@@ -269,7 +282,7 @@ class BacktestEngine:
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
                 equity=portfolio.equity(current_prices); mv=portfolio.market_value(current_prices)
-                raw=float(bar["open"]); stop=float(o.stop_price or raw*.95)
+                raw=float(raw_bar["open"]); stop=float(o.stop_price or raw*.95)
                 qty=portfolio.size_for_risk(equity=equity,price=self.costs.slip_price(raw,"BUY"),stop=stop,
                     risk_per_trade=self.s.risk_per_trade,max_single=self.s.max_single_position,max_total=self.s.max_total_position,
                     current_market_value=mv,multiplier=o.route_multiplier,lot=self.s.position_round_lot)

@@ -260,7 +260,99 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         all_pit = all_pit and bool(meta.get("point_in_time"))
         universe_checks.append(meta)
 
-    # Sample across the checked historical dates, not only from today's/static list.
+    # 1. Market universe coverage ratio (relative to ~5,380 active A-share market baseline)
+    total_records = len(universe.symbols)
+    market_baseline = 5380.0
+    universe_market_coverage_ratio = round(min(1.0, total_records / market_baseline), 4) if market_baseline else 1.0
+
+    # 2. Exchange coverage (SSE Main, STAR, SZSE Main, ChiNext, BSE)
+    exchange_coverage: dict[str, int] = {
+        "SSE_MAIN": 0,
+        "STAR": 0,
+        "SZSE_MAIN": 0,
+        "CHINEXT": 0,
+        "BSE": 0,
+    }
+    for sym in universe.symbols:
+        s = sym.upper()
+        # Check board in membership record first
+        recs = provider._membership.get(sym, [])
+        board = (recs[0].get("board") if recs else None) or ""
+        if board in exchange_coverage:
+            exchange_coverage[board] += 1
+        elif s.endswith(".BJ") or s.startswith(("4", "8", "92")):
+            exchange_coverage["BSE"] += 1
+        elif s.startswith(("688", "689")) or (s.endswith(".SH") and s.startswith(("688", "689"))):
+            exchange_coverage["STAR"] += 1
+        elif s.startswith(("600", "601", "603", "605")) or s.endswith(".SH"):
+            exchange_coverage["SSE_MAIN"] += 1
+        elif s.startswith(("300", "301")) or (s.endswith(".SZ") and s.startswith(("300", "301"))):
+            exchange_coverage["CHINEXT"] += 1
+        elif s.startswith(("000", "001", "002", "003")) or s.endswith(".SZ"):
+            exchange_coverage["SZSE_MAIN"] += 1
+        else:
+            exchange_coverage["SZSE_MAIN"] += 1
+
+    exchange_coverage_ok = (
+        exchange_coverage["SSE_MAIN"] > 0
+        and exchange_coverage["STAR"] > 0
+        and exchange_coverage["SZSE_MAIN"] > 0
+        and exchange_coverage["CHINEXT"] > 0
+        and exchange_coverage["BSE"] > 0
+    )
+
+    # 3. Delisted stocks preserved
+    delisted_in_universe = [
+        sym for sym in universe.symbols
+        if any(bool(r.get("delisting_date")) for r in provider._membership.get(sym, []))
+    ]
+    delisted_during_period_preserved = len(delisted_in_universe) > 0
+
+    # 4. IPO prelisting leakage
+    ipo_prelisting_leakage = False
+    for sym in universe.symbols:
+        recs = provider._membership.get(sym, [])
+        for r in recs:
+            l_date = str(r.get("listing_date") or r.get("active_from") or "")
+            if l_date and check_dates and l_date > check_dates[0]:
+                if provider._is_active_record(r, check_dates[0]):
+                    ipo_prelisting_leakage = True
+                    break
+        if ipo_prelisting_leakage:
+            break
+
+    # 5. Historical ST / Suspension coverage
+    status_tracked_count = sum(1 for sym in universe.symbols if sym in provider._status_intervals)
+    historical_status_pit_coverage = round(status_tracked_count / total_records, 4) if total_records else 0.0
+
+    # 6. Sector label coverage & sector membership PIT coverage
+    sector_label_count = 0
+    sector_pit_count = 0
+    for sym in universe.symbols:
+        intervals = provider._sector_intervals_map.get(sym, [])
+        if intervals:
+            sector_pit_count += 1
+            if any(x.get("sector_code") for x in intervals):
+                sector_label_count += 1
+        else:
+            recs = provider._membership.get(sym, [])
+            if any(r.get("industry_code") for r in recs):
+                sector_label_count += 1
+
+    sector_label_coverage = round(sector_label_count / total_records, 4) if total_records else 0.0
+    sector_membership_pit_coverage = round(sector_pit_count / total_records, 4) if total_records else 0.0
+    sector_membership_point_in_time = sector_membership_pit_coverage >= 0.90
+    sector_constituent_point_in_time = hasattr(provider, "sector_constituents_on") and callable(provider.sector_constituents_on)
+    sector_constituent_pit_coverage = 1.0 if sector_constituent_point_in_time else 0.0
+
+    # Corporate Action Engine
+    corporate_action_ready = bool(
+        provider.corporate_actions is not None
+        and hasattr(provider.corporate_actions, "process_actions")
+        and len(provider.corporate_actions._actions_by_date) > 0
+    )
+
+    # 8. Raw execution prices and sample coverage
     sample_pairs: list[tuple[str, str]] = []
     per_date = max(1, int(sample_size) // max(1, len(check_dates)))
     for d in check_dates:
@@ -270,14 +362,19 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     sample_pairs = sample_pairs[:max(1, int(sample_size))]
 
     bars_ok = 0
+    raw_bars_ok = 0
     sector_map_ok = 0
     sector_history_ok = 0
     bar_details: list[dict[str, Any]] = []
     for as_of, sym in sample_pairs:
         bars = provider.bars(sym, count=max(900, settings.warmup_bars + 550))
+        raw_b = provider.raw_bars(sym, count=max(900, settings.warmup_bars + 550))
         covers = bool(bars and bars[0].get("date", "9999") <= as_of and bars[-1].get("date", "") >= as_of)
+        raw_covers = bool(raw_b and raw_b[0].get("date", "9999") <= as_of and raw_b[-1].get("date", "") >= as_of)
         if covers:
             bars_ok += 1
+        if raw_covers:
+            raw_bars_ok += 1
         sec = provider.sector_info_on(sym, as_of, strict=settings.sector_mode == "strict")
         if sec.get("code"):
             sector_map_ok += 1
@@ -288,9 +385,11 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
             "as_of": as_of,
             "symbol": sym,
             "bars": len(bars),
+            "raw_bars": len(raw_b),
             "bar_start": bars[0]["date"] if bars else None,
             "bar_end": bars[-1]["date"] if bars else None,
             "covers_as_of": covers,
+            "raw_covers_as_of": raw_covers,
             "sector_code": sec.get("code"),
             "sector_name": sec.get("name"),
             "sector_source": sec.get("source"),
@@ -298,33 +397,78 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
 
     n = len(sample_pairs)
     price_cov = bars_ok / n if n else 0.0
+    raw_price_cov = raw_bars_ok / n if n else 0.0
     sector_cov = sector_map_ok / n if n else 0.0
     sector_hist_cov = sector_history_ok / n if n else 0.0
-    min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 500))
-    min_daily = min((int(x.get("active_symbols", 0)) for x in universe_checks), default=0)
-    formal_ready = bool(
-        universe.dynamic_daily and universe.point_in_time and all_pit and not universe.survivorship_bias
-        and min_daily >= min_symbols and price_cov >= 0.90 and sector_cov >= 0.80 and sector_hist_cov >= 0.80
-    )
+
+    # Full universe data_missing check for raw price execution
+    data_missing_count = sum(1 for sym in universe.symbols if any(bool(r.get("data_missing")) for r in provider._membership.get(sym, [])))
+    full_market_price_bar_coverage = round((total_records - data_missing_count) / total_records, 4) if total_records else 0.0
+    # Raw execution price is ready only if raw price infrastructure is present AND full market price coverage meets threshold (>= 0.90)
+    raw_execution_price_ready = bool(corporate_action_ready and full_market_price_bar_coverage >= 0.90 and raw_price_cov >= 0.90)
+
+    # 10 Criteria for formal_full_market_ready
+    min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 5000))
+    min_daily_active = min((int(x.get("active_symbols", 0)) for x in universe_checks), default=0)
+
+    criteria_checklist = {
+        "1_market_universe_coverage": universe_market_coverage_ratio >= 0.95 and min_daily_active >= min_symbols,
+        "2_exchange_coverage": exchange_coverage_ok,
+        "3_historical_delisted_preserved": delisted_during_period_preserved,
+        "4_ipo_prelisting_leakage": not ipo_prelisting_leakage,
+        "5_historical_status_pit_coverage": historical_status_pit_coverage >= 0.90,
+        "6_sector_membership_point_in_time": sector_membership_point_in_time,
+        "7_sector_constituent_point_in_time": sector_constituent_point_in_time,
+        "8_raw_execution_price_ready": raw_execution_price_ready,
+        "9_benchmark_coverage": benchmark_ok,
+        "10_survivorship_bias": not universe.survivorship_bias,
+    }
+
+    formal_ready = all(criteria_checklist.values())
+
+    if not criteria_checklist["8_raw_execution_price_ready"]:
+        provider.warnings.append(
+            f"RAW_EXECUTION_PRICE_INSUFFICIENT: full_market_price_bar_coverage={full_market_price_bar_coverage:.2%} "
+            f"({data_missing_count}/{total_records} symbols flagged data_missing=True; prices required for full-market execution)"
+        )
+    if not criteria_checklist["1_market_universe_coverage"]:
+        provider.warnings.append(
+            f"FULL_MARKET_COVERAGE_INSUFFICIENT: min_daily_active={min_daily_active} < min_symbols={min_symbols}"
+        )
+
     result = {
         "ok": bool(universe_checks) and benchmark_ok and bars_ok > 0,
         "period": {"start": settings.start_date, "end": settings.end_date},
+        "formal_full_market_ready": formal_ready,
+        "research_grade_candidate": formal_ready,
+        "universe_market_coverage_ratio": universe_market_coverage_ratio,
+        "exchange_coverage": exchange_coverage,
+        "historical_status_pit_coverage": historical_status_pit_coverage,
+        "sector_label_coverage": sector_label_coverage,
+        "sector_membership_pit_coverage": sector_membership_pit_coverage,
+        "sector_constituent_pit_coverage": sector_constituent_pit_coverage,
+        "raw_execution_price_ready": raw_execution_price_ready,
+        "corporate_action_ready": corporate_action_ready,
+        "criteria_checklist": criteria_checklist,
         "universe": {
             "source": universe.source,
-            "seed_symbols": len(universe.symbols),
+            "seed_symbols": total_records,
             "survivorship_bias": universe.survivorship_bias,
             "point_in_time": universe.point_in_time,
             "dynamic_daily": universe.dynamic_daily,
             "membership_records": universe.membership_records,
             "dataset_version": universe.dataset_version,
-            "coverage": universe.coverage,
+            "coverage": universe_market_coverage_ratio,
             "notes": universe.notes,
             "check_dates": universe_checks,
             "checked_union_symbols": len(union_symbols),
+            "delisted_stocks_preserved_count": len(delisted_in_universe),
+            "data_missing_count": data_missing_count,
         },
         "sample": {
             "size": n,
             "price_asof_coverage": price_cov,
+            "raw_price_asof_coverage": raw_price_cov,
             "sector_mapping_coverage": sector_cov,
             "sector_history_asof_coverage": sector_hist_cov,
             "details": bar_details,
@@ -338,8 +482,6 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
             "end": trading_dates[-1] if trading_dates else None,
         },
         "provider_warnings": provider.warnings,
-        "formal_full_market_ready": formal_ready,
-        "research_grade_candidate": formal_ready,
     }
     return result
 

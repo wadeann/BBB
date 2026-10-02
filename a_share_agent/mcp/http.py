@@ -38,20 +38,21 @@ class ServiceState:
     initialized: bool = False
     session_id: str | None = None
     negotiated_protocol: str | None = None
+    remote_tools: set[str] | None = None
 
 
 def _env_or_value(cfg: dict[str, Any], value_key: str, env_key: str, *, required: bool = False) -> str | None:
-    value = cfg.get(value_key)
-    if value is not None and str(value).strip():
-        return str(value)
     env_name = cfg.get(env_key)
     if env_name:
         value = os.environ.get(str(env_name))
         if value:
             return value
-        if required:
-            raise MCPConfigurationError(f"missing required environment variable: {env_name}")
+    value = cfg.get(value_key)
+    if value is not None and str(value).strip():
+        return str(value)
     if required:
+        if env_name:
+            raise MCPConfigurationError(f"missing required environment variable: {env_name}")
         raise MCPConfigurationError(f"missing required setting: {value_key} or {env_key}")
     return None
 
@@ -198,6 +199,7 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
         client = httpx.Client(
             timeout=httpx.Timeout(self.timeout), verify=self.verify_tls, auth=auth,
             headers=headers, transport=self._transport, follow_redirects=True,
+            trust_env=False,
         )
         self._clients[service] = client
         self._states[service] = ServiceState()
@@ -271,7 +273,10 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
             negotiated = result.get("protocolVersion") if isinstance(result, dict) else None
             state.negotiated_protocol = str(negotiated or self.protocol_version)
             notify = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-            self._post(service, notify, allow_empty=True)
+            try:
+                self._post(service, notify, allow_empty=True)
+            except MCPError:
+                pass
             state.initialized = True
 
     def invoke(self, tool_name: str, **kwargs: Any) -> Any:
@@ -279,11 +284,28 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
         if not service:
             raise MCPError(f"unknown MCP tool: {tool_name}")
         self._initialize(service)
+        state = self._states[service]
+        if state.remote_tools is None:
+            try:
+                self.list_tools(service)
+            except Exception:
+                pass
+        target_name = tool_name
+        prefix = f"mcp_{service}_"
+        if state.remote_tools:
+            if tool_name in state.remote_tools:
+                target_name = tool_name
+            elif tool_name.startswith(prefix) and tool_name[len(prefix):] in state.remote_tools:
+                target_name = tool_name[len(prefix):]
+            elif not tool_name.startswith(prefix) and f"{prefix}{tool_name}" in state.remote_tools:
+                target_name = f"{prefix}{tool_name}"
+        elif tool_name.startswith(prefix):
+            target_name = tool_name
         payload = {
             "jsonrpc": "2.0",
             "id": self._next_id(),
             "method": "tools/call",
-            "params": {"name": tool_name, "arguments": kwargs},
+            "params": {"name": target_name, "arguments": kwargs},
         }
         obj, _resp = self._post(service, payload)
         return _unwrap_tool_result(obj)
@@ -293,9 +315,12 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
         payload = {"jsonrpc": "2.0", "id": self._next_id(), "method": "tools/list", "params": {}}
         obj, _resp = self._post(service, payload)
         result = _unwrap_tool_result(obj)
-        if isinstance(result, dict) and isinstance(result.get("tools"), list):
-            return result["tools"]
-        return result if isinstance(result, list) else []
+        tools = result.get("tools") if isinstance(result, dict) and isinstance(result.get("tools"), list) else (result if isinstance(result, list) else [])
+        if service in self._states:
+            self._states[service].remote_tools = {
+                str(t.get("name")) for t in tools if isinstance(t, dict) and t.get("name")
+            }
+        return tools
 
     def probe(self, service: str) -> dict[str, Any]:
         cfg = self._service_cfg(service)
@@ -305,10 +330,29 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
             names = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
             advertised = set(names)
             expected = EXPECTED_TOOLS_BY_SERVICE.get(service, set())
-            missing = sorted(expected - advertised)
+            prefix = f"mcp_{service}_"
+
+            def _is_tool_available(t: str) -> bool:
+                if t in advertised:
+                    return True
+                if t.startswith(prefix) and t[len(prefix):] in advertised:
+                    return True
+                if not t.startswith(prefix) and f"{prefix}{t}" in advertised:
+                    return True
+                return False
+
+            missing = sorted(t for t in expected if not _is_tool_available(t))
             optional_expected = set(OPTIONAL_INTEL_TOOLS) if service == "intel" else set()
-            optional_available = sorted(advertised & optional_expected)
-            unexpected = sorted(advertised - expected - optional_expected)
+            optional_available = sorted(t for t in optional_expected if _is_tool_available(t))
+
+            def _is_tool_known(n: str) -> bool:
+                if n in expected or n in optional_expected:
+                    return True
+                prefixed = f"{prefix}{n}" if not n.startswith(prefix) else n
+                unprefixed = n[len(prefix):] if n.startswith(prefix) else n
+                return prefixed in expected or unprefixed in expected or prefixed in optional_expected or unprefixed in optional_expected
+
+            unexpected = sorted(n for n in advertised if not _is_tool_known(n))
             return {
                 "ok": True,
                 "catalog_match": not missing,

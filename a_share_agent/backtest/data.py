@@ -9,6 +9,7 @@ from typing import Any
 
 from ..mcp.base import MCPInvoker
 from ..utils import stable_hash
+from .corporate_actions import CorporateActionEngine
 
 
 def _date_str(v: Any) -> str:
@@ -143,10 +144,17 @@ class HistoricalDataProvider:
         self._daily_record_mem: dict[tuple[str, str], dict[str, Any]] = {}
         self.warnings: list[str] = []
         self._membership: dict[str, list[dict[str, Any]]] = {}
+        self._status_intervals: dict[str, list[dict[str, Any]]] = {}
+        self._sector_intervals_map: dict[str, list[dict[str, Any]]] = {}
+        self._sector_constituents_cache: dict[tuple[str, str], list[str]] = {}
+        self._raw_bars_mem: dict[str, list[dict[str, Any]]] = {}
+        self.corporate_actions = CorporateActionEngine.load_from_file(self.root / "data" / "backtest" / "corporate_actions.csv")
         self._period_universe: UniverseInfo | None = None
         self._daily_point_in_time_enabled = False
         self._universe_mode = "prefer_point_in_time"
         self._max_universe = 0
+        self._load_status_intervals()
+        self._load_sector_intervals()
 
     @staticmethod
     def _safe(symbol: str) -> str:
@@ -167,6 +175,58 @@ class HistoricalDataProvider:
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         tmp.replace(path)
+
+    def _load_status_intervals(self) -> None:
+        path = self.root / "data" / "backtest" / "historical_status_intervals.csv"
+        if not path.exists():
+            return
+        with path.open("r", encoding="utf-8-sig", newline="") as fh:
+            for row in csv.DictReader(fh):
+                sym = str(row.get("symbol") or "")
+                if sym:
+                    self._status_intervals.setdefault(sym, []).append(row)
+
+    def status_on(self, symbol: str, as_of: str) -> str:
+        intervals = self._status_intervals.get(symbol, [])
+        for item in intervals:
+            start = _date_str(item.get("effective_from"))
+            end = _date_str(item.get("effective_to"))
+            if start and as_of < start:
+                continue
+            if end and as_of > end:
+                continue
+            return str(item.get("status") or "TRADABLE").upper()
+        return "TRADABLE"
+
+    def _load_sector_intervals(self) -> None:
+        path = self.root / "data" / "backtest" / "historical_sector_intervals.csv"
+        if not path.exists():
+            return
+        with path.open("r", encoding="utf-8-sig", newline="") as fh:
+            for row in csv.DictReader(fh):
+                sym = str(row.get("symbol") or "")
+                if sym:
+                    self._sector_intervals_map.setdefault(sym, []).append(row)
+
+    def sector_constituents_on(self, sector_code: str, as_of: str) -> list[str]:
+        cache_key = (str(sector_code), as_of)
+        if cache_key in self._sector_constituents_cache:
+            return self._sector_constituents_cache[cache_key]
+        out: list[str] = []
+        for sym, intervals in self._sector_intervals_map.items():
+            for item in intervals:
+                if str(item.get("sector_code")) == str(sector_code):
+                    start = _date_str(item.get("effective_from"))
+                    end = _date_str(item.get("effective_to"))
+                    if start and as_of < start:
+                        continue
+                    if end and as_of > end:
+                        continue
+                    if self.eligible_on(sym, as_of):
+                        out.append(sym)
+                    break
+        self._sector_constituents_cache[cache_key] = out
+        return out
 
     @staticmethod
     def _unwrap_list(raw: Any) -> list[Any]:
@@ -189,6 +249,7 @@ class HistoricalDataProvider:
                     "st": False,
                     "suspended": False,
                     "delisting_period": False,
+                    "data_missing": False,
                 })
                 continue
             if not isinstance(x, dict):
@@ -204,7 +265,8 @@ class HistoricalDataProvider:
             delisting_period = _as_bool(x.get("delisting_period") or x.get("delisting") or x.get("退市整理"), False)
             risk_warning = _as_bool(x.get("risk_warning") if x.get("risk_warning") is not None else x.get("st"), False)
             suspended = _as_bool(x.get("suspended") or x.get("停牌"), False)
-            tradable_default = listed and not delisting_period and not risk_warning and not suspended
+            data_missing = _as_bool(x.get("data_missing"), False)
+            tradable_default = listed and not delisting_period and not risk_warning and not suspended and not data_missing
             out.append({
                 "symbol": str(symbol),
                 "name": x.get("name") or x.get("证券简称") or x.get("股票简称"),
@@ -221,13 +283,13 @@ class HistoricalDataProvider:
                 "board": x.get("board") or x.get("market_board") or x.get("板块"),
                 "industry_code": str(industry_code) if industry_code not in (None, "") else None,
                 "industry_name": str(industry_name) if industry_name not in (None, "") else None,
+                "data_missing": data_missing,
                 "available_at": x.get("available_at"),
                 "raw": x,
             })
         return out
 
-    @staticmethod
-    def _record_eligible(rec: dict[str, Any], as_of: str) -> bool:
+    def _is_active_record(self, rec: dict[str, Any], as_of: str) -> bool:
         start = str(rec.get("active_from") or rec.get("listing_date") or "")
         end = str(rec.get("active_to") or rec.get("delisting_date") or "")
         if start and as_of < start:
@@ -235,6 +297,21 @@ class HistoricalDataProvider:
         if end and as_of > end:
             return False
         if not bool(rec.get("listed", True)):
+            return False
+        sym = str(rec.get("symbol") or "")
+        status = self.status_on(sym, as_of)
+        if status == "DELISTED":
+            return False
+        return True
+
+    def _record_eligible(self, rec: dict[str, Any], as_of: str) -> bool:
+        if not self._is_active_record(rec, as_of):
+            return False
+        if bool(rec.get("data_missing", False)):
+            return False
+        sym = str(rec.get("symbol") or "")
+        status = self.status_on(sym, as_of)
+        if status in {"ST", "*ST", "SUSPENDED", "DELISTING", "DELISTED"}:
             return False
         if not bool(rec.get("tradable", True)):
             return False
@@ -485,7 +562,7 @@ class HistoricalDataProvider:
     def active_records_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[dict[str, Any]]:
         if self._daily_point_in_time_enabled:
             snap = self._fetch_daily_universe(as_of)
-            records = [x for x in snap.records if self._record_eligible(x, as_of)]
+            records = [x for x in snap.records if self._is_active_record(x, as_of)]
             if self._max_universe:
                 records = records[: self._max_universe]
             return records
@@ -497,16 +574,23 @@ class HistoricalDataProvider:
                     continue
                 chosen = None
                 for rec in self._membership[sym]:
-                    start = str(rec.get("active_from") or rec.get("listing_date") or "")
-                    end = str(rec.get("active_to") or rec.get("delisting_date") or "")
-                    if start and as_of < start:
+                    if not self._is_active_record(rec, as_of):
                         continue
-                    if end and as_of > end:
-                        continue
-                    chosen = rec
-                    if self._record_eligible(rec, as_of):
-                        rows.append(rec)
-                        break
+                    status = self.status_on(sym, as_of)
+                    is_st = status in {"ST", "*ST"}
+                    is_susp = status == "SUSPENDED"
+                    is_delist = status == "DELISTING"
+                    is_missing = bool(rec.get("data_missing", False))
+                    rec_dyn = dict(rec)
+                    rec_dyn["st"] = is_st
+                    rec_dyn["risk_warning"] = is_st
+                    rec_dyn["suspended"] = is_susp
+                    rec_dyn["delisting_period"] = is_delist
+                    rec_dyn["status"] = status
+                    rec_dyn["tradable"] = (status == "TRADABLE" and not is_missing)
+                    chosen = rec_dyn
+                    rows.append(rec_dyn)
+                    break
                 if chosen is not None:
                     self._daily_record_mem[(as_of, sym)] = chosen
             if self._max_universe:
@@ -517,8 +601,18 @@ class HistoricalDataProvider:
     def active_symbols_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[str]:
         return [str(x["symbol"]) for x in self.active_records_on(as_of, fallback_symbols)]
 
+    def tradable_records_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[dict[str, Any]]:
+        return [x for x in self.active_records_on(as_of, fallback_symbols) if x.get("tradable")]
+
+    def tradable_symbols_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[str]:
+        return [str(x["symbol"]) for x in self.tradable_records_on(as_of, fallback_symbols)]
+
     def daily_universe_meta(self, as_of: str, fallback_symbols: list[str] | None = None) -> dict[str, Any]:
         records = self.active_records_on(as_of, fallback_symbols)
+        tradable_count = sum(1 for x in records if x.get("tradable"))
+        missing_count = sum(1 for x in records if x.get("data_missing"))
+        st_count = sum(1 for x in records if x.get("st"))
+        suspended_count = sum(1 for x in records if x.get("suspended"))
         if as_of in self._daily_universe_mem:
             snap = self._daily_universe_mem[as_of]
             source = snap.source
@@ -535,6 +629,10 @@ class HistoricalDataProvider:
         return {
             "date": as_of,
             "active_symbols": len(records),
+            "tradable_symbols": tradable_count,
+            "missing_data_symbols": missing_count,
+            "st_symbols": st_count,
+            "suspended_symbols": suspended_count,
             "source": source,
             "point_in_time": pit,
             "dataset_version": dataset_version,
@@ -622,6 +720,27 @@ class HistoricalDataProvider:
             self.warnings.append(f"NO_BARS:{symbol}")
         return rows
 
+    def raw_bars(self, symbol: str, *, count: int = 900) -> list[dict[str, Any]]:
+        """Return raw unadjusted historical OHLC bars for trade execution and portfolio mark-to-market."""
+        if symbol in self._raw_bars_mem:
+            return self._raw_bars_mem[symbol]
+        raw_csv = self.root / "data" / "backtest" / "raw_prices" / f"{self._safe(symbol)}.csv"
+        if raw_csv.exists():
+            with raw_csv.open("r", encoding="utf-8-sig", newline="") as fh:
+                rows = normalize_bars(list(csv.DictReader(fh)))
+                if rows:
+                    self._raw_bars_mem[symbol] = rows
+                    return rows
+        raw_path = self._cache_file("raw_bars", symbol)
+        if self.use_cache and raw_path.exists():
+            rows = normalize_bars(self._load_json(raw_path))
+            if rows:
+                self._raw_bars_mem[symbol] = rows
+                return rows
+        bars = self.bars(symbol, count=count)
+        self._raw_bars_mem[symbol] = bars
+        return bars
+
     @staticmethod
     def _recursive_dicts(raw: Any, *, max_nodes: int = 200) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -676,9 +795,26 @@ class HistoricalDataProvider:
         key = (as_of, symbol)
         if key in self._sector_on_mem:
             return self._sector_on_mem[key]
+        intervals = self._sector_intervals_map.get(symbol, [])
+        for item in intervals:
+            start = _date_str(item.get("effective_from"))
+            end = _date_str(item.get("effective_to"))
+            if start and as_of < start:
+                continue
+            if end and as_of > end:
+                continue
+            if item.get("sector_code") or item.get("sector_name"):
+                val = {
+                    "name": item.get("sector_name"),
+                    "code": item.get("sector_code"),
+                    "source": "historical_sector_interval",
+                    "point_in_time": True,
+                }
+                self._sector_on_mem[key] = val
+                return val
         rec = self._daily_record_mem.get(key)
         if rec and (rec.get("industry_code") or rec.get("industry_name")):
-            val = {"name": rec.get("industry_name"), "code": rec.get("industry_code"), "source": "historical_universe"}
+            val = {"name": rec.get("industry_name"), "code": rec.get("industry_code"), "source": "historical_universe", "point_in_time": True}
             self._sector_on_mem[key] = val
             return val
         # Interval security master may contain sector fields.

@@ -1,7 +1,7 @@
 version: 1.0
 # Research Lab experiments are diagnostic comparisons, not automatic strategy promotion.
 baseline_id: baseline
-min_symbols_for_research_grade: 500
+min_symbols_for_research_grade: 5000
 max_neutral_sector_share_for_research_grade: 0.85
 min_historical_sector_mapping_coverage: 0.80
 experiments:
