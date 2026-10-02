@@ -11,14 +11,13 @@ from pathlib import Path
 from typing import Any
 
 from . import research_legacy as _legacy
-from .data import HistoricalDataProvider
 from .data_integrity import verify_coverage_binding, verify_raw_dataset_manifest
 from .provenance_audit import (
     audit_interval_provenance,
     is_a_share_common_equity_symbol,
     reconcile_corporate_action_sets,
 )
-from .service import settings_from
+from .universe_reconciliation import reconcile_universe_snapshot_counts
 
 ResearchLab = _legacy.ResearchLab
 research_validity = _legacy.research_validity
@@ -32,43 +31,27 @@ def _is_a_share_common_equity_symbol(symbol: str, board: str) -> bool:
     return is_a_share_common_equity_symbol(symbol, board)
 
 
-def _official_universe_audit(config, mcp, overrides: dict[str, Any] | None) -> tuple[bool, int, int]:
-    settings = settings_from(config, overrides or {})
-    provider = HistoricalDataProvider(config.project_root, mcp, use_cache=settings.cache)
-    universe = provider.load_universe_for_period(
-        settings.start_date,
-        settings.end_date,
-        settings.universe_file,
-        max_universe=settings.max_universe,
-        mode=settings.universe_mode,
+def _official_universe_reconciliation(config) -> dict[str, Any]:
+    """Use the same listing-interval set construction as the provenance audit.
+
+    Universe membership here deliberately ignores ST, suspension, strategy eligibility
+    and Raw-bar availability. Those are separate gates. The official-set comparison
+    answers only whether a target A-share common equity belongs to the listed universe
+    on each audit date.
+    """
+    root = config.project_root
+    return reconcile_universe_snapshot_counts(
+        root / "data" / "backtest" / "security_master.csv",
+        root / "data" / "backtest" / "official_universe_snapshots",
     )
-    snapshot_dir = config.project_root / "data" / "backtest" / "official_universe_snapshots"
-    snapshots = sorted(snapshot_dir.glob("*.csv")) if snapshot_dir.exists() else []
-    if not snapshots:
-        return False, 0, 0
-    extra = missing = checked = 0
-    for snap in snapshots:
-        date = snap.stem
-        if len(date) != 10 or not date.startswith("20"):
-            continue
-        official: set[str] = set()
-        with snap.open("r", encoding="utf-8-sig") as fh:
-            for row in csv.DictReader(fh):
-                symbol = str(row.get("symbol") or "").strip()
-                board = str(row.get("board") or "").strip().upper()
-                security_type = str(row.get("security_type") or "").strip().upper()
-                if security_type:
-                    if security_type != "A_SHARE_COMMON_EQUITY":
-                        continue
-                elif not _is_a_share_common_equity_symbol(symbol, board):
-                    continue
-                if symbol:
-                    official.add(symbol)
-        active = set(provider.active_symbols_on(date, universe.symbols))
-        extra += len(active - official)
-        missing += len(official - active)
-        checked += 1
-    return bool(checked and extra == 0 and missing == 0), extra, missing
+
+
+def _official_universe_audit(config, mcp, overrides: dict[str, Any] | None) -> tuple[bool, int, int]:
+    # ``mcp``/``overrides`` remain in the signature for compatibility with existing
+    # callers. The set audit is intentionally based only on immutable local PIT
+    # security-master intervals plus independent official snapshots.
+    audit = _official_universe_reconciliation(config)
+    return bool(audit["match"]), int(audit["extra_total"]), int(audit["missing_total"])
 
 
 def _corporate_action_audit(root: Path) -> dict[str, Any]:
@@ -124,10 +107,14 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result = _ORIGINAL_PREFLIGHT(config, mcp, overrides=overrides, sample_size=sample_size)
     root = config.project_root
 
-    universe_match, extra, missing = _official_universe_audit(config, mcp, overrides)
+    universe_audit = _official_universe_reconciliation(config)
+    universe_match = bool(universe_audit["match"])
+    extra = int(universe_audit["extra_total"])
+    missing = int(universe_audit["missing_total"])
     result["official_universe_set_match"] = universe_match
     result["universe_extra_symbol_count"] = extra
     result["universe_missing_symbol_count"] = missing
+    result["universe_reconciliation"] = universe_audit
     detailed_diff = root / "official_universe_set_diff_detailed.csv"
     result["universe_detailed_diff_file"] = detailed_diff.name if detailed_diff.exists() else None
 
