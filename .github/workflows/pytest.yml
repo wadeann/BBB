@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - master
       - fix/v075-data-provenance
 
 permissions:
