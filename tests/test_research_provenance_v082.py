@@ -178,7 +178,7 @@ def test_research_preflight_wires_raw_and_source_provenance_gates():
 
     source = Path(research.__file__).read_text(encoding="utf-8")
     assert '"30_raw_price_provenance_verified": raw_provenance_verified' in source
-    assert '"31_commit_bound_clean_source": commit_bound_source' in source
+    assert 'checklist["31_commit_bound_clean_source"] = commit_bound_source' in source
     assert "and raw_provenance_verified" in source
     assert 'warnings.append("RAW_PRICE_PROVENANCE_UNAVAILABLE_OR_UNVERIFIED")' in source
     assert 'warnings.append("SOURCE_TREE_NOT_CLEAN_OR_COMMIT_BOUND")' in source
