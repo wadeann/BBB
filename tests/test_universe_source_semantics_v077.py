@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from pathlib import Path
 
@@ -78,3 +79,14 @@ def test_repo_semantics_remain_fail_closed_until_sse_source_wide_verification():
     assert audit["sources"]["szse_delisted_register.csv"]["allow_as_delisting_date"] is True
     assert audit["sources"]["sse_delisted_register.csv"]["allow_as_delisting_date"] is False
     assert audit["source_wide_verified"] is False
+
+
+def test_snapshot_generator_refuses_current_ambiguous_sse_mapping():
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "generate_official_universe_snapshots.py"
+    spec = importlib.util.spec_from_file_location("generate_official_universe_snapshots_v077", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with pytest.raises(RuntimeError, match="OFFICIAL_UNIVERSE_SOURCE_SEMANTICS_BLOCKED"):
+        module.generate_snapshots()
