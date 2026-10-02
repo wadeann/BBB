@@ -1,8 +1,9 @@
-"""v0.7.6 fail-closed research preflight wrapper.
+"""v0.7.7 fail-closed research preflight wrapper.
 
 The v0.7.4 research implementation is retained in ``research_legacy``. This wrapper
-adds non-bypassable provenance checks around official universe snapshots, corporate
-actions, status/sector interval sources, Raw OHLCV fingerprints, and coverage binding.
+adds non-bypassable provenance checks around official universe snapshots, source date
+semantics, corporate actions, status/sector interval sources, Raw OHLCV fingerprints,
+and coverage binding.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from .provenance_audit import (
     reconcile_corporate_action_sets,
 )
 from .universe_reconciliation import reconcile_universe_snapshot_counts
+from .universe_source_semantics import validate_universe_source_semantics
 
 ResearchLab = _legacy.ResearchLab
 research_validity = _legacy.research_validity
@@ -32,13 +34,7 @@ def _is_a_share_common_equity_symbol(symbol: str, board: str) -> bool:
 
 
 def _official_universe_reconciliation(config) -> dict[str, Any]:
-    """Use the same listing-interval set construction as the provenance audit.
-
-    Universe membership here deliberately ignores ST, suspension, strategy eligibility
-    and Raw-bar availability. Those are separate gates. The official-set comparison
-    answers only whether a target A-share common equity belongs to the listed universe
-    on each audit date.
-    """
+    """Use the same listing-interval set construction as the provenance audit."""
     root = config.project_root
     return reconcile_universe_snapshot_counts(
         root / "data" / "backtest" / "security_master.csv",
@@ -108,12 +104,22 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     root = config.project_root
 
     universe_audit = _official_universe_reconciliation(config)
-    universe_match = bool(universe_audit["match"])
+    universe_set_match_raw = bool(universe_audit["match"])
     extra = int(universe_audit["extra_total"])
     missing = int(universe_audit["missing_total"])
-    result["official_universe_set_match"] = universe_match
+    semantics = validate_universe_source_semantics(
+        root / "data" / "backtest" / "official_universe_snapshots" / "raw_registers"
+    )
+    semantics_ready = bool(semantics["ready"])
+    trusted_universe_match = bool(universe_set_match_raw and semantics_ready)
+    result["official_universe_set_match_raw"] = universe_set_match_raw
+    result["official_universe_set_match"] = trusted_universe_match
+    result["official_universe_source_semantics_verified"] = semantics_ready
+    result["official_universe_source_semantics_audit"] = semantics
     result["universe_extra_symbol_count"] = extra
     result["universe_missing_symbol_count"] = missing
+    result["universe_unique_missing_symbol_count"] = int(universe_audit.get("unique_missing_symbol_count", 0))
+    result["universe_unique_extra_symbol_count"] = int(universe_audit.get("unique_extra_symbol_count", 0))
     result["universe_reconciliation"] = universe_audit
     detailed_diff = root / "official_universe_set_diff_detailed.csv"
     result["universe_detailed_diff_file"] = detailed_diff.name if detailed_diff.exists() else None
@@ -186,11 +192,12 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
             "11_each_exchange_raw_coverage": bool(
                 coverage["by_exchange"] and all(value >= 0.98 for value in coverage["by_exchange"].values())
             ),
-            "12_official_universe_set_match": universe_match,
+            "12_official_universe_set_match": trusted_universe_match,
             "16_raw_dataset_hash_match": raw_match,
             "17_daily_raw_coverage_fresh": coverage_fresh,
             "18_status_provenance_sidecar": bool(status["provenance_sidecar_present"]),
             "19_sector_provenance_sidecar": bool(sector["provenance_sidecar_present"]),
+            "20_official_universe_source_semantics_verified": semantics_ready,
         }
     )
     result["criteria_checklist"] = checklist
@@ -199,6 +206,8 @@ def run_research_preflight(config, mcp, *, overrides: dict[str, Any] | None = No
     result["research_grade_candidate"] = formal
 
     warnings = list(result.get("provider_warnings") or [])
+    if not semantics_ready:
+        warnings.append("OFFICIAL_UNIVERSE_SOURCE_DATE_SEMANTICS_UNVERIFIED")
     if not ca["official_register_valid"]:
         warnings.append("CORPORATE_ACTION_OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED")
     if not status["provenance_sidecar_present"]:
