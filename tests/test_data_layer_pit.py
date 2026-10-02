@@ -146,9 +146,12 @@ def test_historical_status_pit_transitions(tmp_path: Path):
 
     rec_st = provider.active_records_on("2026-07-01")
     assert len(rec_st) == 1
-    assert rec_st[0]["tradable"] is False
+    assert rec_st[0]["market_tradable"] is True
+    assert rec_st[0]["strategy_eligible"] is False
     assert rec_st[0]["st"] is True
     assert rec_st[0]["status"] == "ST"
+    assert provider.is_market_tradable("600001.SH", "2026-07-01") is True
+    assert provider.is_strategy_eligible("600001.SH", "2026-07-01") is False
 
 
 def test_historical_sector_constituents_pit(tmp_path: Path):
@@ -196,7 +199,7 @@ def test_research_preflight_coverage_audit_and_criteria():
     cfg = load_config(root)
     res = run_research_preflight(cfg, mcp=None, sample_size=10)
 
-    # 1. 8 new fields present
+    # 1. Verification fields present
     assert "universe_market_coverage_ratio" in res
     assert "exchange_coverage" in res
     assert "historical_status_pit_coverage" in res
@@ -205,6 +208,21 @@ def test_research_preflight_coverage_audit_and_criteria():
     assert "sector_constituent_pit_coverage" in res
     assert "raw_execution_price_ready" in res
     assert "corporate_action_ready" in res
+
+    # 13 Authenticity fields
+    assert "official_universe_set_match" in res
+    assert "universe_extra_symbol_count" in res
+    assert "universe_missing_symbol_count" in res
+    assert "status_data_verified" in res
+    assert "status_source_coverage" in res
+    assert "sector_schema_supports_pit" in res
+    assert "sector_data_verified_pit" in res
+    assert "sector_change_event_count" in res
+    assert "corporate_action_data_verified" in res
+    assert "corporate_action_invalid_count" in res
+    assert "synthetic_corporate_actions_detected" in res
+    assert "daily_raw_bar_coverage" in res
+    assert "raw_bar_coverage_by_exchange" in res
 
     # 2. Exchange coverage checks
     ex = res["exchange_coverage"]
@@ -217,7 +235,16 @@ def test_research_preflight_coverage_audit_and_criteria():
     # 3. Delisted stocks preserved
     assert res["universe"]["delisted_stocks_preserved_count"] > 0
 
-    # 4. Strict gatekeeping: formal_full_market_ready MUST BE FALSE because raw execution prices have missing data
+    # 4. Strict authenticity checks
+    assert res["sector_data_verified_pit"] is True
+    assert res["sector_change_event_count"] >= 10
+    assert res["status_data_verified"] is True
+    assert res["corporate_action_data_verified"] is True
+    assert res["synthetic_corporate_actions_detected"] == 0
+
+    # 5. Strict gatekeeping: formal_full_market_ready MUST BE FALSE because raw execution prices have missing data & corporate actions gated
+    assert res["corporate_action_ready"] is False
     assert res["raw_execution_price_ready"] is False
+    assert res["daily_raw_bar_coverage"] < 0.98
     assert res["formal_full_market_ready"] is False
     assert res["research_grade_candidate"] is False

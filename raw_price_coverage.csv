@@ -1,0 +1,7 @@
+﻿exchange_or_board,total_universe_symbols,symbols_with_raw_bars,symbols_missing_bars,raw_bar_coverage_pct,meets_research_threshold_98pct
+SSE_MAIN,1734,828,906,47.75%,FAIL (data_missing retained)
+STAR,619,422,197,68.17%,FAIL (data_missing retained)
+SZSE_MAIN,1544,788,756,51.04%,FAIL (data_missing retained)
+CHINEXT,1410,311,1099,22.06%,FAIL (data_missing retained)
+BSE,348,0,348,0.00%,FAIL (data_missing retained)
+FULL_MARKET_TOTAL,5655,2349,3306,41.54%,FAIL (41.54% < 98%)

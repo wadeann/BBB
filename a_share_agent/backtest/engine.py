@@ -268,17 +268,25 @@ class BacktestEngine:
                 prev_hist=hist_to(o.symbol,d,2)[:-1] if map_by_symbol.get(o.symbol,{}).get(d) else hist_to(o.symbol,d,1)
                 if not raw_bar or not prev_hist:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
-                b={**raw_bar,"symbol":o.symbol}; prev_close=float(prev_hist[-1]["close"])
-                if self.s.block_open_at_limit and locked_at_limit(b,prev_close,o.direction):
-                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"LOCKED_AT_PRICE_LIMIT","order":o.to_dict()}); continue
-                if o.direction=="SELL":
-                    tr=portfolio.sell(symbol=o.symbol,date=d,signal_date=o.created_date,raw_price=float(raw_bar["open"]),reason=o.reason,cost_model=self.costs)
-                    if tr: self._log(d,"TRADE",trade=tr.to_dict())
+                b = {**raw_bar, "symbol": o.symbol}
+                prev_close = float(prev_hist[-1]["close"])
+                sym_status = getattr(self.provider, "status_on", lambda s, dt: "")(o.symbol, d)
+                if self.s.block_open_at_limit and locked_at_limit(b, prev_close, o.direction, status=sym_status):
+                    self.rejections.append({"date": d, "symbol": o.symbol, "reason": "LOCKED_AT_PRICE_LIMIT", "order": o.to_dict()})
+                    continue
+                if o.direction == "SELL":
+                    if hasattr(self.provider, "is_market_tradable") and not self.provider.is_market_tradable(o.symbol, d):
+                        self.rejections.append({"date": d, "symbol": o.symbol, "reason": "SUSPENDED_CANNOT_SELL", "order": o.to_dict()})
+                        continue
+                    tr = portfolio.sell(symbol=o.symbol, date=d, signal_date=o.created_date, raw_price=float(raw_bar["open"]), reason=o.reason, cost_model=self.costs)
+                    if tr:
+                        self._log(d, "TRADE", trade=tr.to_dict())
                     continue
                 if o.symbol in portfolio.positions:
                     continue
-                if o.symbol not in set(active_symbols) or not self._eligible(o.symbol,d):
-                    self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NOT_POINT_IN_TIME_ELIGIBLE","order":o.to_dict()}); continue
+                if o.symbol not in set(active_symbols) or not self._eligible(o.symbol, d):
+                    self.rejections.append({"date": d, "symbol": o.symbol, "reason": "NOT_POINT_IN_TIME_ELIGIBLE", "order": o.to_dict()})
+                    continue
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
                 equity=portfolio.equity(current_prices); mv=portfolio.market_value(current_prices)

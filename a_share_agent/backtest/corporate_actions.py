@@ -30,6 +30,12 @@ class CorporateAction:
     split_ratio: float = 1.0
     rights_ratio: float = 0.0
     rights_price: float = 0.0
+    announcement_date: str = ""
+    pay_date: str = ""
+    plan_description: str = ""
+    source: str = ""
+    source_url_or_document_id: str = ""
+    verified: bool = False
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> CorporateAction:
@@ -39,6 +45,9 @@ class CorporateAction:
                 return float(v) if v not in (None, "", "--") else default
             except Exception:
                 return default
+
+        v_raw = d.get("verified")
+        verified = str(v_raw).lower() in {"true", "1", "yes"} if v_raw is not None else False
 
         return cls(
             symbol=str(d.get("symbol") or ""),
@@ -51,6 +60,12 @@ class CorporateAction:
             split_ratio=f("split_ratio", 1.0),
             rights_ratio=f("rights_ratio", 0.0),
             rights_price=f("rights_price", 0.0),
+            announcement_date=str(d.get("announcement_date") or ""),
+            pay_date=str(d.get("pay_date") or ""),
+            plan_description=str(d.get("plan_description") or ""),
+            source=str(d.get("source") or ""),
+            source_url_or_document_id=str(d.get("source_url_or_document_id") or ""),
+            verified=verified,
         )
 
 

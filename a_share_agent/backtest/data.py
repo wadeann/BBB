@@ -581,13 +581,19 @@ class HistoricalDataProvider:
                     is_susp = status == "SUSPENDED"
                     is_delist = status == "DELISTING"
                     is_missing = bool(rec.get("data_missing", False))
+                    is_delisted = (status == "DELISTED") or (not bool(rec.get("listed", True)))
                     rec_dyn = dict(rec)
                     rec_dyn["st"] = is_st
                     rec_dyn["risk_warning"] = is_st
                     rec_dyn["suspended"] = is_susp
                     rec_dyn["delisting_period"] = is_delist
                     rec_dyn["status"] = status
-                    rec_dyn["tradable"] = (status == "TRADABLE" and not is_missing)
+                    rec_dyn["data_missing"] = is_missing
+                    market_tradable = (not is_delisted) and (not is_susp) and (not is_missing)
+                    strategy_eligible = market_tradable and (not is_st) and (not is_delist)
+                    rec_dyn["market_tradable"] = market_tradable
+                    rec_dyn["strategy_eligible"] = strategy_eligible
+                    rec_dyn["tradable"] = market_tradable
                     chosen = rec_dyn
                     rows.append(rec_dyn)
                     break
@@ -596,22 +602,43 @@ class HistoricalDataProvider:
             if self._max_universe:
                 rows = rows[: self._max_universe]
             return rows
-        return [{"symbol": s, "tradable": True} for s in (fallback_symbols or []) if self.eligible_on(s, as_of)]
+        return [{"symbol": s, "tradable": True, "market_tradable": True, "strategy_eligible": self.eligible_on(s, as_of)} for s in (fallback_symbols or []) if self.eligible_on(s, as_of)]
 
     def active_symbols_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[str]:
         return [str(x["symbol"]) for x in self.active_records_on(as_of, fallback_symbols)]
 
     def tradable_records_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[dict[str, Any]]:
-        return [x for x in self.active_records_on(as_of, fallback_symbols) if x.get("tradable")]
+        return [x for x in self.active_records_on(as_of, fallback_symbols) if x.get("market_tradable")]
 
     def tradable_symbols_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[str]:
         return [str(x["symbol"]) for x in self.tradable_records_on(as_of, fallback_symbols)]
 
+    def eligible_records_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[dict[str, Any]]:
+        return [x for x in self.active_records_on(as_of, fallback_symbols) if x.get("strategy_eligible")]
+
+    def eligible_symbols_on(self, as_of: str, fallback_symbols: list[str] | None = None) -> list[str]:
+        return [str(x["symbol"]) for x in self.eligible_records_on(as_of, fallback_symbols)]
+
+    def is_market_tradable(self, symbol: str, as_of: str) -> bool:
+        rec = self._daily_record_mem.get((as_of, symbol))
+        if rec is not None:
+            return bool(rec.get("market_tradable", True))
+        status = self.status_on(symbol, as_of)
+        return status not in {"SUSPENDED", "DELISTED"}
+
+    def is_strategy_eligible(self, symbol: str, as_of: str) -> bool:
+        rec = self._daily_record_mem.get((as_of, symbol))
+        if rec is not None:
+            return bool(rec.get("strategy_eligible", True))
+        status = self.status_on(symbol, as_of)
+        return status not in {"ST", "*ST", "SUSPENDED", "DELISTING", "DELISTED"}
+
     def daily_universe_meta(self, as_of: str, fallback_symbols: list[str] | None = None) -> dict[str, Any]:
         records = self.active_records_on(as_of, fallback_symbols)
-        tradable_count = sum(1 for x in records if x.get("tradable"))
+        tradable_count = sum(1 for x in records if x.get("market_tradable"))
+        eligible_count = sum(1 for x in records if x.get("strategy_eligible"))
         missing_count = sum(1 for x in records if x.get("data_missing"))
-        st_count = sum(1 for x in records if x.get("st"))
+        st_count = sum(1 for x in records if x.get("risk_warning"))
         suspended_count = sum(1 for x in records if x.get("suspended"))
         if as_of in self._daily_universe_mem:
             snap = self._daily_universe_mem[as_of]
@@ -630,6 +657,8 @@ class HistoricalDataProvider:
             "date": as_of,
             "active_symbols": len(records),
             "tradable_symbols": tradable_count,
+            "market_tradable_symbols": tradable_count,
+            "strategy_eligible_symbols": eligible_count,
             "missing_data_symbols": missing_count,
             "st_symbols": st_count,
             "suspended_symbols": suspended_count,

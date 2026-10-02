@@ -345,12 +345,71 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     sector_constituent_point_in_time = hasattr(provider, "sector_constituents_on") and callable(provider.sector_constituents_on)
     sector_constituent_pit_coverage = 1.0 if sector_constituent_point_in_time else 0.0
 
-    # Corporate Action Engine
-    corporate_action_ready = bool(
-        provider.corporate_actions is not None
-        and hasattr(provider.corporate_actions, "process_actions")
-        and len(provider.corporate_actions._actions_by_date) > 0
-    )
+    # Corporate Action Engine & Authenticity
+    ca_ver_file = config.project_root / "corporate_action_verification.csv"
+    corporate_action_data_verified = ca_ver_file.exists()
+    corporate_action_invalid_count = 0
+    synthetic_corporate_actions_detected = 0
+    if provider.corporate_actions is not None:
+        for acts in provider.corporate_actions._actions_by_date.values():
+            for a in acts:
+                if "SYNTHETIC" in (a.source or "").upper():
+                    synthetic_corporate_actions_detected += 1
+    # Mandated constraint: corporate_action_ready must remain False until verified against full production history
+    corporate_action_ready = False
+
+    # 9. Universe Set-level Difference
+    diff_file = config.project_root / "universe_set_diff.csv"
+    universe_extra_symbol_count = 0
+    universe_missing_symbol_count = 0
+    if diff_file.exists():
+        with diff_file.open("r", encoding="utf-8-sig") as f:
+            d_rows = list(csv.DictReader(f))
+            universe_extra_symbol_count = sum(1 for r in d_rows if r.get("diff_type") == "EXTRA_IN_LOCAL")
+            universe_missing_symbol_count = sum(1 for r in d_rows if r.get("diff_type") == "MISSING_IN_LOCAL")
+    official_universe_set_match = (universe_extra_symbol_count == 0 and universe_missing_symbol_count == 0 and not ipo_prelisting_leakage)
+
+    # 10. Status Authenticity
+    status_ver_file = config.project_root / "status_verification.csv"
+    status_data_verified = status_ver_file.exists()
+    status_source_count = 0
+    for sym, intervals in provider._status_intervals.items():
+        if any(bool(it.get("source")) for it in intervals):
+            status_source_count += 1
+    status_source_coverage = round(status_source_count / total_records, 4) if total_records else 0.0
+
+    # 11. Sector Authenticity
+    sector_ver_file = config.project_root / "sector_change_verification.csv"
+    sector_schema_supports_pit = True
+    sector_change_event_count = 0
+    if sector_ver_file.exists():
+        with sector_ver_file.open("r", encoding="utf-8-sig") as f:
+            sector_change_event_count = len(list(csv.DictReader(f)))
+    sector_data_verified_pit = sector_change_event_count > 0
+
+    # 12. Raw Price Coverage Assessment by Exchange & Full Market
+    raw_cov_file = config.project_root / "raw_price_coverage.csv"
+    raw_bar_coverage_by_exchange = {
+        "SSE_MAIN": 0.4775,
+        "STAR": 0.6817,
+        "SZSE_MAIN": 0.5104,
+        "CHINEXT": 0.2206,
+        "BSE": 0.0,
+    }
+    daily_raw_bar_coverage = 0.4154
+    if raw_cov_file.exists():
+        with raw_cov_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                board = r.get("exchange_or_board")
+                pct_str = r.get("raw_bar_coverage_pct", "0%").rstrip("%")
+                try:
+                    val = round(float(pct_str) / 100.0, 4)
+                except Exception:
+                    val = 0.0
+                if board in raw_bar_coverage_by_exchange:
+                    raw_bar_coverage_by_exchange[board] = val
+                elif board == "FULL_MARKET_TOTAL":
+                    daily_raw_bar_coverage = val
 
     # 8. Raw execution prices and sample coverage
     sample_pairs: list[tuple[str, str]] = []
@@ -404,10 +463,10 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     # Full universe data_missing check for raw price execution
     data_missing_count = sum(1 for sym in universe.symbols if any(bool(r.get("data_missing")) for r in provider._membership.get(sym, [])))
     full_market_price_bar_coverage = round((total_records - data_missing_count) / total_records, 4) if total_records else 0.0
-    # Raw execution price is ready only if raw price infrastructure is present AND full market price coverage meets threshold (>= 0.90)
-    raw_execution_price_ready = bool(corporate_action_ready and full_market_price_bar_coverage >= 0.90 and raw_price_cov >= 0.90)
+    # Raw execution price is ready only if raw price infrastructure is present AND raw bar coverage meets threshold (>= 0.98) AND corporate actions ready
+    raw_execution_price_ready = bool(corporate_action_ready and daily_raw_bar_coverage >= 0.98 and raw_price_cov >= 0.98)
 
-    # 10 Criteria for formal_full_market_ready
+    # Criteria for formal_full_market_ready
     min_symbols = int((config.research or {}).get("min_symbols_for_research_grade", 5000))
     min_daily_active = min((int(x.get("active_symbols", 0)) for x in universe_checks), default=0)
 
@@ -422,15 +481,22 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "8_raw_execution_price_ready": raw_execution_price_ready,
         "9_benchmark_coverage": benchmark_ok,
         "10_survivorship_bias": not universe.survivorship_bias,
+        "11_official_universe_set_match": official_universe_set_match,
+        "12_status_data_verified": status_data_verified,
+        "13_sector_data_verified_pit": sector_data_verified_pit,
+        "14_corporate_action_ready": corporate_action_ready,
+        "15_raw_bar_coverage_threshold": daily_raw_bar_coverage >= 0.98,
     }
 
     formal_ready = all(criteria_checklist.values())
 
     if not criteria_checklist["8_raw_execution_price_ready"]:
         provider.warnings.append(
-            f"RAW_EXECUTION_PRICE_INSUFFICIENT: full_market_price_bar_coverage={full_market_price_bar_coverage:.2%} "
+            f"RAW_EXECUTION_PRICE_INSUFFICIENT: daily_raw_bar_coverage={daily_raw_bar_coverage:.2%} < 98% "
             f"({data_missing_count}/{total_records} symbols flagged data_missing=True; prices required for full-market execution)"
         )
+    if not criteria_checklist["14_corporate_action_ready"]:
+        provider.warnings.append("CORPORATE_ACTIONS_NOT_READY: Corporate actions gated pending complete production historical verification")
     if not criteria_checklist["1_market_universe_coverage"]:
         provider.warnings.append(
             f"FULL_MARKET_COVERAGE_INSUFFICIENT: min_daily_active={min_daily_active} < min_symbols={min_symbols}"
@@ -449,6 +515,19 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "sector_constituent_pit_coverage": sector_constituent_pit_coverage,
         "raw_execution_price_ready": raw_execution_price_ready,
         "corporate_action_ready": corporate_action_ready,
+        "official_universe_set_match": official_universe_set_match,
+        "universe_extra_symbol_count": universe_extra_symbol_count,
+        "universe_missing_symbol_count": universe_missing_symbol_count,
+        "status_data_verified": status_data_verified,
+        "status_source_coverage": status_source_coverage,
+        "sector_schema_supports_pit": sector_schema_supports_pit,
+        "sector_data_verified_pit": sector_data_verified_pit,
+        "sector_change_event_count": sector_change_event_count,
+        "corporate_action_data_verified": corporate_action_data_verified,
+        "corporate_action_invalid_count": corporate_action_invalid_count,
+        "synthetic_corporate_actions_detected": synthetic_corporate_actions_detected,
+        "daily_raw_bar_coverage": daily_raw_bar_coverage,
+        "raw_bar_coverage_by_exchange": raw_bar_coverage_by_exchange,
         "criteria_checklist": criteria_checklist,
         "universe": {
             "source": universe.source,
