@@ -32,12 +32,12 @@ def compute_daily_raw_coverage():
             if b not in board_counts: continue
             board_counts[b][0]+=1
             if d in raw_dates.get(str(r["symbol"]),set()): board_counts[b][1]+=1
-        row={"date":d,"active_symbols":len(active_symbols),"active_raw_available":active_available,"active_raw_coverage":f"{active_cov*100:.2f}%","market_tradable_symbols":len(tradable_symbols),"tradable_raw_available":tradable_available,"tradable_raw_coverage":f"{tradable_cov*100:.2f}%"}
+        row={"date":d,"active_symbols":len(active_symbols),"active_raw_available":active_available,"active_raw_coverage":f"{active_cov*100:.2f}%","raw_coverage_pct":f"{active_cov*100:.2f}%","market_tradable_symbols":len(tradable_symbols),"tradable_raw_available":tradable_available,"tradable_raw_coverage":f"{tradable_cov*100:.2f}%"}
         col={"SSE_MAIN":"sse_main_cov","STAR":"star_cov","SZSE_MAIN":"szse_main_cov","CHINEXT":"chinext_cov","BSE":"bse_cov"}
         for b,c in col.items(): row[c]=f"{_pct(board_counts[b][1],board_counts[b][0])*100:.2f}%"
         rows.append(row)
     with OUTPUT_FILE.open("w",encoding="utf-8-sig",newline="") as fh:
-        fields=["date","active_symbols","active_raw_available","active_raw_coverage","market_tradable_symbols","tradable_raw_available","tradable_raw_coverage","sse_main_cov","star_cov","szse_main_cov","chinext_cov","bse_cov"]; w=csv.DictWriter(fh,fieldnames=fields); w.writeheader(); w.writerows(rows)
+        fields=["date","active_symbols","active_raw_available","active_raw_coverage","raw_coverage_pct","market_tradable_symbols","tradable_raw_available","tradable_raw_coverage","sse_main_cov","star_cov","szse_main_cov","chinext_cov","bse_cov"]; w=csv.DictWriter(fh,fieldnames=fields); w.writeheader(); w.writerows(rows)
     sorted_covs=sorted(active_covs); summary={"trading_days":len(rows),"min_daily_active_raw_coverage":min(active_covs) if active_covs else 0.0,"median_daily_active_raw_coverage":statistics.median(active_covs) if active_covs else 0.0,"p05_daily_active_raw_coverage":sorted_covs[max(0,int(len(sorted_covs)*0.05))] if sorted_covs else 0.0,"days_below_98pct":sum(1 for x in active_covs if x<0.98),"meets_formal_threshold":bool(active_covs and min(active_covs)>=0.98)}
     manifest={"coverage_version":"0.7.5","generated_at":datetime.now(timezone.utc).isoformat(),"source_raw_dataset_hash":integrity["actual_raw_dataset_hash"],"source_raw_file_count":integrity["actual_file_count"],"source_raw_row_count":integrity["actual_row_count"],"coverage_csv":OUTPUT_FILE.name,"coverage_csv_sha256":sha256_file(OUTPUT_FILE),"denominator_semantics":{"strict_gate":"active listed A-share common-equity securities","diagnostic":"market-tradable securities after PIT status/data-availability semantics"},"summary":summary}
     OUTPUT_MANIFEST.write_text(json.dumps(manifest,indent=2,ensure_ascii=False),encoding="utf-8"); print(json.dumps(manifest,indent=2,ensure_ascii=False)); return summary

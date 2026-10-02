@@ -588,7 +588,7 @@ def test_daily_raw_bar_coverage_audit_metrics():
         rows = list(csv.DictReader(f))
 
     assert len(rows) == 485  # Total trading days from 2024-10-08 to 2026-09-30
-    cov_pcts = [float(r["raw_coverage_pct"].rstrip("%")) for r in rows]
+    cov_pcts = [float((r.get("active_raw_coverage") or r.get("raw_coverage_pct") or "").rstrip("%")) for r in rows]
     min_cov = min(cov_pcts)
     max_cov = max(cov_pcts)
     days_below_98 = sum(1 for c in cov_pcts if c < 98.0)
