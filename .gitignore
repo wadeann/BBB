@@ -7,7 +7,12 @@ data/logs/*.log*
 *.log
 .env
 data/backtest/cache/
+data/backtest/raw_prices/
+!data/backtest/raw_prices/.gitkeep
 data/backtest/llm_cache/
 data/backtest/runs/
 data/backtest/jobs/
 data/research/runs/
+data/research/*.zip
+data/research/handoff_*/
+

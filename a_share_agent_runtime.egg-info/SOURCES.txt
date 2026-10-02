@@ -84,6 +84,7 @@ tests/test_backtest.py
 tests/test_dashboard.py
 tests/test_diagnostics_env.py
 tests/test_execution.py
+tests/test_full_market_v07.py
 tests/test_handoff_signal.py
 tests/test_notifications.py
 tests/test_production_adapters.py

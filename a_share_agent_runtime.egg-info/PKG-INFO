@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: a-share-agent-runtime
-Version: 0.6.0
+Version: 0.7.0
 Summary: Auditable A-share LLM trading agent runtime with web console
 Requires-Python: >=3.11
 Requires-Dist: PyYAML>=6.0

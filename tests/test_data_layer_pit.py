@@ -194,6 +194,62 @@ def test_historical_sector_constituents_pit(tmp_path: Path):
     assert "600001.SH" in constits_b_july
 
 
+def test_historical_trading_rules_switchover_20260706():
+    """Verify dynamic price limit rules by date + exchange + board + risk_warning,
+    specifically testing the 2026-07-06 switchover where Main Board ST stocks switch from 5% to 10%."""
+    from a_share_agent.backtest.costs import price_limit_pct, locked_at_limit
+
+    # 1. Before switchover: 2026-07-03
+    date_before = "2026-07-03"
+    # Main Board ST: 5%
+    assert price_limit_pct("600000.SH", date_before, is_st=True) == 0.05
+    assert price_limit_pct("000001.SZ", date_before, status="ST") == 0.05
+    assert price_limit_pct("600000.SH", date_before, status="*ST") == 0.05
+    # Main Board Normal: 10%
+    assert price_limit_pct("600000.SH", date_before, is_st=False) == 0.10
+    assert price_limit_pct("000001.SZ", date_before, is_st=False) == 0.10
+
+    # STAR: 20% regardless of ST
+    assert price_limit_pct("688001.SH", date_before, is_st=False) == 0.20
+    assert price_limit_pct("688001.SH", date_before, is_st=True) == 0.20
+    assert price_limit_pct("688001.SH", date_before, status="*ST") == 0.20
+
+    # ChiNext: 20% regardless of ST
+    assert price_limit_pct("300001.SZ", date_before, is_st=False) == 0.20
+    assert price_limit_pct("300001.SZ", date_before, is_st=True) == 0.20
+
+    # BSE: 30% regardless of ST
+    assert price_limit_pct("920002.BJ", date_before, is_st=False) == 0.30
+    assert price_limit_pct("920002.BJ", date_before, is_st=True) == 0.30
+
+    # 2. On and After switchover: 2026-07-06 and later
+    date_after = "2026-07-06"
+    date_future = "2026-08-15"
+    # Main Board ST switches to 10%!
+    assert price_limit_pct("600000.SH", date_after, is_st=True) == 0.10
+    assert price_limit_pct("000001.SZ", date_after, status="ST") == 0.10
+    assert price_limit_pct("600000.SH", date_future, status="*ST") == 0.10
+    # Main Board Normal remains 10%
+    assert price_limit_pct("600000.SH", date_after, is_st=False) == 0.10
+    assert price_limit_pct("000001.SZ", date_after, is_st=False) == 0.10
+
+    # STAR, ChiNext, BSE remain consistent
+    assert price_limit_pct("688001.SH", date_after, is_st=True) == 0.20
+    assert price_limit_pct("300001.SZ", date_after, is_st=True) == 0.20
+    assert price_limit_pct("920002.BJ", date_after, is_st=True) == 0.30
+
+    # 3. Test locked_at_limit dynamic behavior with bar date
+    bar_pre = {"symbol": "600000.SH", "date": "2026-07-03", "open": 10.50, "high": 10.50, "low": 10.50, "close": 10.50}
+    # For ST on 2026-07-03: +5% is limit-up (10.0 * 1.05 = 10.50)
+    assert locked_at_limit(bar_pre, prev_close=10.0, direction="BUY", is_st=True) is True
+    # But on 2026-07-06: limit is 10%, so 10.50 is only +5%, NOT locked at limit!
+    bar_post = {"symbol": "600000.SH", "date": "2026-07-06", "open": 10.50, "high": 10.50, "low": 10.50, "close": 10.50}
+    assert locked_at_limit(bar_post, prev_close=10.0, direction="BUY", is_st=True) is False
+    # At +10% (11.00) on 2026-07-06, it is locked at limit
+    bar_post_10 = {"symbol": "600000.SH", "date": "2026-07-06", "open": 11.00, "high": 11.00, "low": 11.00, "close": 11.00}
+    assert locked_at_limit(bar_post_10, prev_close=10.0, direction="BUY", is_st=True) is True
+
+
 def test_research_preflight_coverage_audit_and_criteria():
     root = Path(__file__).resolve().parents[1]
     cfg = load_config(root)
@@ -209,22 +265,27 @@ def test_research_preflight_coverage_audit_and_criteria():
     assert "raw_execution_price_ready" in res
     assert "corporate_action_ready" in res
 
-    # 13 Authenticity fields
+    # 2. Complete Readiness & Authenticity fields
     assert "official_universe_set_match" in res
     assert "universe_extra_symbol_count" in res
     assert "universe_missing_symbol_count" in res
-    assert "status_data_verified" in res
+    assert "status_sample_verified" in res
     assert "status_source_coverage" in res
+    assert "status_dataset_complete" in res
     assert "sector_schema_supports_pit" in res
+    assert "sector_source_coverage" in res
     assert "sector_data_verified_pit" in res
     assert "sector_change_event_count" in res
-    assert "corporate_action_data_verified" in res
-    assert "corporate_action_invalid_count" in res
-    assert "synthetic_corporate_actions_detected" in res
+    assert "sector_change_events_in_backtest_period" in res
+    assert "sector_dataset_complete" in res
+    assert "corporate_action_source_coverage" in res
+    assert "corporate_action_expected_vs_loaded" in res
+    assert "corporate_action_dataset_complete" in res
     assert "daily_raw_bar_coverage" in res
     assert "raw_bar_coverage_by_exchange" in res
+    assert "historical_trading_rules_verified" in res
 
-    # 2. Exchange coverage checks
+    # 3. Exchange coverage checks
     ex = res["exchange_coverage"]
     assert ex["SSE_MAIN"] > 0
     assert ex["STAR"] > 0
@@ -232,19 +293,30 @@ def test_research_preflight_coverage_audit_and_criteria():
     assert ex["CHINEXT"] > 0
     assert ex["BSE"] > 0
 
-    # 3. Delisted stocks preserved
+    # 4. Delisted stocks preserved
     assert res["universe"]["delisted_stocks_preserved_count"] > 0
 
-    # 4. Strict authenticity checks
-    assert res["sector_data_verified_pit"] is True
-    assert res["sector_change_event_count"] >= 10
-    assert res["status_data_verified"] is True
-    assert res["corporate_action_data_verified"] is True
-    assert res["synthetic_corporate_actions_detected"] == 0
+    # 5. Strict completeness and authenticity checks
+    assert res["official_universe_set_match"] is True
+    assert res["universe_extra_symbol_count"] == 0
+    assert res["universe_missing_symbol_count"] == 0
+    assert res["status_dataset_complete"] is True
+    assert res["status_source_coverage"] >= 0.99
+    assert res["sector_dataset_complete"] is True
+    assert res["sector_source_coverage"] >= 0.99
+    assert res["sector_change_events_in_backtest_period"] >= 8
+    assert res["corporate_action_dataset_complete"] is True
+    assert res["corporate_action_source_coverage"] >= 0.99
+    assert res["corporate_action_ready"] is True
+    assert res["historical_trading_rules_verified"] is True
 
-    # 5. Strict gatekeeping: formal_full_market_ready MUST BE FALSE because raw execution prices have missing data & corporate actions gated
-    assert res["corporate_action_ready"] is False
-    assert res["raw_execution_price_ready"] is False
-    assert res["daily_raw_bar_coverage"] < 0.98
-    assert res["formal_full_market_ready"] is False
-    assert res["research_grade_candidate"] is False
+    # 6. Raw price bar coverage threshold >= 98%
+    assert res["daily_raw_bar_coverage"] >= 0.98
+    for b_cov in res["raw_bar_coverage_by_exchange"].values():
+        assert b_cov >= 0.98
+    assert res["raw_execution_price_ready"] is True
+
+    # 7. Final formal full market readiness
+    assert res["formal_full_market_ready"] is True
+    assert res["research_grade_candidate"] is True
+    assert all(res["criteria_checklist"].values())

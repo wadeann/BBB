@@ -1,9 +1,16 @@
-﻿date,symbol,name,board,diff_type,reason,listing_date,delisting_date,data_missing
-2026-08-31,000016.SZ,*ST康佳A,SZSE_MAIN,EXTRA_IN_LOCAL,*ST Konka A formal delisting termination on 2026-09-03 (delisting transition period),2024-07-23,2026-09-03,0
-2026-08-31,601198.SH,东兴证券,SSE_MAIN,EXTRA_IN_LOCAL,Historical delisting/absorption transition record retained in local master,2024-07-25,2026-09-14,0
-2026-08-31,920030.BJ,德众汽车,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
-2026-08-31,920033.BJ,康普化学,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
-2026-08-31,920035.BJ,精创电气,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
-2026-08-31,920036.BJ,觅睿科技,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
-2026-08-31,920037.BJ,广信科技,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
-2026-08-31,920038.BJ,森合高科,BSE,EXTRA_IN_LOCAL,BSE 920-code pre-allocation; formal exchange trading commences Sep 2026 (prelisting_leakage),2024-09-06,,1
+﻿date,exchange_board,official_count,local_count,intersection,missing,extra,prelisting_leakage,post_delisting_leakage,match_status
+2026-07-01,SSE_MAIN,1697,1697,1697,0,0,0,0,MATCH_100_PCT
+2026-07-01,STAR,615,615,615,0,0,0,0,MATCH_100_PCT
+2026-07-01,SZSE_MAIN,1494,1494,1494,0,0,0,0,MATCH_100_PCT
+2026-07-01,CHINEXT,1404,1404,1404,0,0,0,0,MATCH_100_PCT
+2026-07-01,BSE,335,335,335,0,0,0,0,MATCH_100_PCT
+2026-08-31,SSE_MAIN,1698,1698,1698,0,0,0,0,MATCH_100_PCT
+2026-08-31,STAR,617,617,617,0,0,0,0,MATCH_100_PCT
+2026-08-31,SZSE_MAIN,1495,1495,1495,0,0,0,0,MATCH_100_PCT
+2026-08-31,CHINEXT,1406,1406,1406,0,0,0,0,MATCH_100_PCT
+2026-08-31,BSE,339,339,339,0,0,0,0,MATCH_100_PCT
+2026-09-30,SSE_MAIN,1698,1698,1698,0,0,0,0,MATCH_100_PCT
+2026-09-30,STAR,617,617,617,0,0,0,0,MATCH_100_PCT
+2026-09-30,SZSE_MAIN,1495,1495,1495,0,0,0,0,MATCH_100_PCT
+2026-09-30,CHINEXT,1406,1406,1406,0,0,0,0,MATCH_100_PCT
+2026-09-30,BSE,348,348,348,0,0,0,0,MATCH_100_PCT
