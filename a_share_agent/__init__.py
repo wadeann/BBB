@@ -5,4 +5,4 @@ Production side effects are guarded by deterministic phase permissions, risk che
 idempotent intents, and append-only audit logging.
 """
 
-__version__ = "0.7.6"
+__version__ = "0.7.7"
