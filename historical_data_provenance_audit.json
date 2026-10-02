@@ -1,8 +1,8 @@
 {
   "audit_version": "0.7.6",
-  "producer_git_commit": "2c9b99e81be139b84c8919828f3ebc3213fc660c",
+  "producer_git_commit": "4d51969bb29fb261c37384b6ecf4bf0a6ec349a0",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-02T15:43:54.643687+00:00",
+  "generated_at": "2026-10-02T15:52:55.224439+00:00",
   "universe": {
     "snapshot_count": 5,
     "legacy_schema_snapshots": 0,
