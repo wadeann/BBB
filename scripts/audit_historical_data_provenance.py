@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,6 +68,25 @@ def _asset_audit_map() -> dict[str, str]:
     return result
 
 
+def _snapshot_row_is_target(row: dict[str, str]) -> bool:
+    """Accept only A-share common equity, including legacy snapshots without security_type.
+
+    v0.7.4 snapshots pre-date the explicit ``security_type`` column.  Treating a
+    missing column as A-share common equity reintroduced B shares, CDRs and invalid
+    code ranges into the audit.  The fallback therefore uses the exact same
+    board/code classifier as Preflight.  Explicit non-common-equity labels always
+    fail closed.
+    """
+    symbol = str(row.get("symbol") or "").strip()
+    board = str(row.get("board") or "").strip().upper()
+    security_type = str(row.get("security_type") or "").strip().upper()
+    if not symbol or not is_a_share_common_equity_symbol(symbol, board):
+        return False
+    if security_type and security_type != "A_SHARE_COMMON_EQUITY":
+        return False
+    return True
+
+
 def audit_universe() -> dict[str, Any]:
     local = _local_rows_by_symbol()
     excluded = _asset_audit_map()
@@ -75,21 +94,28 @@ def audit_universe() -> dict[str, Any]:
     snapshot_count = 0
     missing_total = 0
     extra_total = 0
+    filtered_non_target_rows = 0
+    legacy_schema_snapshots = 0
 
     for snap in sorted(SNAPSHOT_DIR.glob("20??-??-??.csv")):
         date = snap.stem
+        raw_rows = read_csv_rows(snap)
+        if raw_rows and "security_type" not in raw_rows[0]:
+            legacy_schema_snapshots += 1
+        filtered_non_target_rows += sum(1 for row in raw_rows if not _snapshot_row_is_target(row))
         official_rows = {
-            str(r.get("symbol") or "").strip(): r
-            for r in read_csv_rows(snap)
-            if str(r.get("security_type") or "A_SHARE_COMMON_EQUITY").upper() == "A_SHARE_COMMON_EQUITY"
-            and str(r.get("symbol") or "").strip()
+            str(row.get("symbol") or "").strip(): row
+            for row in raw_rows
+            if _snapshot_row_is_target(row)
         }
+
         local_active: dict[str, dict[str, str]] = {}
         for symbol, candidates in local.items():
             for candidate in candidates:
                 if local_record_active_on(candidate, date):
                     local_active[symbol] = candidate
                     break
+
         official_set = set(official_rows)
         local_set = set(local_active)
         missing = sorted(official_set - local_set)
@@ -128,7 +154,7 @@ def audit_universe() -> dict[str, Any]:
                         "exchange": str((official or {}).get("exchange") or ""),
                         "board": str((official or {}).get("board") or representative.get("board") or ""),
                         "difference_type": difference_type,
-                        "security_type": str((official or {}).get("security_type") or excluded.get(symbol) or "A_SHARE_COMMON_EQUITY"),
+                        "security_type": str((official or {}).get("security_type") or "A_SHARE_COMMON_EQUITY"),
                         "listing_date": str((official or {}).get("listing_date") or representative.get("listing_date") or ""),
                         "delisting_date": str(representative.get("delisting_date") or ""),
                         "local_active_from": str(representative.get("active_from") or ""),
@@ -149,13 +175,16 @@ def audit_universe() -> dict[str, Any]:
         writer = csv.DictWriter(fh, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
+
     return {
         "snapshot_count": snapshot_count,
+        "legacy_schema_snapshots": legacy_schema_snapshots,
+        "filtered_non_target_snapshot_rows": filtered_non_target_rows,
         "missing_total": missing_total,
         "extra_total": extra_total,
         "match": bool(snapshot_count and missing_total == 0 and extra_total == 0),
         "detailed_diff_file": UNIVERSE_DIFF.name,
-        "root_cause_counts": dict(sorted(__import__("collections").Counter(r["root_cause"] for r in rows).items())),
+        "root_cause_counts": dict(sorted(Counter(r["root_cause"] for r in rows).items())),
     }
 
 
@@ -163,7 +192,10 @@ def write_ca_diff(metrics: dict[str, Any]) -> None:
     fields = ["status", "symbol", "action_type", "ex_date", "record_date", "detail"]
     rows: list[dict[str, str]] = []
     if not metrics.get("official_register_valid"):
-        rows.append({"status": "OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED", "detail": str((metrics.get("official_register_validation") or {}).get("reason") or "unknown")})
+        rows.append({
+            "status": "OFFICIAL_REGISTER_UNAVAILABLE_OR_UNVERIFIED",
+            "detail": str((metrics.get("official_register_validation") or {}).get("reason") or "unknown"),
+        })
     else:
         for status, key_name in (
             ("MISSING_IN_PRODUCTION", "missing_keys"),
@@ -171,7 +203,14 @@ def write_ca_diff(metrics: dict[str, Any]) -> None:
             ("VALUE_CONFLICT", "conflicting_keys"),
         ):
             for key in metrics.get(key_name) or []:
-                rows.append({"status": status, "symbol": key[0], "action_type": key[1], "ex_date": key[2], "record_date": key[3], "detail": "independent set reconciliation"})
+                rows.append({
+                    "status": status,
+                    "symbol": key[0],
+                    "action_type": key[1],
+                    "ex_date": key[2],
+                    "record_date": key[3],
+                    "detail": "independent set reconciliation",
+                })
     with CA_DIFF.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields)
         writer.writeheader()
@@ -185,13 +224,20 @@ def build_progress_markdown(audit: dict[str, Any]) -> str:
     ca = audit["corporate_actions"]
     st = audit["status"]
     se = audit["sector"]
-    blockers = []
-    if not u["match"]: blockers.append(f"Universe unresolved differences: missing={u['missing_total']}, extra={u['extra_total']}")
-    if not raw.get("raw_dataset_hash_match"): blockers.append("Raw dataset fingerprint mismatch or dataset unmounted")
-    if not cov.get("daily_raw_coverage_fresh"): blockers.append("Daily Raw coverage artifact is stale/unbound")
-    if not ca.get("complete"): blockers.append("Independent Corporate Action event set incomplete/unverified")
-    if not st.get("dataset_complete"): blockers.append(f"Status provenance coverage={st.get('source_coverage', 0):.2%}")
-    if not se.get("dataset_complete"): blockers.append(f"Sector provenance coverage={se.get('source_coverage', 0):.2%}")
+    blockers: list[str] = []
+    if not u["match"]:
+        blockers.append(f"Universe unresolved differences: missing={u['missing_total']}, extra={u['extra_total']}")
+    if not raw.get("raw_dataset_hash_match"):
+        blockers.append("Raw dataset fingerprint mismatch or dataset unmounted")
+    if not cov.get("daily_raw_coverage_fresh"):
+        blockers.append("Daily Raw coverage artifact is stale/unbound")
+    if not ca.get("complete"):
+        blockers.append("Independent Corporate Action event set incomplete/unverified")
+    if not st.get("dataset_complete"):
+        blockers.append(f"Status provenance coverage={st.get('source_coverage', 0):.2%}")
+    if not se.get("dataset_complete"):
+        blockers.append(f"Sector provenance coverage={se.get('source_coverage', 0):.2%}")
+
     lines = [
         "# Historical Data Build Progress",
         "",
@@ -199,6 +245,8 @@ def build_progress_markdown(audit: dict[str, Any]) -> str:
         "",
         "## Universe",
         f"- Snapshots audited: {u['snapshot_count']}",
+        f"- Legacy-schema snapshots: {u.get('legacy_schema_snapshots', 0)}",
+        f"- Non-target snapshot rows filtered: {u.get('filtered_non_target_snapshot_rows', 0)}",
         f"- Missing in local: {u['missing_total']}",
         f"- Extra in local: {u['extra_total']}",
         f"- Exact set match: {u['match']}",
