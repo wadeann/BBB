@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from . import research_legacy as _legacy
-from .data import HistoricalDataProvider
 from .data_integrity import verify_coverage_binding, verify_raw_dataset_manifest
 from .provenance_audit import (
     audit_interval_provenance,
     is_a_share_common_equity_symbol,
+    local_record_active_on,
+    read_csv_rows,
     reconcile_corporate_action_sets,
 )
-from .service import settings_from
 
 ResearchLab = _legacy.ResearchLab
 research_validity = _legacy.research_validity
@@ -32,41 +32,58 @@ def _is_a_share_common_equity_symbol(symbol: str, board: str) -> bool:
     return is_a_share_common_equity_symbol(symbol, board)
 
 
+def _snapshot_row_is_target(row: dict[str, Any]) -> bool:
+    symbol = str(row.get("symbol") or "").strip()
+    board = str(row.get("board") or "").strip().upper()
+    security_type = str(row.get("security_type") or "").strip().upper()
+    if not symbol:
+        return False
+    if security_type:
+        return security_type == "A_SHARE_COMMON_EQUITY" and _is_a_share_common_equity_symbol(symbol, board)
+    return _is_a_share_common_equity_symbol(symbol, board)
+
+
 def _official_universe_audit(config, mcp, overrides: dict[str, Any] | None) -> tuple[bool, int, int]:
-    settings = settings_from(config, overrides or {})
-    provider = HistoricalDataProvider(config.project_root, mcp, use_cache=settings.cache)
-    universe = provider.load_universe_for_period(
-        settings.start_date,
-        settings.end_date,
-        settings.universe_file,
-        max_universe=settings.max_universe,
-        mode=settings.universe_mode,
-    )
-    snapshot_dir = config.project_root / "data" / "backtest" / "official_universe_snapshots"
-    snapshots = sorted(snapshot_dir.glob("*.csv")) if snapshot_dir.exists() else []
-    if not snapshots:
+    """Compare independent official snapshots with PIT security-master membership.
+
+    This gate deliberately ignores ST/suspension/tradability status. Those properties
+    determine strategy eligibility, not whether a security belongs to the market
+    universe on a date. Universe reconciliation therefore uses only asset type plus
+    listing/active/delisting interval semantics, matching the standalone provenance
+    audit and avoiding status-driven 64/5 vs 63/0 count drift.
+    """
+    root = config.project_root
+    snapshot_dir = root / "data" / "backtest" / "official_universe_snapshots"
+    snapshots = sorted(snapshot_dir.glob("20??-??-??.csv")) if snapshot_dir.exists() else []
+    master_path = root / "data" / "backtest" / "security_master.csv"
+    master_rows = read_csv_rows(master_path)
+    if not snapshots or not master_rows:
         return False, 0, 0
+
+    local_by_symbol: dict[str, list[dict[str, str]]] = {}
+    for row in master_rows:
+        symbol = str(row.get("symbol") or "").strip()
+        board = str(row.get("board") or "").strip().upper()
+        if symbol and _is_a_share_common_equity_symbol(symbol, board):
+            local_by_symbol.setdefault(symbol, []).append(row)
+
     extra = missing = checked = 0
     for snap in snapshots:
         date = snap.stem
         if len(date) != 10 or not date.startswith("20"):
             continue
-        official: set[str] = set()
-        with snap.open("r", encoding="utf-8-sig") as fh:
-            for row in csv.DictReader(fh):
-                symbol = str(row.get("symbol") or "").strip()
-                board = str(row.get("board") or "").strip().upper()
-                security_type = str(row.get("security_type") or "").strip().upper()
-                if security_type:
-                    if security_type != "A_SHARE_COMMON_EQUITY":
-                        continue
-                elif not _is_a_share_common_equity_symbol(symbol, board):
-                    continue
-                if symbol:
-                    official.add(symbol)
-        active = set(provider.active_symbols_on(date, universe.symbols))
-        extra += len(active - official)
-        missing += len(official - active)
+        official = {
+            str(row.get("symbol") or "").strip()
+            for row in read_csv_rows(snap)
+            if _snapshot_row_is_target(row)
+        }
+        local_active = {
+            symbol
+            for symbol, rows in local_by_symbol.items()
+            if any(local_record_active_on(row, date) for row in rows)
+        }
+        extra += len(local_active - official)
+        missing += len(official - local_active)
         checked += 1
     return bool(checked and extra == 0 and missing == 0), extra, missing
 
