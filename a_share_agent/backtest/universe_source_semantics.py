@@ -29,6 +29,17 @@ def _read_json(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _project_root_for(raw_register_dir: Path) -> Path:
+    if (
+        raw_register_dir.name == "raw_registers"
+        and raw_register_dir.parent.name == "official_universe_snapshots"
+        and raw_register_dir.parent.parent.name == "backtest"
+        and raw_register_dir.parent.parent.parent.name == "data"
+    ):
+        return raw_register_dir.parent.parent.parent.parent
+    return raw_register_dir.parent
+
+
 def load_source_semantics(raw_register_dir: Path) -> dict[str, Any]:
     return _read_json(raw_register_dir / SEMANTICS_FILE)
 
@@ -80,8 +91,7 @@ def validate_universe_source_semantics(raw_register_dir: Path) -> dict[str, Any]
     invalid_entries: list[str] = []
     unverified_evidence: list[str] = []
     source_results: dict[str, Any] = {}
-    snapshot_dir = raw_register_dir.parent
-    project_root = snapshot_dir.parents[2]
+    project_root = _project_root_for(raw_register_dir)
 
     for name in required:
         entry = sources.get(name)
@@ -132,19 +142,19 @@ def validate_universe_source_semantics(raw_register_dir: Path) -> dict[str, Any]
             verification_mismatches.append(symbol)
 
     binding = _binding_audit(raw_register_dir)
-    sample_evidence_valid = bool(
+    sample_content_valid = bool(
         verification_rows
         and not verification_mismatches
         and not verification_missing_fields
-        and binding["verification_hash_match"]
     )
+    sample_hash_bound = bool(sample_content_valid and binding["verification_hash_match"])
     source_wide_verified = bool(
         not missing_entries
         and not invalid_entries
         and not unverified_evidence
         and binding["manifest_binding_present"]
         and binding["semantics_hash_match"]
-        and sample_evidence_valid
+        and sample_hash_bound
     )
 
     return {
@@ -162,7 +172,8 @@ def validate_universe_source_semantics(raw_register_dir: Path) -> dict[str, Any]
         "sse_verification_sample_count": len(verification_rows),
         "sse_verification_mismatches": verification_mismatches,
         "sse_verification_missing_fields": verification_missing_fields,
-        "sse_sample_evidence_valid": sample_evidence_valid,
+        "sse_sample_evidence_valid": sample_content_valid,
+        "sse_sample_evidence_hash_bound": sample_hash_bound,
         "source_wide_verified": source_wide_verified,
         "ready": source_wide_verified,
         "reason": "OK" if source_wide_verified else "DELISTING_DATE_SOURCE_SEMANTICS_NOT_INDEPENDENTLY_VERIFIED",
