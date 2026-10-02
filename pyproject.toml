@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a-share-agent-runtime"
-version = "0.7.5"
+version = "0.7.6"
 description = "Auditable A-share LLM trading agent runtime with web console"
 requires-python = ">=3.11"
 dependencies = [
