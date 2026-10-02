@@ -12,7 +12,7 @@ from typing import Any
 from ..config import RuntimeConfig
 from ..strategy.signal_engine import DeterministicSignalEngine
 from ..strategy.router import StrategyRouter
-from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size
+from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size, calculate_trading_days_since_listing
 from .data import HistoricalDataProvider
 from .metrics import performance_metrics, monthly_returns, grouped_trade_stats
 from .models import BacktestSettings, PendingOrder
@@ -220,6 +220,11 @@ class BacktestEngine:
                 ca_events = ca_engine.process_actions(d, portfolio)
                 for ev in ca_events:
                     self._log(d, "CORPORATE_ACTION", **ev)
+                    if ev.get("type") == "RIGHTS_ISSUE_INSUFFICIENT_CASH" or "STRICT_RESEARCH_INVALID" in str(ev.get("warning", "")):
+                        self.data_quality["strict_invalid"] = True
+                        self.data_quality["strict_invalid_reason"] = "RIGHTS_ISSUE_INSUFFICIENT_CASH: cash insufficient to exercise mandatory rights issue"
+                        if self.s.universe_mode == "strict_point_in_time":
+                            raise RuntimeError(f"STRICT_RESEARCH_INVALID: Rights issue encountered with insufficient cash for {ev.get('symbol')} on {d}; run terminated.")
 
             # Update prices for active symbols plus current positions. Last known close
             # remains in current_prices for suspended holdings.
@@ -280,7 +285,8 @@ class BacktestEngine:
 
                 b = {**raw_bar, "symbol": o.symbol}
                 sym_status = getattr(self.provider, "status_on", lambda s, dt: "")(o.symbol, d)
-                days_since_listing = r_idx + 1 if r_idx >= 0 else None
+                listing_date = getattr(self.provider, "listing_date_on", lambda s: "")(o.symbol)
+                days_since_listing = calculate_trading_days_since_listing(listing_date, d, trading_calendar=dates)
                 is_delist_1st = (sym_status == "DELISTING" and getattr(self.provider, "delisting_days_on", lambda s, dt: 1)(o.symbol, d) == 1)
                 if self.s.block_open_at_limit and locked_at_limit(
                     b, prev_raw_close, o.direction, status=sym_status, as_of=d,
@@ -293,6 +299,13 @@ class BacktestEngine:
                     if hasattr(self.provider, "is_market_tradable") and not self.provider.is_market_tradable(o.symbol, d):
                         self.rejections.append({"date": d, "symbol": o.symbol, "reason": "SUSPENDED_CANNOT_SELL", "order": o.to_dict()})
                         continue
+                    pos = portfolio.positions.get(o.symbol)
+                    if pos:
+                        sym_board = getattr(self.provider, "board_on", lambda s, dt: "")(o.symbol, d)
+                        sell_qty = board_aware_lot_size(o.symbol, o.requested_quantity if o.requested_quantity > 0 else pos.quantity, direction="SELL", board=sym_board, held_quantity=pos.quantity)
+                        if sell_qty <= 0:
+                            self.rejections.append({"date": d, "symbol": o.symbol, "reason": "SELL_QUANTITY_INVALID_ODD_LOT", "order": o.to_dict()})
+                            continue
                     tr = portfolio.sell(symbol=o.symbol, date=d, signal_date=o.created_date, raw_price=float(raw_bar["open"]), reason=o.reason, cost_model=self.costs)
                     if tr:
                         self._log(d, "TRADE", trade=tr.to_dict())

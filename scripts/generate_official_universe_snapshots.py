@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
-"""Generate official_universe_snapshots/<date>.csv files.
+"""Generate official_universe_snapshots/<date>.csv files from independent raw official registers.
 
-These snapshots represent the independent authoritative record of which securities
-were officially listed on each audit date. They are loaded by build_final_data_readiness.py
-and research.py as the "official set" for set reconciliation, and must NOT be
-derived from security_master.csv (local set).
+Source files:
+- data/backtest/official_universe_snapshots/raw_registers/sse_main_listing_register.csv
+- data/backtest/official_universe_snapshots/raw_registers/star_listing_register.csv
+- data/backtest/official_universe_snapshots/raw_registers/szse_listing_register.csv
+- data/backtest/official_universe_snapshots/raw_registers/bse_listing_register.csv
+- data/backtest/official_universe_snapshots/raw_registers/sse_delisted_register.csv
+- data/backtest/official_universe_snapshots/raw_registers/szse_delisted_register.csv
 
-Source: exchange official monthly listing registers / CSRC filing records.
-
-Known corrections applied:
-- BSE 920xxx pre-allocated codes that received formal listing approval after
-  the snapshot date are excluded.
-- Stocks in delisting transition period that have passed their final trading day
-  are excluded.
-- Absorbed merger targets whose absorption completed before the snapshot date
-  are excluded.
+This generator is COMPLETELY INDEPENDENT of security_master.csv.
 """
 
 import csv
@@ -24,114 +19,225 @@ from pathlib import Path
 from collections import defaultdict
 
 ROOT = Path(__file__).resolve().parent.parent
+RAW_REG_DIR = ROOT / "data" / "backtest" / "official_universe_snapshots" / "raw_registers"
 SNAPSHOT_DIR = ROOT / "data" / "backtest" / "official_universe_snapshots"
 SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Official exchange statistics (from monthly listing registers):
-OFFICIAL_COUNTS = {
-    "2024-10-08": {
-        "SSE_MAIN": 1680, "STAR": 612, "SZSE_MAIN": 1480, "CHINEXT": 1398, "BSE": 310,
-    },
-    "2025-09-29": {
-        "SSE_MAIN": 1695, "STAR": 615, "SZSE_MAIN": 1490, "CHINEXT": 1403, "BSE": 335,
-    },
-    "2026-07-01": {
-        "SSE_MAIN": 1699, "STAR": 616, "SZSE_MAIN": 1495, "CHINEXT": 1406, "BSE": 342,
-    },
-    "2026-08-31": {
-        "SSE_MAIN": 1700, "STAR": 617, "SZSE_MAIN": 1495, "CHINEXT": 1407, "BSE": 342,
-    },
-    "2026-09-30": {
-        "SSE_MAIN": 1700, "STAR": 616, "SZSE_MAIN": 1495, "CHINEXT": 1408, "BSE": 348,
-    },
-}
 
-# Known exclusions: stocks in local security_master NOT officially listed on specific dates
-KNOWN_EXCLUSIONS = {
-    "2026-07-01": {
-        "SSE_MAIN": {"600293.SH", "601198.SH"},
-        "SZSE_MAIN": {"000016.SZ", "000595.SZ"},
-    },
-}
+def sha256_file(filepath: Path) -> str:
+    if not filepath.exists():
+        return ""
+    h = hashlib.sha256()
+    with filepath.open("rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def load_security_master():
-    master_path = ROOT / "data" / "backtest" / "security_master.csv"
-    with master_path.open("r", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f))
+def load_raw_official_registers():
+    """Load authoritative listing and delisting registers directly from exchange exports."""
+    official_stocks = {}
 
+    # 1. SSE Main Board
+    sse_file = RAW_REG_DIR / "sse_main_listing_register.csv"
+    if sse_file.exists():
+        with sse_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["证券代码"].strip()
+                sym = f"{code}.SH"
+                official_stocks[sym] = {
+                    "symbol": sym,
+                    "name": r["证券简称"].strip(),
+                    "exchange": "SSE",
+                    "board": "SSE_MAIN",
+                    "listing_date": r["上市日期"].strip(),
+                    "delisting_date": "",
+                    "source": "SSE_OFFICIAL_LISTING_REGISTER",
+                    "source_document_id_or_url": f"http://www.sse.com.cn/assortment/stock/list/info/price/index.shtml?COMPANY_CODE={code}",
+                    "dataset_version": "2026.09.30",
+                }
 
-def is_active(row, as_of):
-    s = row.get("active_from") or row.get("listing_date") or ""
-    e = row.get("active_to") or row.get("delisting_date") or ""
-    if s and as_of < s:
-        return False
-    if e and as_of > e:
-        return False
-    return True
+    # 2. STAR Board (科创板)
+    star_file = RAW_REG_DIR / "star_listing_register.csv"
+    if star_file.exists():
+        with star_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["证券代码"].strip()
+                sym = f"{code}.SH"
+                official_stocks[sym] = {
+                    "symbol": sym,
+                    "name": r["证券简称"].strip(),
+                    "exchange": "SSE",
+                    "board": "STAR",
+                    "listing_date": r["上市日期"].strip(),
+                    "delisting_date": "",
+                    "source": "SSE_OFFICIAL_LISTING_REGISTER",
+                    "source_document_id_or_url": f"http://star.sse.com.cn/company/detail.shtml?stockCode={code}",
+                    "dataset_version": "2026.09.30",
+                }
+
+    # 3. SZSE Main & ChiNext
+    szse_file = RAW_REG_DIR / "szse_listing_register.csv"
+    if szse_file.exists():
+        with szse_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["A股代码"].strip().zfill(6)
+                sym = f"{code}.SZ"
+                board = "CHINEXT" if code.startswith(("300", "301")) else "SZSE_MAIN"
+                official_stocks[sym] = {
+                    "symbol": sym,
+                    "name": r["A股简称"].strip(),
+                    "exchange": "SZSE",
+                    "board": board,
+                    "listing_date": r["A股上市日期"].strip(),
+                    "delisting_date": "",
+                    "source": "SZSE_OFFICIAL_LISTING_REGISTER",
+                    "source_document_id_or_url": f"http://www.szse.cn/market/product/stock/list/index.html?stockCode={code}",
+                    "dataset_version": "2026.09.30",
+                }
+
+    # 4. BSE (北交所)
+    bse_file = RAW_REG_DIR / "bse_listing_register.csv"
+    if bse_file.exists():
+        with bse_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["证券代码"].strip()
+                sym = f"{code}.BJ"
+                official_stocks[sym] = {
+                    "symbol": sym,
+                    "name": r["证券简称"].strip(),
+                    "exchange": "BSE",
+                    "board": "BSE",
+                    "listing_date": r["上市日期"].strip(),
+                    "delisting_date": "",
+                    "source": "BSE_OFFICIAL_LISTING_REGISTER",
+                    "source_document_id_or_url": f"https://www.bse.cn/company/company_detail.html?stockCode={code}",
+                    "dataset_version": "2026.09.30",
+                }
+
+    # 5. Delisted SSE
+    sse_delist_file = RAW_REG_DIR / "sse_delisted_register.csv"
+    if sse_delist_file.exists():
+        with sse_delist_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["公司代码"].strip()
+                sym = f"{code}.SH"
+                ld = r["上市日期"].strip()
+                dd = r.get("暂停上市日期", "").strip() or r.get("终止上市日期", "").strip()
+                board = "STAR" if code.startswith("688") else "SSE_MAIN"
+                if sym in official_stocks:
+                    official_stocks[sym]["delisting_date"] = dd
+                else:
+                    official_stocks[sym] = {
+                        "symbol": sym,
+                        "name": r["公司简称"].strip(),
+                        "exchange": "SSE",
+                        "board": board,
+                        "listing_date": ld,
+                        "delisting_date": dd,
+                        "source": "SSE_OFFICIAL_DELISTED_REGISTER",
+                        "source_document_id_or_url": f"http://www.sse.com.cn/assortment/stock/list/delist/info/price/index.shtml?COMPANY_CODE={code}",
+                        "dataset_version": "2026.09.30",
+                    }
+
+    # 6. Delisted SZSE
+    szse_delist_file = RAW_REG_DIR / "szse_delisted_register.csv"
+    if szse_delist_file.exists():
+        with szse_delist_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                code = r["证券代码"].strip().zfill(6)
+                sym = f"{code}.SZ"
+                ld = r["上市日期"].strip()
+                dd = r.get("终止上市日期", "").strip()
+                board = "CHINEXT" if code.startswith(("300", "301")) else "SZSE_MAIN"
+                if sym in official_stocks:
+                    official_stocks[sym]["delisting_date"] = dd
+                else:
+                    official_stocks[sym] = {
+                        "symbol": sym,
+                        "name": r["证券简称"].strip(),
+                        "exchange": "SZSE",
+                        "board": board,
+                        "listing_date": ld,
+                        "delisting_date": dd,
+                        "source": "SZSE_OFFICIAL_DELISTED_REGISTER",
+                        "source_document_id_or_url": f"http://www.szse.cn/market/stock/suspend/index.html?stockCode={code}",
+                        "dataset_version": "2026.09.30",
+                    }
+
+    return official_stocks
 
 
 def generate_snapshots():
-    master_rows = load_security_master()
-    manifest_entries = {}
+    official_stocks = load_raw_official_registers()
+    snapshot_dates = ["2024-10-08", "2025-09-29", "2026-07-01", "2026-08-31", "2026-09-30"]
+    fields = ["date", "symbol", "exchange", "board", "listing_date", "source", "source_document_id_or_url", "dataset_version"]
 
-    for snap_date in sorted(OFFICIAL_COUNTS.keys()):
-        exclusions = KNOWN_EXCLUSIONS.get(snap_date, {})
-        active_rows = [r for r in master_rows if is_active(r, snap_date)]
+    snapshot_stats = {}
 
-        by_board = defaultdict(list)
-        for r in active_rows:
-            by_board[r["board"]].append(r)
+    for d in snapshot_dates:
+        records = []
+        for sym, data in sorted(official_stocks.items()):
+            ld = data["listing_date"]
+            dd = data["delisting_date"]
+            if ld and ld <= d:
+                if not dd or dd >= d:
+                    records.append({
+                        "date": d,
+                        "symbol": sym,
+                        "exchange": data["exchange"],
+                        "board": data["board"],
+                        "listing_date": ld,
+                        "source": data["source"],
+                        "source_document_id_or_url": data["source_document_id_or_url"],
+                        "dataset_version": data["dataset_version"],
+                    })
 
-        snapshot_records = []
-        for board in ["SSE_MAIN", "STAR", "SZSE_MAIN", "CHINEXT", "BSE"]:
-            board_exclusions = exclusions.get(board, set())
-            for r in by_board[board]:
-                sym = r["symbol"]
-                if sym in board_exclusions:
-                    continue
-                snapshot_records.append({
-                    "symbol": sym,
-                    "name": r.get("name", ""),
-                    "board": board,
-                    "listing_date": r.get("listing_date", ""),
-                    "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
-                })
-
-        snap_path = SNAPSHOT_DIR / f"{snap_date}.csv"
-        with snap_path.open("w", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=["symbol", "name", "board", "listing_date", "source"])
+        snap_file = SNAPSHOT_DIR / f"{d}.csv"
+        with snap_file.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
             w.writeheader()
-            w.writerows(snapshot_records)
+            w.writerows(records)
 
-        h = hashlib.sha256()
-        with snap_path.open("rb") as f:
-            h.update(f.read())
+        snap_hash = sha256_file(snap_file)
+        by_board = defaultdict(int)
+        for r in records:
+            by_board[r["board"]] += 1
 
-        by_board_counts = defaultdict(int)
-        for r in snapshot_records:
-            by_board_counts[r["board"]] += 1
-
-        manifest_entries[snap_date] = {
-            "file": f"official_universe_snapshots/{snap_date}.csv",
-            "total_symbols": len(snapshot_records),
-            "by_board": dict(by_board_counts),
-            "sha256": h.hexdigest(),
-            "source": "EXCHANGE_OFFICIAL_LISTING_REGISTER",
-            "expected_counts": OFFICIAL_COUNTS.get(snap_date, {}),
+        snapshot_stats[d] = {
+            "file": f"data/backtest/official_universe_snapshots/{d}.csv",
+            "total_symbols": len(records),
+            "by_board": dict(by_board),
+            "sha256": snap_hash,
+            "source": "EXCHANGE_OFFICIAL_LISTING_REGISTERS",
         }
-        print(f"Generated {snap_path}: {len(snapshot_records)} symbols")
+        print(f"Generated independent snapshot {snap_file}: {len(records)} official symbols.")
 
-    manifest_path = SNAPSHOT_DIR / "manifest.json"
-    with manifest_path.open("w", encoding="utf-8") as f:
-        json.dump({
-            "description": "Official universe snapshots from exchange listing registers",
-            "generated_at": "2026-10-02",
-            "snapshots": manifest_entries,
-        }, f, indent=2, ensure_ascii=False)
+    raw_hashes = {
+        f.name: sha256_file(f) for f in sorted(RAW_REG_DIR.glob("*.csv"))
+    }
 
-    print(f"Generated {manifest_path}")
-    return manifest_entries
+    manifest = {
+        "manifest_id": "official_universe_snapshots_v0.7.4",
+        "description": "Independent authoritative A-share official universe snapshots directly derived from SSE, SZSE, and BSE official registers",
+        "generated_at": "2026-10-02T17:15:00+08:00",
+        "source_registers": {
+            "directory": "data/backtest/official_universe_snapshots/raw_registers/",
+            "files": raw_hashes,
+        },
+        "snapshots": snapshot_stats,
+    }
+
+    manifest_file = ROOT / "official_universe_snapshot_manifest.json"
+    with manifest_file.open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    manifest_internal = SNAPSHOT_DIR / "manifest.json"
+    with manifest_internal.open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    print(f"Generated {manifest_file} and {manifest_internal}.")
+    return manifest
 
 
 if __name__ == "__main__":

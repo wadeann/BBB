@@ -633,6 +633,10 @@ class HistoricalDataProvider:
         status = self.status_on(symbol, as_of)
         return status not in {"ST", "*ST", "SUSPENDED", "DELISTING", "DELISTED"}
 
+    def listing_date_on(self, symbol: str) -> str:
+        recs = self._membership.get(symbol, [])
+        return str(recs[0].get("listing_date", "") if recs else "")
+
     def daily_universe_meta(self, as_of: str, fallback_symbols: list[str] | None = None) -> dict[str, Any]:
         records = self.active_records_on(as_of, fallback_symbols)
         tradable_count = sum(1 for x in records if x.get("market_tradable"))

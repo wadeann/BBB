@@ -139,14 +139,21 @@ def board_aware_lot_size(
     quantity: int,
     direction: str = "BUY",
     board: str | None = None,
+    held_quantity: int | None = None,
 ) -> int:
     """Normalize order quantity to board-specific lot/increment rules.
 
     Rules:
-    - SSE/SZSE Main Board: BUY minimum 100 shares, order must be in multiples of 100 shares.
-    - STAR (科创板): BUY minimum 200 shares; above 200 can increment by 1 share.
-    - BSE (北交所): BUY minimum 100 shares; above 100 can increment by 1 share.
-    - ChiNext (创业板): BUY minimum 100 shares, order must be in multiples of 100 shares.
+    - BUY:
+      - SSE/SZSE Main Board: minimum 100 shares, order must be in multiples of 100 shares.
+      - ChiNext (创业板): minimum 100 shares, order must be in multiples of 100 shares.
+      - STAR (科创板): BUY minimum 200 shares; above 200 can increment by 1 share.
+      - BSE (北交所): BUY minimum 100 shares; above 100 can increment by 1 share.
+    - SELL:
+      - Main / ChiNext: if held_quantity < 100, must sell all held_quantity in one order;
+        if held_quantity >= 100, partial sales must be in multiples of 100 shares.
+      - STAR: normal sell minimum 200 shares; if held_quantity < 200, must sell all held_quantity in one order.
+      - BSE: normal sell minimum 100 shares; if held_quantity < 100, must sell all held_quantity in one order.
     """
     s = symbol.split(".")[0]
     upper = symbol.upper()
@@ -165,7 +172,9 @@ def board_aware_lot_size(
         else:
             b = "SSE_MAIN"
 
-    qty = int(quantity)
+    qty = max(0, int(quantity))
+    held = max(0, int(held_quantity)) if held_quantity is not None else qty
+
     if direction.upper() == "BUY":
         if b == "STAR":
             # STAR: minimum 200 shares, then 1-share increments
@@ -179,8 +188,71 @@ def board_aware_lot_size(
             rounded = (qty // lot) * lot
             return rounded if rounded >= lot else 0
     else:
-        # SELL: can sell any odd lots held
-        return max(0, qty)
+        # SELL direction
+        # Selling all shares or order exceeds held quantity -> full liquidation allowed
+        if qty >= held:
+            return held
+
+        # Partial sales:
+        if b == "STAR":
+            if held < 200:
+                # 余额不足200股一次性卖出: cannot sell partial odd lot, must sell entire balance
+                return held if qty == held else 0
+            if qty < 200:
+                return 0
+            return min(qty, held)
+        elif b == "BSE":
+            if held < 100:
+                # 余额不足100股一次性卖出: cannot sell partial odd lot, must sell entire balance
+                return held if qty == held else 0
+            if qty < 100:
+                return 0
+            return min(qty, held)
+        else:
+            # SSE Main, SZSE Main, ChiNext
+            if held < 100:
+                # 不足100股余额一次性卖出: cannot sell partial odd lot, must sell entire balance
+                return held if qty == held else 0
+            if qty < 100:
+                return 0
+            lot = 100
+            rounded = (qty // lot) * lot
+            return min(rounded, held)
+
+
+def calculate_trading_days_since_listing(
+    listing_date: str | None,
+    trade_date: str,
+    trading_calendar: list[str] | set[str] | None = None,
+) -> int:
+    """Calculate exact trading day sequence number since authentic IPO listing date.
+
+    Uses authentic exchange listing_date and trading calendar.
+    Old stocks (e.g. listed years ago) will NEVER have trading_days <= 5.
+    """
+    if not listing_date or not trade_date:
+        return 999999
+    ld = str(listing_date).strip()
+    td = str(trade_date).strip()
+    if td < ld:
+        return 0
+
+    try:
+        from datetime import datetime
+        d_trade = datetime.strptime(td, "%Y-%m-%d").date()
+        d_list = datetime.strptime(ld, "%Y-%m-%d").date()
+        delta_days = (d_trade - d_list).days
+        # If calendar difference is greater than 30 days, definitely > 5 trading days
+        if delta_days > 30:
+            return delta_days
+    except Exception:
+        pass
+
+    if trading_calendar:
+        days = sum(1 for d in trading_calendar if ld <= d <= td)
+        return max(1, days)
+
+    return delta_days if 'delta_days' in locals() else 999999
 
 
 def ipo_no_price_limit(

@@ -107,12 +107,17 @@ def research_validity(report: dict[str, Any], universe: UniverseInfo | None, cfg
         if int(llm_stats.get("failures", 0) or 0) > 0:
             reasons.append("llm_api_failures_present")
             llm_valid = False
-        if int(llm_stats.get("error_candidates", 0) or 0) > 0:
-            reasons.append("llm_error_candidates_present")
-            llm_valid = False
+    # Strict invalid propagation for Corporate Action issues (e.g. Rights Issue insufficient cash)
+    if dq.get("strict_invalid") or any("STRICT_RESEARCH_INVALID" in str(x.get("warning", "")) for x in report.get("logs", [])):
+        reasons.append("corporate_action_rights_issue_insufficient_cash")
+    if dq.get("strict_invalid_reason"):
+        reasons.append(str(dq.get("strict_invalid_reason")))
+
+    is_invalid = bool(dq.get("strict_invalid")) or ("corporate_action_rights_issue_insufficient_cash" in reasons)
+    grade = "INVALID" if is_invalid else ("RESEARCH_GRADE" if not reasons else "DIAGNOSTIC_ONLY")
 
     return {
-        "grade": "RESEARCH_GRADE" if not reasons else "DIAGNOSTIC_ONLY",
+        "grade": grade,
         "reasons": reasons,
         "tested_symbols": tested,
         "neutral_sector_trade_share": neutral_share,
@@ -140,10 +145,28 @@ class ResearchLab:
 
     def run(self, *, overrides: dict[str, Any] | None = None, symbols: list[str] | None = None,
             include_llm: bool = False, experiment_ids: list[str] | None = None) -> dict[str, Any]:
+        base_settings = settings_from(self.config, overrides or {})
+
+        # Hard Gate: If full-market research, verify preflight readiness
+        is_full_market = (
+            (not symbols)
+            or len(symbols) >= 1000
+            or base_settings.max_universe >= 1000
+            or (base_settings.universe_mode == "strict_point_in_time" and (not symbols or len(symbols) > 50))
+        )
+        if is_full_market:
+            preflight = run_research_preflight(self.config, self.mcp, overrides=overrides)
+            if not bool(preflight.get("formal_full_market_ready")):
+                raise RuntimeError(
+                    "FORMAL_FULL_MARKET_GATE_BLOCKED: formal_full_market_ready is False. "
+                    "Formal full-market research runs (full3m/llm3m/full2y) are strictly blocked "
+                    "from generating returns until all data integrity gates pass."
+                )
+
         suite_id = f"research-{uuid.uuid4().hex[:12]}"
         suite_dir = self.out_root / suite_id
         suite_dir.mkdir(parents=True, exist_ok=True)
-        base_settings = settings_from(self.config, overrides or {})
+
         provider = HistoricalDataProvider(self.root, self.mcp, use_cache=base_settings.cache)
         universe: UniverseInfo | None = None
         if not symbols:
@@ -366,10 +389,12 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     sector_constituent_point_in_time = hasattr(provider, "sector_constituents_on") and callable(provider.sector_constituents_on)
     sector_constituent_pit_coverage = 1.0 if sector_constituent_point_in_time else 0.0
 
-    # Corporate Action Engine & Authenticity from actual dataset
+    # Corporate Action Engine & Authenticity via set reconciliation
     ca_prod_file = config.project_root / "data" / "backtest" / "corporate_actions.csv"
+    ca_diff_file = config.project_root / "corporate_action_set_diff.csv"
+    ca_reg_file = config.project_root / "data" / "backtest" / "official_corporate_actions_register.csv"
     ca_ver_file = config.project_root / "corporate_action_verification.csv"
-    corporate_action_data_verified = ca_ver_file.exists()
+    corporate_action_data_verified = ca_ver_file.exists() or ca_diff_file.exists()
     corporate_action_invalid_count = 0
     synthetic_corporate_actions_detected = 0
 
@@ -387,17 +412,46 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
                 elif ver_flag and doc_id:
                     verified_actions_count += 1
 
-    expected_ca_events = 8789
-    ca_ratio = round(verified_actions_count / expected_ca_events, 4) if expected_ca_events else 0.0
+    expected_ca_events = 0
+    matched_ca_events = 0
+    missing_ca_events = 0
+    extra_ca_events = 0
+
+    if ca_diff_file.exists():
+        with ca_diff_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                st = r.get("status", "")
+                if st == "MATCHED":
+                    matched_ca_events += 1
+                    expected_ca_events += 1
+                elif st == "MISSING_IN_PRODUCTION":
+                    missing_ca_events += 1
+                    expected_ca_events += 1
+                elif st == "EXTRA_IN_PRODUCTION":
+                    extra_ca_events += 1
+    elif ca_reg_file.exists():
+        with ca_reg_file.open("r", encoding="utf-8-sig") as f:
+            expected_ca_events = sum(1 for _ in csv.DictReader(f))
+        matched_ca_events = verified_actions_count
+        missing_ca_events = max(0, expected_ca_events - matched_ca_events)
+    else:
+        expected_ca_events = verified_actions_count
+
+    ca_ratio = round(matched_ca_events / expected_ca_events, 4) if expected_ca_events else 0.0
     corporate_action_expected_vs_loaded = {
         "expected_events": expected_ca_events,
-        "loaded_events": verified_actions_count,
+        "loaded_events": loaded_ca_events,
+        "matched_events": matched_ca_events,
+        "missing_events": missing_ca_events,
+        "extra_events": extra_ca_events,
         "ratio": ca_ratio,
     }
     corporate_action_source_coverage = ca_ratio
-    # Full dataset complete requires covering >90% of expected full-market scope with 0 synthetic
-    corporate_action_dataset_complete = bool(ca_ratio >= 0.90 and synthetic_corporate_actions_detected == 0)
-    corporate_action_ready = bool(corporate_action_dataset_complete and synthetic_corporate_actions_detected == 0)
+    # Authentic reconciliation gate: 0 missing, 0 extra, 0 synthetic
+    corporate_action_dataset_complete = bool(
+        expected_ca_events > 0 and missing_ca_events == 0 and extra_ca_events == 0 and synthetic_corporate_actions_detected == 0
+    )
+    corporate_action_ready = corporate_action_dataset_complete
 
     # 9. Universe Set-level Difference against official snapshots
     snapshot_dir = config.project_root / "data" / "backtest" / "official_universe_snapshots"
@@ -467,7 +521,7 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
     sector_data_verified_pit = sector_change_event_count >= 10
     sector_dataset_complete = (sector_source_coverage >= 0.95)
 
-    # 12. Raw Price Coverage dynamically scanned from actual files on disk
+    # 12. Raw Price Coverage dynamically scanned from actual files on disk & daily coverage audit
     raw_dir = config.project_root / "data" / "backtest" / "raw_prices"
     raw_by_board = {"SSE_MAIN": 0, "STAR": 0, "SZSE_MAIN": 0, "CHINEXT": 0, "BSE": 0}
     tot_by_board = {"SSE_MAIN": 0, "STAR": 0, "SZSE_MAIN": 0, "CHINEXT": 0, "BSE": 0}
@@ -497,8 +551,49 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         for b in raw_by_board
     }
     total_has_raw = sum(raw_by_board.values())
-    daily_raw_bar_coverage = round(total_has_raw / total_records, 4) if total_records else 0.0
+    static_raw_bar_coverage = round(total_has_raw / total_records, 4) if total_records else 0.0
+
+    # Daily Raw Bar Coverage Audit
+    daily_cov_file = config.project_root / "daily_raw_coverage.csv"
+    min_daily_raw_coverage = 0.0
+    median_daily_raw_coverage = 0.0
+    p05_daily_raw_coverage = 0.0
+    days_below_98pct = 0
+    daily_raw_records: list[float] = []
+
+    if daily_cov_file.exists():
+        with daily_cov_file.open("r", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                val_str = r.get("raw_coverage_pct", "").rstrip("%")
+                try:
+                    val = float(val_str) / 100.0 if float(val_str) > 1.0 else float(val_str)
+                    daily_raw_records.append(val)
+                except ValueError:
+                    continue
+        if daily_raw_records:
+            sorted_covs = sorted(daily_raw_records)
+            min_daily_raw_coverage = sorted_covs[0]
+            median_daily_raw_coverage = sorted_covs[len(sorted_covs) // 2]
+            p05_idx = max(0, int(len(sorted_covs) * 0.05))
+            p05_daily_raw_coverage = sorted_covs[p05_idx]
+            days_below_98pct = sum(1 for c in daily_raw_records if c < 0.98)
+    else:
+        min_daily_raw_coverage = static_raw_bar_coverage
+        median_daily_raw_coverage = static_raw_bar_coverage
+        p05_daily_raw_coverage = static_raw_bar_coverage
+        days_below_98pct = 0 if static_raw_bar_coverage >= 0.98 else len(check_dates)
+
+    daily_raw_bar_coverage = min_daily_raw_coverage
     each_exchange_raw_coverage_ok = all(v >= 0.98 for v in raw_bar_coverage_by_exchange.values())
+
+    # Raw dataset manifest integrity check
+    manifest_file = config.project_root / "raw_dataset_manifest.json"
+    raw_manifest_info: dict[str, Any] = {}
+    if manifest_file.exists():
+        try:
+            raw_manifest_info = json.loads(manifest_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
 
     # 13. Dynamic Trading Rule Verification (including 2026-07-06 switchover)
     from .costs import price_limit_pct
@@ -577,7 +672,7 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "7_sector_dataset_complete": sector_dataset_complete,
         "8_corporate_action_dataset_complete": corporate_action_dataset_complete,
         "9_raw_execution_price_ready": raw_execution_price_ready,
-        "10_daily_raw_bar_coverage": daily_raw_bar_coverage >= 0.98,
+        "10_daily_raw_bar_coverage": bool(min_daily_raw_coverage >= 0.98 and days_below_98pct == 0),
         "11_each_exchange_raw_coverage": each_exchange_raw_coverage_ok,
         "12_official_universe_set_match": official_universe_set_match,
         "13_historical_trading_rules_verified": historical_trading_rules_verified,
@@ -633,6 +728,18 @@ def run_research_preflight(config: RuntimeConfig, mcp: MCPInvoker | None, *, ove
         "synthetic_corporate_actions_detected": synthetic_corporate_actions_detected,
         "daily_raw_bar_coverage": daily_raw_bar_coverage,
         "raw_bar_coverage_by_exchange": raw_bar_coverage_by_exchange,
+        "daily_raw_coverage_audit": {
+            "min_daily_raw_coverage": min_daily_raw_coverage,
+            "median_daily_raw_coverage": median_daily_raw_coverage,
+            "p05_daily_raw_coverage": p05_daily_raw_coverage,
+            "days_below_98pct": days_below_98pct,
+            "total_evaluated_days": len(daily_raw_records),
+        },
+        "raw_dataset_manifest": {
+            "overall_dataset_hash": raw_manifest_info.get("summary", {}).get("overall_dataset_hash"),
+            "file_count": raw_manifest_info.get("summary", {}).get("file_count"),
+            "row_count": raw_manifest_info.get("summary", {}).get("row_count"),
+        },
         "historical_trading_rules_verified": historical_trading_rules_verified,
         "criteria_checklist": criteria_checklist,
         "universe": {

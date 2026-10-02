@@ -509,4 +509,179 @@ def test_candidate_eligibility_prefilter():
         assert r["data_missing"] is False
 
 
+def test_official_snapshot_independent_difference():
+    """Verify that official universe snapshots are generated independently of local security master
+    and contain official exchange listings (such as CDR 689009.SH) not in local master."""
+    root = Path(__file__).resolve().parents[1]
+    snap_file = root / "data" / "backtest" / "official_universe_snapshots" / "2026-08-31.csv"
+    assert snap_file.exists()
+
+    official_symbols = set()
+    with snap_file.open("r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        assert reader.fieldnames == [
+            "date", "symbol", "exchange", "board", "listing_date",
+            "source", "source_document_id_or_url", "dataset_version"
+        ]
+        for row in reader:
+            official_symbols.add(row["symbol"])
+
+    master_file = root / "data" / "backtest" / "security_master.csv"
+    master_symbols = set()
+    with master_file.open("r", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            master_symbols.add(row["symbol"])
+
+    # 689009.SH is a genuine STAR market listing (Ninebot CDR) present in official SSE register
+    # but not in local equity security master, proving snapshots are truly independent.
+    diff_symbols = official_symbols - master_symbols
+    assert "689009.SH" in diff_symbols
+    assert len(diff_symbols) > 0
+
+    # Verify official snapshot manifest with SHA256 of raw registers
+    manifest_file = root / "official_universe_snapshot_manifest.json"
+    assert manifest_file.exists()
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert "source_registers" in manifest
+    assert len(manifest["source_registers"]["files"]) >= 6
+
+
+def test_security_master_authentic_listing_dates():
+    """Verify all 5655 stocks in security_master.csv have authentic exchange listing dates
+    and zero stocks retain the bogus 2024-09-06 placeholder."""
+    root = Path(__file__).resolve().parents[1]
+    master_file = root / "data" / "backtest" / "security_master.csv"
+    assert master_file.exists()
+
+    stock_map = {}
+    bogus_count = 0
+    total = 0
+    with master_file.open("r", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            total += 1
+            sym = row["symbol"]
+            ld = row.get("listing_date", "")
+            stock_map[sym] = ld
+            if ld == "2024-09-06":
+                bogus_count += 1
+
+    assert total == 5655
+    assert bogus_count == 0
+
+    # Verify authentic historical IPO dates for landmark stocks
+    assert stock_map["600000.SH"] == "1999-11-10"  # Pudong Development Bank
+    assert stock_map["000001.SZ"] == "1991-04-03"  # Ping An Bank
+    assert stock_map["600519.SH"] == "2001-08-27"  # Kweichow Moutai
+    assert stock_map["688981.SH"] == "2020-07-16"  # SMIC
+    assert stock_map["300750.SZ"] == "2018-06-11"  # CATL
+
+
+def test_daily_raw_bar_coverage_audit_metrics():
+    """Verify daily raw bar coverage evaluates every single trading day in backtest period
+    and accurately fails the 98% gate."""
+    root = Path(__file__).resolve().parents[1]
+    cov_file = root / "daily_raw_coverage.csv"
+    assert cov_file.exists()
+
+    rows = []
+    with cov_file.open("r", encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+
+    assert len(rows) == 485  # Total trading days from 2024-10-08 to 2026-09-30
+    cov_pcts = [float(r["raw_coverage_pct"].rstrip("%")) for r in rows]
+    min_cov = min(cov_pcts)
+    max_cov = max(cov_pcts)
+    days_below_98 = sum(1 for c in cov_pcts if c < 98.0)
+
+    assert min_cov >= 40.0
+    assert max_cov <= 45.0
+    assert days_below_98 == 485  # All days fail 98% threshold
+
+    # Verify raw dataset manifest
+    manifest_file = root / "raw_dataset_manifest.json"
+    assert manifest_file.exists()
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest["summary"]["file_count"] == 2323
+    assert manifest["summary"]["row_count"] == 1187093
+    assert manifest["summary"]["overall_dataset_hash"] == "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b"
+
+
+def test_corporate_action_set_reconciliation_audit():
+    """Verify corporate actions undergo true set reconciliation against official register."""
+    root = Path(__file__).resolve().parents[1]
+    diff_file = root / "corporate_action_set_diff.csv"
+    assert diff_file.exists()
+
+    matched = 0
+    missing = 0
+    with diff_file.open("r", encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            st = r["status"]
+            if st == "MATCHED":
+                matched += 1
+            elif st == "MISSING_IN_PRODUCTION":
+                missing += 1
+
+    assert matched == 91
+    assert missing == 7  # 7 official events missing in production corporate_actions.csv
+
+
+def test_ipo_trading_days_calculation_and_price_limit():
+    """Verify IPO trading days calculation accurately uses calendar trading days
+    so mature stocks (like 600000.SH) never enter IPO no-limit mode."""
+    from a_share_agent.backtest.costs import calculate_trading_days_since_listing, ipo_no_price_limit, price_limit_pct
+
+    calendar = [f"2024-10-{i:02d}" for i in range(8, 31)]
+    # Mature stock listed in 1999
+    days = calculate_trading_days_since_listing("1999-11-10", "2024-10-08", trading_calendar=calendar)
+    assert days > 5000
+    assert ipo_no_price_limit("600000.SH", "2024-10-08", trading_days_since_listing=days, board="SSE_MAIN") is False
+    assert price_limit_pct("600000.SH", "2024-10-08", trading_days_since_listing=days) == 0.10
+
+    # Stock listed exactly on trade_date (day 1)
+    days_new = calculate_trading_days_since_listing("2024-10-08", "2024-10-08", trading_calendar=calendar)
+    assert days_new == 1
+    assert ipo_no_price_limit("688001.SH", "2024-10-08", trading_days_since_listing=days_new, board="STAR") is True
+    assert price_limit_pct("688001.SH", "2024-10-08", trading_days_since_listing=days_new) == 999.0
+
+    # BSE stock on day 2: no longer unlimited
+    assert ipo_no_price_limit("920002.BJ", "2024-10-09", trading_days_since_listing=2, board="BSE") is False
+    assert price_limit_pct("920002.BJ", "2024-10-09", trading_days_since_listing=2) == 0.30
+
+
+def test_board_sell_quantity_semantics():
+    """Verify board-specific sell lot rules:
+    - Main board: held < 100 must sell all; partial sells must be multiples of 100.
+    - STAR: held < 200 must sell all; above 200 allows 1-share increments.
+    - BSE: held < 100 must sell all; above 100 allows 1-share increments."""
+    from a_share_agent.backtest.costs import board_aware_lot_size
+
+    # SSE Main Board
+    assert board_aware_lot_size("600000.SH", quantity=50, direction="SELL", held_quantity=50) == 50  # Odd-lot clearance
+    assert board_aware_lot_size("600000.SH", quantity=150, direction="SELL", held_quantity=250) == 100  # Rounded down to 100
+    assert board_aware_lot_size("600000.SH", quantity=250, direction="SELL", held_quantity=250) == 250  # Sell all
+
+    # STAR Market
+    assert board_aware_lot_size("688001.SH", quantity=150, direction="SELL", held_quantity=150) == 150  # Odd-lot clearance
+    assert board_aware_lot_size("688001.SH", quantity=250, direction="SELL", held_quantity=350) == 250  # 1-share increment above 200
+    assert board_aware_lot_size("688001.SH", quantity=150, direction="SELL", held_quantity=350) == 0  # Below min 200
+
+    # BSE
+    assert board_aware_lot_size("920002.BJ", quantity=60, direction="SELL", held_quantity=60) == 60  # Odd-lot clearance
+    assert board_aware_lot_size("920002.BJ", quantity=125, direction="SELL", held_quantity=200) == 125  # 1-share increment above 100
+    assert board_aware_lot_size("920002.BJ", quantity=80, direction="SELL", held_quantity=200) == 0  # Below min 100
+
+
+def test_hard_gate_blocks_full_market_research_execution():
+    """Verify research-suite and ResearchLab strictly block full-market execution
+    when formal_full_market_ready is False."""
+    from a_share_agent.backtest.research import ResearchLab
+    root = Path(__file__).resolve().parents[1]
+    cfg = load_config(root)
+
+    lab = ResearchLab(cfg, mcp=None, llm=None)
+    with pytest.raises(RuntimeError, match="FORMAL_FULL_MARKET_GATE_BLOCKED"):
+        lab.run(overrides={"universe_mode": "strict_point_in_time"})
+
+
 

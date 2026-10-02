@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .config import load_config
@@ -220,6 +221,11 @@ def cmd_backtest(args) -> None:
         "slippage_bps":args.slippage_bps,"sector_mode":args.sector_mode,"universe_mode":getattr(args, "universe_mode", None)
     }.items() if v is not None}
     settings=settings_from(cfg,overrides); provider=HistoricalDataProvider(root,mcp,use_cache=not args.no_cache)
+    if getattr(args, "require_research_grade", False):
+        preflight = run_research_preflight(cfg, mcp, overrides=overrides)
+        if not bool(preflight.get("formal_full_market_ready")):
+            sys.stderr.write("BLOCKED: formal_full_market_ready is false; research grade not ready.\n")
+            raise SystemExit(3)
     symbols=list(args.symbol or [])
     uni=None
     if not symbols:
@@ -265,8 +271,19 @@ def cmd_research_suite(args) -> None:
         "min_score":args.min_score,"max_universe":args.max_universe,"universe_file":args.universe_file,
         "slippage_bps":args.slippage_bps,"sector_mode":args.sector_mode,"universe_mode":args.universe_mode
     }.items() if v is not None}
+    if getattr(args, "require_research_grade", False):
+        preflight = run_research_preflight(cfg, mcp, overrides=overrides)
+        if not bool(preflight.get("formal_full_market_ready")):
+            sys.stderr.write("BLOCKED: formal_full_market_ready is false; full-market research grade not ready.\n")
+            raise SystemExit(3)
     lab=ResearchLab(cfg,mcp,llm)
-    summary=lab.run(overrides=overrides,symbols=list(args.symbol or []),include_llm=include_llm,experiment_ids=list(args.experiment or []))
+    try:
+        summary=lab.run(overrides=overrides,symbols=list(args.symbol or []),include_llm=include_llm,experiment_ids=list(args.experiment or []))
+    except RuntimeError as exc:
+        if "FORMAL_FULL_MARKET_GATE_BLOCKED" in str(exc):
+            sys.stderr.write(f"BLOCKED: {exc}\n")
+            raise SystemExit(3)
+        raise
     print(json.dumps({
         "suite_id":summary["suite_id"],
         "feedback_bundle":summary.get("feedback_bundle"),
@@ -337,6 +354,7 @@ def main() -> None:
     s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
     s.add_argument("--no-cache", action="store_true"); s.add_argument("--walk-forward", action="store_true")
     s.add_argument("--train-months", type=int, default=12); s.add_argument("--test-months", type=int, default=3)
+    s.add_argument("--require-research-grade", action="store_true", help="exit nonzero unless full-market PIT data is research-grade ready")
     s.set_defaults(func=cmd_backtest)
 
     s = sub.add_parser("research-preflight", help="check historical universe/price/sector coverage before research suite")
@@ -354,6 +372,7 @@ def main() -> None:
     s.add_argument("--universe-mode", choices=["strict_point_in_time","prefer_point_in_time","current_fallback","file"])
     s.add_argument("--experiment", action="append", help="repeatable experiment id; default runs all configured deterministic experiments")
     s.add_argument("--include-llm", action="store_true", help="also run configured historical LLM gate experiments; can incur API cost")
+    s.add_argument("--require-research-grade", action="store_true", help="exit nonzero unless full-market PIT data is research-grade ready")
     s.set_defaults(func=cmd_research_suite)
 
     s = sub.add_parser("research-latest", help="show latest research suite feedback bundle path")
