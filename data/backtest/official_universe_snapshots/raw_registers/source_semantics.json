@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "research_asset_type": "A_SHARE_COMMON_EQUITY",
+  "sources": {
+    "szse_delisted_register.csv": {
+      "raw_date_field": "终止上市日期",
+      "normalized_field": "delisting_date",
+      "semantic_status": "EXPLICIT_TERMINATION_FIELD",
+      "allow_as_delisting_date": true,
+      "reason": "The official raw export names the field 终止上市日期 explicitly."
+    },
+    "sse_delisted_register.csv": {
+      "raw_date_field": "暂停上市日期",
+      "normalized_field": "delisting_date",
+      "semantic_status": "PROVISIONAL_SAMPLE_VERIFIED_NOT_SOURCE_WIDE",
+      "allow_as_delisting_date": false,
+      "verification_file": "sse_delisting_date_verification.csv",
+      "required_scope": "ALL_SSE_ROWS_USED_TO_SET_PIT_DELISTING_BOUNDARIES",
+      "reason": "The raw CSV header says 暂停上市日期. Several modern rows have been verified against official 摘牌 announcements and match the actual delisting date, but the header itself is semantically ambiguous and the mapping has not yet been verified source-wide. Production snapshot regeneration must therefore fail closed instead of silently treating the whole column as delisting_date."
+    }
+  }
+}
