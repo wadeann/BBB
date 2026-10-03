@@ -28,7 +28,6 @@ class Portfolio:
     def buy(self, *, symbol: str, date: str, signal_date: str, raw_price: float, quantity: int, stop_price: float,
             strategy_id: str, strategy_family: str, score: float, route_id: str | None, sector: str | None,
             cost_model: AShareCostModel, meta: dict[str, Any] | None = None,
-            # v0.8: unified trade attribution
             pattern_id: str | None = None,
             pattern_version: str | None = None,
             regime_at_signal: str | None = None,
@@ -44,12 +43,20 @@ class Portfolio:
         slippage = max(0.0, (price - raw_price) * quantity)
         if amount + fees > float(self.cash or 0):
             return None
+
+        resolved_pattern_id = pattern_id or str(strategy_id)
+        resolved_pattern_version = pattern_version or "1.0.0"
+        risk_flags = list((meta or {}).get("risk_flags") or [])
+
         self.cash = float(self.cash or 0) - amount - fees
         pos = Position(
             symbol=symbol, entry_date=date, entry_price=price, quantity=quantity, stop_price=stop_price,
             strategy_id=strategy_id, strategy_family=strategy_family, score=score, sector=sector,
             route_id=route_id, signal_date=signal_date, highest_price=price, lowest_price=price,
             entry_cost=fees, meta=meta or {}, raw_entry_price=raw_price, entry_slippage_cost=slippage,
+            pattern_id=resolved_pattern_id, pattern_version=resolved_pattern_version,
+            regime_at_signal=regime_at_signal, theme=theme, theme_lifecycle=theme_lifecycle,
+            signal_strength=signal_strength, risk_flags=risk_flags,
         )
         self.positions[symbol] = pos
         tr = Trade(
@@ -57,59 +64,71 @@ class Portfolio:
             strategy_id, strategy_family, score, route_id, sector,
             raw_price=raw_price, slippage_cost=slippage,
             llm_decision=str((meta or {}).get("llm_decision") or "") or None,
-            # v0.8 fields
-            pattern_id=pattern_id or str(strategy_id),
-            pattern_version=pattern_version or "1.0.0",
+            pattern_id=resolved_pattern_id,
+            pattern_version=resolved_pattern_version,
             regime_at_signal=regime_at_signal,
             theme=theme,
             theme_lifecycle=theme_lifecycle,
             signal_strength=signal_strength,
+            risk_flags=risk_flags,
         )
         self.trades.append(tr)
         return tr
 
     def sell(self, *, symbol: str, date: str, signal_date: str, raw_price: float, reason: str,
              cost_model: AShareCostModel,
-             # v0.8: exit attribution
              exit_regime: str | None = None,
              exit_theme: str | None = None,
              exit_theme_lifecycle: str | None = None,
              ) -> Trade | None:
         pos = self.positions.get(symbol)
-        if not pos: return None
+        if not pos:
+            return None
+
         price = cost_model.slip_price(raw_price, "SELL")
         amount = price * pos.quantity
         fees = cost_model.fees(amount, "SELL")
-        stamp = cost_model.stamp_tax(amount) if hasattr(cost_model, "stamp_tax") else 0.0
-        total_fees = fees + stamp
-        slippage = max(0.0, (raw_price - price) * pos.quantity)
+        exit_slippage = max(0.0, (raw_price - price) * pos.quantity)
         entry_cost = pos.entry_cost or 0.0
         entry_slippage = pos.entry_slippage_cost or 0.0
-        gross_pnl_before_costs = (price - pos.entry_price) * pos.quantity
-        round_trip_fee = entry_cost + total_fees
-        round_trip_slip = entry_slippage + slippage
-        pnl = gross_pnl_before_costs - round_trip_fee - round_trip_slip
-        pnl_pct = pnl / (pos.entry_price * pos.quantity) if pos.entry_price and pos.quantity else 0.0
+
+        # The executed prices already include slippage. Do not subtract slippage a second time.
+        pnl = (price - pos.entry_price) * pos.quantity - entry_cost - fees
+        invested = pos.entry_price * pos.quantity + entry_cost
+        pnl_pct = pnl / invested if invested > 0 else 0.0
+
         mfe = (pos.highest_price / pos.entry_price - 1) if pos.entry_price and pos.highest_price else 0.0
         mae = (pos.lowest_price / pos.entry_price - 1) if pos.entry_price and pos.lowest_price else 0.0
-        self.cash = float(self.cash or 0) + amount - fees - stamp
+        raw_entry = pos.raw_entry_price or pos.entry_price
+        gross_pnl_before_costs = (raw_price - raw_entry) * pos.quantity
+        round_trip_fees = entry_cost + fees
+        round_trip_slippage = entry_slippage + exit_slippage
+
+        self.cash = float(self.cash or 0) + amount - fees
         self.realized_pnl += pnl
+
         tr = Trade(
-            symbol, "SELL", signal_date, date, price, pos.quantity, amount, total_fees, reason,
+            symbol, "SELL", signal_date, date, price, pos.quantity, amount, fees, reason,
             pos.strategy_id, pos.strategy_family, pos.score, pos.route_id, pos.sector,
             pnl=pnl, pnl_pct=pnl_pct, holding_days=pos.holding_days,
             exit_reason=reason, entry_date=pos.entry_date, entry_price=pos.entry_price,
             mfe_pct=mfe, mae_pct=mae,
-            raw_price=raw_price, slippage_cost=slippage,
+            raw_price=raw_price, slippage_cost=exit_slippage,
             gross_pnl_before_costs=gross_pnl_before_costs,
-            round_trip_fees=round_trip_fee, round_trip_slippage=round_trip_slip,
-            # v0.8: carry forward entry attribution + add exit context
-            pattern_id=pos.strategy_id,
-            pattern_version="1.0.0",
-            regime_at_signal=exit_regime,
-            theme=exit_theme,
-            theme_lifecycle=exit_theme_lifecycle,
-            signal_strength=None,
+            round_trip_fees=round_trip_fees, round_trip_slippage=round_trip_slippage,
+            llm_decision=str((pos.meta or {}).get("llm_decision") or "") or None,
+            # Preserve the entry attribution used by Regime × Pattern analysis.
+            pattern_id=pos.pattern_id or pos.strategy_id,
+            pattern_version=pos.pattern_version or "1.0.0",
+            regime_at_signal=pos.regime_at_signal,
+            theme=pos.theme,
+            theme_lifecycle=pos.theme_lifecycle,
+            signal_strength=pos.signal_strength,
+            risk_flags=list(pos.risk_flags),
+            # Keep execution-time context separate from entry attribution.
+            regime_at_exit=exit_regime,
+            theme_at_exit=exit_theme,
+            theme_lifecycle_at_exit=exit_theme_lifecycle,
         )
         self.trades.append(tr)
         del self.positions[symbol]
@@ -119,14 +138,13 @@ class Portfolio:
                       max_total: float, current_market_value: float, multiplier: float, lot: int = 100) -> int:
         if price <= 0 or stop <= 0 or stop >= price:
             return 0
-        risk_per_share = abs(price - stop)
-        if risk_per_share <= 0:
-            return 0
-        risk_capital = equity * risk_per_trade * multiplier
-        raw = int(risk_capital / risk_per_share)
-        max_by_single = int(equity * max_single / price)
-        room = max(0, equity * max_total - current_market_value)
-        max_by_total = int(room / price)
-        qty = min(raw, max_by_single, max_by_total)
-        qty = (qty // lot) * lot
+        rps = price - stop
+        risk_budget = equity * risk_per_trade * max(0.0, multiplier)
+        caps = [
+            risk_budget / rps,
+            equity * max_single * max(0.0, multiplier) / price,
+            max(0.0, equity * max_total - current_market_value) / price,
+            float(self.cash or 0.0) / price,
+        ]
+        qty = int(min(caps) // lot * lot)
         return max(0, qty)
