@@ -1,9 +1,9 @@
 {
   "dataset_id": "ashare_raw_ohlcv_external",
   "dataset_version": "0.7.5",
-  "producer_git_commit": "4d51969bb29fb261c37384b6ecf4bf0a6ec349a0",
+  "producer_git_commit": "536b82ad54a7847f8e4cf384f168f6b7651e189e",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-02T15:50:57.831605+00:00",
+  "generated_at": "2026-10-03T01:10:11.579237+00:00",
   "date_range": {
     "start": "2024-10-01",
     "end": "2026-09-30"

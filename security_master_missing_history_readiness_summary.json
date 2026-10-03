@@ -12,9 +12,9 @@
   },
   "raw_dataset_hash_match": true,
   "daily_raw_coverage_fresh": true,
-  "producer_git_commit": "4d51969bb29fb261c37384b6ecf4bf0a6ec349a0",
+  "producer_git_commit": "536b82ad54a7847f8e4cf384f168f6b7651e189e",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-02T15:52:50.339482+00:00",
+  "generated_at": "2026-10-03T01:13:27.786326+00:00",
   "output_csv": "security_master_missing_history_readiness.csv",
   "safety_rule": "membership_ready is independently re-derived from current hash-bound exchange source artifacts. execution_ready additionally requires complete research-window Raw/Status/Sector coverage. This audit never mutates security_master.csv."
 }
