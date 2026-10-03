@@ -33,6 +33,8 @@ class Portfolio:
             regime_at_signal: str | None = None,
             theme: str | None = None,
             theme_lifecycle: str | None = None,
+            theme_lifecycle_confidence: float | None = None,
+            theme_data_quality: dict[str, Any] | None = None,
             signal_strength: str | None = None,
             ) -> Trade | None:
         if symbol in self.positions or quantity < 100:
@@ -47,8 +49,6 @@ class Portfolio:
         resolved_pattern_id = pattern_id or str(strategy_id)
         resolved_pattern_version = pattern_version or "1.0.0"
         risk_flags = list((meta or {}).get("risk_flags") or [])
-
-        self.cash = float(self.cash or 0) - amount - fees
         pos = Position(
             symbol=symbol, entry_date=date, entry_price=price, quantity=quantity, stop_price=stop_price,
             strategy_id=strategy_id, strategy_family=strategy_family, score=score, sector=sector,
@@ -56,6 +56,8 @@ class Portfolio:
             entry_cost=fees, meta=meta or {}, raw_entry_price=raw_price, entry_slippage_cost=slippage,
             pattern_id=resolved_pattern_id, pattern_version=resolved_pattern_version,
             regime_at_signal=regime_at_signal, theme=theme, theme_lifecycle=theme_lifecycle,
+            theme_lifecycle_confidence=theme_lifecycle_confidence,
+            theme_data_quality=theme_data_quality or {},
             signal_strength=signal_strength, risk_flags=risk_flags,
         )
         self.positions[symbol] = pos
@@ -69,6 +71,8 @@ class Portfolio:
             regime_at_signal=regime_at_signal,
             theme=theme,
             theme_lifecycle=theme_lifecycle,
+            theme_lifecycle_confidence_at_signal=theme_lifecycle_confidence,
+            theme_data_quality_at_signal=theme_data_quality or {},
             signal_strength=signal_strength,
             risk_flags=risk_flags,
         )
@@ -128,6 +132,8 @@ class Portfolio:
             regime_at_signal=pos.regime_at_signal,
             theme=pos.theme,
             theme_lifecycle=pos.theme_lifecycle,
+            theme_lifecycle_confidence_at_signal=pos.theme_lifecycle_confidence,
+            theme_data_quality_at_signal=dict(pos.theme_data_quality),
             signal_strength=pos.signal_strength,
             risk_flags=list(pos.risk_flags),
             # Keep execution-time context separate from entry attribution.

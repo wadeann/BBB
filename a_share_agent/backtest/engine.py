@@ -14,7 +14,7 @@ from ..strategy.signal_engine import DeterministicSignalEngine
 from ..strategy.router import StrategyRouter
 from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size, calculate_trading_days_since_listing
 from .data import HistoricalDataProvider
-from .metrics import performance_metrics, monthly_returns, grouped_trade_stats, regime_pattern_matrix
+from .metrics import performance_metrics, monthly_returns, grouped_trade_stats, regime_pattern_matrix, batch_audit_attribution
 from .models import BacktestSettings, PendingOrder
 from .portfolio import Portfolio
 from .regime import market_context_from_benchmarks, sector_context_from_history
@@ -340,6 +340,8 @@ class BacktestEngine:
                     cost_model=self.costs,meta=o.signal_meta,
                     pattern_id=o.pattern_id,pattern_version=o.pattern_version,
                     regime_at_signal=o.regime_at_signal,theme=o.theme,theme_lifecycle=o.theme_lifecycle,
+                    theme_lifecycle_confidence=o.theme_lifecycle_confidence,
+                    theme_data_quality=o.theme_data_quality,
                     signal_strength=o.signal_strength)
                 if tr:
                     executed_entries_today[d]=executed_entries_today.get(d,0)+1; self._log(d,"TRADE",trade=tr.to_dict())
@@ -466,7 +468,7 @@ class BacktestEngine:
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
-                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),signal_strength=x["primary"].get("strength")))
+                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength")))
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)
@@ -531,7 +533,8 @@ class BacktestEngine:
                 "historical_sector_context":"derived_from_historical_sector_membership_and_sector_price_history_when_available",
                 "present_day_market_health_used":False,"present_day_mainline_used":False,
             },
-            "methodology":{
+            "attribution_audit": batch_audit_attribution(trades),
+        "methodology":{
                 "signal_time":"daily_close","entry_execution":"next_trading_day_open","exit_signal_execution":"next_trading_day_open",
                 "protective_stop":"intraday_daily_bar_low; T+1 enforced","lookahead_protection":True,"llm_used":bool(self.s.llm_filter_enabled),
                 "decision_engine":"deterministic + historical LLM candidate gate" if self.s.llm_filter_enabled else "deterministic rule/scoring engine for reproducibility",

@@ -195,9 +195,9 @@ def _expand_lifecycle(legacy_lifecycle: str, ret5: float, ret20: float,
             confidence = 0.70
             reasons.append("moderate_cooling")
     else:  # unknown
-        lifecycle = "EMERGING"
-        confidence = 0.50
-        reasons.append("unknown_default")
+        lifecycle = "UNKNOWN"
+        confidence = 0.0
+        reasons.append("unknown_lifecycle_no_data")
 
     return {
         "lifecycle": lifecycle,
@@ -214,9 +214,9 @@ def sector_context_from_history(bars: list[dict[str, Any]], as_of: str, *,
     if len(hist) < 25:
         if fallback_neutral:
             return {"as_of":as_of,"sector":name,"sector_strength":"neutral",
-                    "sector_lifecycle":"unknown","lifecycle":"EMERGING",
-                    "lifecycle_confidence":0.50,"lifecycle_reasons":["no_history_fallback"],
-                    "data_quality":{"state":"degraded","fallback":"neutral_no_history"}}
+                    "sector_lifecycle":"unknown","lifecycle":"UNKNOWN",
+                    "lifecycle_confidence":0.0,"lifecycle_reasons":["insufficient_history_fallback"],
+                    "data_quality":{"state":"degraded","fallback":"neutral_no_history","reason":"insufficient_history"}}
         return {"as_of":as_of,"sector":name,"sector_strength":"unknown",
                 "sector_lifecycle":"unknown","lifecycle":"unknown",
                 "lifecycle_confidence":0.0,"lifecycle_reasons":[],

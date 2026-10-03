@@ -158,3 +158,53 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
 def regime_pattern_matrix(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Generate Regime × Pattern × Theme Lifecycle descriptive performance matrix."""
     return multi_key_trade_stats(trades, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+
+
+def audit_trade_attribution(trade: dict) -> dict:
+    """Audit a single closed trade for attribution integrity.
+    
+    Returns dict with:
+    - valid: bool
+    - errors: list[str]
+    """
+    errors = []
+    if trade.get("direction") == "SELL":
+        # Entry attribution must be preserved
+        if not trade.get("pattern_id"):
+            errors.append("missing pattern_id")
+        if not trade.get("regime_at_signal"):
+            errors.append("missing regime_at_signal")
+        if trade.get("theme_lifecycle") is None:
+            errors.append("missing theme_lifecycle")
+        # Timing: exit must happen after entry
+        entry_date = trade.get("entry_date")
+        trade_date = trade.get("trade_date")
+        if trade_date and entry_date and trade_date < entry_date:
+            errors.append("exit_date before entry_date")
+        # Entry attribution must not be contaminated by exit context
+        if trade.get("regime_at_exit") == trade.get("regime_at_signal") and trade.get("regime_at_exit") is not None:
+            pass  # Exit regime CAN equal entry regime; that's fine
+        # Verify BUY timing: buy_signal < buy_trade (from BUY records only)
+    if trade.get("direction") == "BUY":
+        signal_date = trade.get("signal_date")
+        trade_date = trade.get("trade_date")
+        if trade_date and signal_date and trade_date <= signal_date:
+            errors.append("buy_trade_date must be after signal_date")
+    return {"valid": len(errors) == 0, "errors": errors}
+
+
+def batch_audit_attribution(trades: list[dict]) -> dict:
+    """Audit all closed trades and return summary.
+    
+    Checks attribution integrity for every closed trade.
+    """
+    closed = [t for t in trades if t.get("direction") == "SELL"]
+    results = [audit_trade_attribution(t) for t in closed]
+    valid_trades = [r for r in results if r["valid"]]
+    invalid_trades = [r for r in results if not r["valid"]]
+    return {
+        "closed_trades": len(closed),
+        "valid": len(valid_trades),
+        "invalid": len(invalid_trades),
+        "errors": [e for r in invalid_trades for e in r["errors"]],
+    }

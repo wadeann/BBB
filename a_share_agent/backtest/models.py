@@ -119,6 +119,8 @@ class Position:
     theme: str | None = None
     theme_lifecycle: str | None = None
     signal_strength: str | None = None
+    theme_lifecycle_confidence: float | None = None
+    theme_data_quality: dict[str, Any] = field(default_factory=dict)
     risk_flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -162,6 +164,8 @@ class Trade:
     pattern_version: str | None = None
     regime_at_signal: str | None = None
     theme: str | None = None
+    theme_lifecycle_confidence_at_signal: float | None = None
+    theme_data_quality_at_signal: dict[str, Any] = field(default_factory=dict)
     theme_lifecycle: str | None = None
     signal_strength: str | None = None
     risk_flags: list[str] = field(default_factory=list)
@@ -196,7 +200,8 @@ class PendingOrder:
     regime_at_signal: str | None = None
     theme: str | None = None
     theme_lifecycle: str | None = None
+    theme_lifecycle_confidence: float | None = None
+    theme_data_quality: dict[str, Any] = field(default_factory=dict)
     signal_strength: str | None = None
-
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
