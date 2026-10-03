@@ -6,18 +6,10 @@ from statistics import mean, median, pstdev
 from typing import Any
 
 
-
 def entry_context_quality(trade: dict) -> dict:
     """Evaluate whether a trade's entry context is usable for routing.
 
     Both regime AND theme must be known and have OK-quality data.
-
-    Returns dict with:
-    - usable: bool (True iff all conditions met)
-    - regime_ok: bool
-    - regime_known: bool
-    - theme_ok: bool
-    - theme_known: bool
     """
     regime_state = (trade.get("regime_data_quality_at_signal") or {}).get("state")
     theme_state = (trade.get("theme_data_quality_at_signal") or {}).get("state")
@@ -50,15 +42,12 @@ def _quality_state(trade: dict) -> str:
         return "ok"
     if not ecq["regime_known"] or not ecq["theme_known"]:
         return "unknown"
-    regime_s = (trade.get("regime_data_quality_at_signal") or {}).get("state", "")
-    if not regime_s:
-        regime_s = "unknown"
-    theme_s = (trade.get("theme_data_quality_at_signal") or {}).get("state", "")
-    if not theme_s:
-        theme_s = "unknown"
+    regime_s = (trade.get("regime_data_quality_at_signal") or {}).get("state", "") or "unknown"
+    theme_s = (trade.get("theme_data_quality_at_signal") or {}).get("state", "") or "unknown"
     if "unavailable" in (regime_s, theme_s):
         return "unavailable"
     return "degraded"
+
 
 def performance_metrics(equity_curve: list[dict[str,Any]], trades: list[dict[str,Any]], initial_cash: float) -> dict[str,Any]:
     if not equity_curve:
@@ -164,8 +153,6 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
         avg_win = mean(float(t.get("pnl_pct", 0)) for t in wins) if wins else 0.0
         avg_loss = mean(float(t.get("pnl_pct", 0)) for t in losses) if losses else 0.0
 
-        # Descriptive drawdown of the sequential round-trip return stream.
-        # Compound returns so the statistic is not distorted by additive percentages.
         equity_index = 1.0
         peak = 1.0
         max_dd = 0.0
@@ -189,7 +176,6 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
         mfe_vals = [float(t.get("mfe_pct", 0) or 0) for t in items if t.get("mfe_pct") is not None]
         mae_vals = [float(t.get("mae_pct", 0) or 0) for t in items if t.get("mae_pct") is not None]
         row = dict(zip(keys, kt))
-        # Context quality: evaluate regime + theme quality for each trade
         quality_states = [_quality_state(t) for t in items]
         q_ok = quality_states.count("ok")
         q_degraded = quality_states.count("degraded")
@@ -242,33 +228,26 @@ _ENTRY_ATTRIBUTION_FIELDS = [
     "regime_data_quality_at_signal",
 ]
 
+
 def _buy_map(trades: list[dict]) -> dict[str, dict]:
     """Build {round_trip_id: BUY_trade_dict} from trades list."""
-    from collections import defaultdict
     m: dict[str, dict] = {}
     seen: dict[str, int] = defaultdict(int)
     for t in trades:
         if t.get("direction") == "BUY" and t.get("round_trip_id"):
-            rtid = t["round_trip_id"]
+            rtid = str(t["round_trip_id"])
             seen[rtid] += 1
             if rtid not in m:
                 m[rtid] = t
-    # Side-channel for duplicate detection
-    _buy_map._duplicates = [rid for rid, cnt in seen.items() if cnt > 1]  # type: ignore[attr-defined]
+    _buy_map._duplicates = sorted(rid for rid, cnt in seen.items() if cnt > 1)  # type: ignore[attr-defined]
     return m
 
-def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = None) -> dict:
-    """Audit a single trade for attribution integrity.
 
-    Returns dict with:
-    - valid: bool
-    - errors: list[str]
-    - round_trip_id: str | None
-    - symbol: str | None
-    """
+def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = None) -> dict:
+    """Audit a single trade for attribution integrity."""
     round_trip_id = trade.get("round_trip_id")
     symbol = trade.get("symbol")
-    errors = []
+    errors: list[str] = []
 
     if trade.get("direction") == "BUY":
         if not round_trip_id:
@@ -281,20 +260,17 @@ def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = No
     if trade.get("direction") == "SELL":
         if not round_trip_id:
             errors.append("MISSING_ROUND_TRIP_ID")
-        # Basic field presence
         if not trade.get("pattern_id"):
             errors.append("missing pattern_id")
         if not trade.get("regime_at_signal"):
             errors.append("missing regime_at_signal")
         if trade.get("theme_lifecycle") is None:
             errors.append("missing theme_lifecycle")
-        # Timing: exit must happen after entry
         entry_date = trade.get("entry_date")
         trade_date = trade.get("trade_date")
         if trade_date and entry_date and trade_date < entry_date:
             errors.append("exit_date before entry_date")
 
-        # BUY->SELL attribution comparison via round_trip_id
         if buy_map is not None and round_trip_id:
             if round_trip_id in buy_map:
                 buy_trade = buy_map[round_trip_id]
@@ -317,41 +293,50 @@ def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = No
 
 
 def batch_audit_attribution(trades: list[dict]) -> dict:
-    """Audit all trades and return structured summary.
-
-    Checks attribution integrity for every closed trade (SELL),
-    comparing against the matching BUY trade via round_trip_id.
-
-    Returns:
-    - closed_trades: int
-    - valid: int
-    - invalid: int
-    - invalid_trades: list of {round_trip_id, symbol, errors}
-    - duplicate_round_trip_ids: list[str]
-    - missing_matching_buys: list[str]
-    - errors: list[str] (flat, for backward compat)
-    """
+    """Audit closed round trips and fail closed on ambiguous BUY/SELL identities."""
     bm = _buy_map(trades)
     dup_buy_ids = list(getattr(_buy_map, "_duplicates", []))
     closed = [t for t in trades if t.get("direction") == "SELL"]
-    results = [audit_trade_attribution(t, buy_map=bm) for t in closed]
+
+    sell_seen: dict[str, int] = defaultdict(int)
+    for t in closed:
+        rid = t.get("round_trip_id")
+        if rid:
+            sell_seen[str(rid)] += 1
+    dup_sell_ids = sorted(rid for rid, cnt in sell_seen.items() if cnt > 1)
+
+    results = []
+    for t in closed:
+        result = audit_trade_attribution(t, buy_map=bm)
+        rid = str(t.get("round_trip_id")) if t.get("round_trip_id") else None
+        if rid in dup_buy_ids:
+            result["errors"].append("DUPLICATE_BUY_ROUND_TRIP_ID")
+        if rid in dup_sell_ids:
+            result["errors"].append("DUPLICATE_SELL_ROUND_TRIP_ID")
+        result["valid"] = len(result["errors"]) == 0
+        results.append(result)
+
     valid_results = [r for r in results if r["valid"]]
     invalid_results = [r for r in results if not r["valid"]]
     invalid_trades = [
         {"round_trip_id": r["round_trip_id"], "symbol": r["symbol"], "errors": r["errors"]}
         for r in invalid_results
     ]
-    # Find SELL trades with no matching BUY
     buy_ids = set(bm.keys())
-    sell_ids = [t.get("round_trip_id") for t in closed if t.get("round_trip_id")]
-    missing_buys = [rid for rid in sell_ids if rid and rid not in buy_ids]
+    sell_ids = [str(t.get("round_trip_id")) for t in closed if t.get("round_trip_id")]
+    missing_buys = sorted({rid for rid in sell_ids if rid not in buy_ids})
+    missing_round_trip_ids = sum(1 for t in trades if t.get("direction") in {"BUY", "SELL"} and not t.get("round_trip_id"))
+    duplicate_round_trip_ids = sorted(set(dup_buy_ids) | set(dup_sell_ids))
 
     return {
         "closed_trades": len(closed),
         "valid": len(valid_results),
         "invalid": len(invalid_results),
         "invalid_trades": invalid_trades,
-        "duplicate_round_trip_ids": dup_buy_ids,
+        "duplicate_round_trip_ids": duplicate_round_trip_ids,
+        "duplicate_buy_round_trip_ids": dup_buy_ids,
+        "duplicate_sell_round_trip_ids": dup_sell_ids,
+        "missing_round_trip_ids": missing_round_trip_ids,
         "missing_matching_buys": missing_buys,
         "errors": [e for r in invalid_results for e in r["errors"]],
     }
