@@ -474,7 +474,11 @@ class BacktestEngine:
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
-                    rtid = hashlib.sha256(f"{x["symbol"]}|{d}|{next_d}|{x["primary"].get("pattern_id") or x["primary"]["signal"]}|{x["primary"].get("pattern_version","1.0.0")}|{idx}".encode()).hexdigest()[:16]
+                    sym = x["symbol"]
+                    pat_id = x["primary"].get("pattern_id") or x["primary"]["signal"]
+                    pat_ver = x["primary"].get("pattern_version", "1.0.0")
+                    raw = f"{sym}|{d}|{next_d}|{pat_id}|{pat_ver}|{idx}"
+                    rtid = hashlib.sha256(raw.encode()).hexdigest()[:16]
                     pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),regime_confidence_at_signal=x["market"].get("regime_confidence"),regime_data_quality_at_signal=x["market"].get("data_quality"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength"),round_trip_id=rtid))
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
