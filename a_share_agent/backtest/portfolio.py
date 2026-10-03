@@ -103,6 +103,8 @@ class Portfolio:
         gross_pnl_before_costs = (raw_price - raw_entry) * pos.quantity
         round_trip_fees = entry_cost + fees
         round_trip_slippage = entry_slippage + exit_slippage
+        market = (pos.meta.get("market") or {}) if isinstance(pos.meta, dict) else {}
+        sector_ctx = (pos.meta.get("sector") or {}) if isinstance(pos.meta, dict) else {}
 
         self.cash = float(self.cash or 0) + amount - fees
         self.realized_pnl += pnl
@@ -113,6 +115,9 @@ class Portfolio:
             pnl=pnl, pnl_pct=pnl_pct, holding_days=pos.holding_days,
             exit_reason=reason, entry_date=pos.entry_date, entry_price=pos.entry_price,
             mfe_pct=mfe, mae_pct=mae,
+            # Preserve legacy entry-context fields used by existing reports.
+            entry_market_regime=market.get("market_regime"),
+            entry_sector_strength=sector_ctx.get("sector_strength"),
             raw_price=raw_price, slippage_cost=exit_slippage,
             gross_pnl_before_costs=gross_pnl_before_costs,
             round_trip_fees=round_trip_fees, round_trip_slippage=round_trip_slippage,
