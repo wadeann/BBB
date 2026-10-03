@@ -14,7 +14,7 @@ from ..strategy.signal_engine import DeterministicSignalEngine
 from ..strategy.router import StrategyRouter
 from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size, calculate_trading_days_since_listing
 from .data import HistoricalDataProvider
-from .metrics import performance_metrics, monthly_returns, grouped_trade_stats
+from .metrics import performance_metrics, monthly_returns, grouped_trade_stats, regime_pattern_matrix
 from .models import BacktestSettings, PendingOrder
 from .portfolio import Portfolio
 from .regime import market_context_from_benchmarks, sector_context_from_history
@@ -306,7 +306,12 @@ class BacktestEngine:
                         if sell_qty <= 0:
                             self.rejections.append({"date": d, "symbol": o.symbol, "reason": "SELL_QUANTITY_INVALID_ODD_LOT", "order": o.to_dict()})
                             continue
-                    tr = portfolio.sell(symbol=o.symbol, date=d, signal_date=o.created_date, raw_price=float(raw_bar["open"]), reason=o.reason, cost_model=self.costs)
+                    exit_sector = daily_sector_by_symbol.get(o.symbol, ({"name":None},{"sector_lifecycle":"unknown","lifecycle":"unknown"}))
+                    exit_sector_ctx = exit_sector[1] if isinstance(exit_sector, tuple) else {"sector_lifecycle":"unknown","lifecycle":"unknown"}
+                    tr = portfolio.sell(symbol=o.symbol, date=d, signal_date=o.created_date, raw_price=float(raw_bar["open"]), reason=o.reason, cost_model=self.costs,
+                        exit_regime=market.get("regime") or market.get("market_regime"),
+                        exit_theme=exit_sector_ctx.get("sector") or o.sector,
+                        exit_theme_lifecycle=exit_sector_ctx.get("lifecycle") or exit_sector_ctx.get("sector_lifecycle"))
                     if tr:
                         self._log(d, "TRADE", trade=tr.to_dict())
                     continue
@@ -332,7 +337,10 @@ class BacktestEngine:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"RISK_SIZE_ZERO","order":o.to_dict()}); continue
                 tr=portfolio.buy(symbol=o.symbol,date=d,signal_date=o.created_date,raw_price=raw,quantity=qty,stop_price=stop,
                     strategy_id=str(o.strategy_id),strategy_family=str(o.strategy_family),score=float(o.score or 0),route_id=o.route_id,sector=o.sector,
-                    cost_model=self.costs,meta=o.signal_meta)
+                    cost_model=self.costs,meta=o.signal_meta,
+                    pattern_id=o.pattern_id,pattern_version=o.pattern_version,
+                    regime_at_signal=o.regime_at_signal,theme=o.theme,theme_lifecycle=o.theme_lifecycle,
+                    signal_strength=o.signal_strength)
                 if tr:
                     executed_entries_today[d]=executed_entries_today.get(d,0)+1; self._log(d,"TRADE",trade=tr.to_dict())
 
@@ -346,7 +354,12 @@ class BacktestEngine:
                 if d>pos.entry_date: pos.holding_days += 1
                 if d>pos.entry_date and float(raw_b["low"]) <= pos.stop_price:
                     raw_exec=min(float(raw_b["open"]),pos.stop_price) if float(raw_b["open"])<pos.stop_price else pos.stop_price
-                    tr=portfolio.sell(symbol=sym,date=d,signal_date=d,raw_price=raw_exec,reason="STOP_LOSS",cost_model=self.costs)
+                    exit_sec = daily_sector_by_symbol.get(sym, ({"name":pos.sector},{"sector_lifecycle":"unknown","lifecycle":"unknown"}))
+                    exit_sec_ctx = exit_sec[1] if isinstance(exit_sec, tuple) else {"sector_lifecycle":"unknown","lifecycle":"unknown"}
+                    tr=portfolio.sell(symbol=sym,date=d,signal_date=d,raw_price=raw_exec,reason="STOP_LOSS",cost_model=self.costs,
+                        exit_regime=market.get("regime") or market.get("market_regime"),
+                        exit_theme=exit_sec_ctx.get("sector") or pos.sector,
+                        exit_theme_lifecycle=exit_sec_ctx.get("lifecycle") or exit_sec_ctx.get("sector_lifecycle"))
                     if tr: self._log(d,"TRADE",trade=tr.to_dict())
 
             # 3) Close-confirmed exits -> next open.
@@ -453,7 +466,7 @@ class BacktestEngine:
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
-                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta))
+                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),signal_strength=x["primary"].get("strength")))
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)
@@ -464,7 +477,12 @@ class BacktestEngine:
             if not ensure_symbol(sym): continue
             raw_bar=raw_map_by_symbol.get(sym,{}).get(last_date)
             if raw_bar:
-                tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(raw_bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs)
+                exit_sec_info = daily_sector_by_symbol.get(sym, ({"name":pos.sector},{"sector_lifecycle":"unknown","lifecycle":"unknown"})) if hasattr(self, 'daily_sector_by_symbol') else ({"name":pos.sector}, {"sector_lifecycle":"unknown","lifecycle":"unknown"})
+                exit_sec_ctx = exit_sec_info[1] if isinstance(exit_sec_info, tuple) else {"sector_lifecycle":"unknown","lifecycle":"unknown"}
+                tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(raw_bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs,
+                    exit_regime=market.get("regime") if isinstance(market, dict) else None,
+                    exit_theme=exit_sec_ctx.get("sector") or pos.sector,
+                    exit_theme_lifecycle=exit_sec_ctx.get("lifecycle") or exit_sec_ctx.get("sector_lifecycle"))
                 if tr: self._log(last_date,"TRADE",trade=tr.to_dict())
         if equity_curve:
             equity_curve[-1]["equity"]=portfolio.equity(current_prices); equity_curve[-1]["cash"]=portfolio.cash; equity_curve[-1]["market_value"]=portfolio.market_value(current_prices); equity_curve[-1]["positions"]=0
@@ -496,6 +514,8 @@ class BacktestEngine:
             "by_strategy":grouped_trade_stats(trades,"strategy_id"),"by_family":grouped_trade_stats(trades,"strategy_family"),
             "by_route":grouped_trade_stats(trades,"route_id"),"by_sector":grouped_trade_stats(trades,"sector"),
             "by_market_regime":grouped_trade_stats(trades,"entry_market_regime"),"by_sector_strength":grouped_trade_stats(trades,"entry_sector_strength"),
+            # v0.8: Regime × Pattern × Theme Lifecycle performance matrix
+            "regime_pattern_matrix": regime_pattern_matrix(trades),
             "coverage":{
                 "requested_symbols":len(seen_symbols),"tested_symbols":len(bars_by_symbol),"missing_symbols":len(invalid_symbols),
                 "signal_count":signal_count,"deterministic_candidate_count":candidates_count,"candidate_count":candidates_count,
