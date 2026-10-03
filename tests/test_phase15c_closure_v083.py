@@ -48,10 +48,16 @@ def test_smoke_script_compiles_on_ci_python():
     py_compile.compile(str(SMOKE_SCRIPT), doraise=True)
 
 
-def test_canonical_unknown_without_neutral_fallback():
-    ctx = sector_context_from_history([], "2025-01-01", fallback_neutral=False)
+def test_default_missing_history_uses_canonical_unknown():
+    ctx = sector_context_from_history([], "2025-01-01", fallback_neutral=True)
     assert ctx["lifecycle"] == "UNKNOWN"
-    assert ctx["sector_lifecycle"] == "unknown"  # legacy field remains backward compatible
+    assert ctx["sector_lifecycle"] == "unknown"
+
+
+def test_strict_legacy_missing_history_remains_fail_closed():
+    ctx = sector_context_from_history([], "2025-01-01", fallback_neutral=False)
+    assert ctx["lifecycle"] == "unknown"
+    assert ctx["data_quality"]["state"] == "degraded"
 
 
 def test_duplicate_sell_round_trip_fails_closed():
