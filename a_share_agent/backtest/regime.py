@@ -26,55 +26,31 @@ def _expand_regime(legacy_regime: str, trend: str, sentiment: str,
 
     if legacy_regime == "risk_on":
         if ret5 > 0.08 and dd20 > -0.03:
-            regime = "BULL_TREND"
-            confidence = 0.90
-            reasons.append("strong_momentum_low_drawdown")
+            regime = "BULL_TREND"; confidence = 0.90; reasons.append("strong_momentum_low_drawdown")
         elif ret20 > 0.08 and dd20 > -0.08:
-            regime = "BULL_TREND"
-            confidence = 0.80
-            reasons.append("uptrend_moderate_drawdown")
+            regime = "BULL_TREND"; confidence = 0.80; reasons.append("uptrend_moderate_drawdown")
         elif dd20 < -0.04:
-            regime = "BULL_VOLATILE"
-            confidence = 0.75
-            reasons.append("uptrend_with_volatility")
+            regime = "BULL_VOLATILE"; confidence = 0.75; reasons.append("uptrend_with_volatility")
         else:
-            regime = "BULL_TREND"
-            confidence = 0.70
-            reasons.append("risk_on_default")
+            regime = "BULL_TREND"; confidence = 0.70; reasons.append("risk_on_default")
     elif legacy_regime == "risk_off":
         if ret5 < -0.06 and dd20 < -0.10:
-            regime = "PANIC"
-            confidence = 0.90
-            reasons.append("sharp_decline_deep_drawdown")
+            regime = "PANIC"; confidence = 0.90; reasons.append("sharp_decline_deep_drawdown")
         elif ret20 < -0.05 and dd20 < -0.08:
-            regime = "BEAR"
-            confidence = 0.85
-            reasons.append("sustained_decline")
+            regime = "BEAR"; confidence = 0.85; reasons.append("sustained_decline")
         elif sentiment == "panic" or (ret5 < -0.04 and dd20 < -0.06):
-            regime = "PANIC"
-            confidence = 0.80
-            reasons.append("sentiment_panic")
+            regime = "PANIC"; confidence = 0.80; reasons.append("sentiment_panic")
         else:
-            regime = "BEAR"
-            confidence = 0.70
-            reasons.append("risk_off_default")
+            regime = "BEAR"; confidence = 0.70; reasons.append("risk_off_default")
     else:
         if sentiment == "rebound":
-            regime = "RECOVERY"
-            confidence = 0.75
-            reasons.append("rebound_sentiment")
+            regime = "RECOVERY"; confidence = 0.75; reasons.append("rebound_sentiment")
         elif abs(ret5) < 0.015 and abs(ret20) < 0.03:
-            regime = "SIDEWAYS"
-            confidence = 0.85
-            reasons.append("low_momentum")
+            regime = "SIDEWAYS"; confidence = 0.85; reasons.append("low_momentum")
         elif abs(ret20) < 0.05 and (ret5 * ret20) < 0:
-            regime = "ROTATION"
-            confidence = 0.70
-            reasons.append("direction_changes")
+            regime = "ROTATION"; confidence = 0.70; reasons.append("direction_changes")
         else:
-            regime = "SIDEWAYS"
-            confidence = 0.60
-            reasons.append("neutral_default")
+            regime = "SIDEWAYS"; confidence = 0.60; reasons.append("neutral_default")
 
     return {
         "regime": regime,
@@ -135,56 +111,32 @@ def _expand_lifecycle(legacy_lifecycle: str, ret5: float, ret20: float,
     metrics = {"ret5": ret5, "ret20": ret20, "score": score,
                "legacy_lifecycle": legacy_lifecycle, "strength": strength}
     reasons: list[str] = []
-
     if legacy_lifecycle == "accelerating":
         if ret5 > 0.05 and score >= 75:
-            lifecycle = "ACCELERATING"
-            confidence = 0.85
-            reasons.append("strong_acceleration")
+            lifecycle = "ACCELERATING"; confidence = 0.85; reasons.append("strong_acceleration")
         else:
-            lifecycle = "EMERGING"
-            confidence = 0.70
-            reasons.append("moderate_acceleration_mapped_to_emerging")
+            lifecycle = "EMERGING"; confidence = 0.70; reasons.append("moderate_acceleration_mapped_to_emerging")
     elif legacy_lifecycle == "emerging":
         if ret20 > 0.08:
-            lifecycle = "ACCELERATING"
-            confidence = 0.75
-            reasons.append("emerging_with_momentum")
+            lifecycle = "ACCELERATING"; confidence = 0.75; reasons.append("emerging_with_momentum")
         else:
-            lifecycle = "EMERGING"
-            confidence = 0.70
-            reasons.append("early_emerging")
+            lifecycle = "EMERGING"; confidence = 0.70; reasons.append("early_emerging")
     elif legacy_lifecycle == "crowded":
         if ret5 > 0.03 and score >= 65:
-            lifecycle = "LEADING"
-            confidence = 0.70
-            reasons.append("crowded_but_strong")
+            lifecycle = "LEADING"; confidence = 0.70; reasons.append("crowded_but_strong")
         elif ret5 < -0.02:
-            lifecycle = "DISTRIBUTING"
-            confidence = 0.75
-            reasons.append("crowded_weakening")
+            lifecycle = "DISTRIBUTING"; confidence = 0.75; reasons.append("crowded_weakening")
         else:
-            lifecycle = "MATURE"
-            confidence = 0.65
-            reasons.append("crowded_stable")
+            lifecycle = "MATURE"; confidence = 0.65; reasons.append("crowded_stable")
     elif legacy_lifecycle == "cooling":
         if ret20 > 0.03 and strength == "strong":
-            lifecycle = "MATURE"
-            confidence = 0.70
-            reasons.append("cooling_but_strong_medium_term")
+            lifecycle = "MATURE"; confidence = 0.70; reasons.append("cooling_but_strong_medium_term")
         elif ret5 < -0.03:
-            lifecycle = "FADING"
-            confidence = 0.85
-            reasons.append("sharp_cooling")
+            lifecycle = "FADING"; confidence = 0.85; reasons.append("sharp_cooling")
         else:
-            lifecycle = "DISTRIBUTING"
-            confidence = 0.70
-            reasons.append("moderate_cooling")
+            lifecycle = "DISTRIBUTING"; confidence = 0.70; reasons.append("moderate_cooling")
     else:
-        lifecycle = "UNKNOWN"
-        confidence = 0.0
-        reasons.append("unknown_lifecycle_no_data")
-
+        lifecycle = "UNKNOWN"; confidence = 0.0; reasons.append("unknown_lifecycle_no_data")
     return {
         "lifecycle": lifecycle,
         "confidence": round(confidence, 2),
@@ -203,8 +155,10 @@ def sector_context_from_history(bars: list[dict[str, Any]], as_of: str, *,
                     "sector_lifecycle":"unknown","lifecycle":"UNKNOWN",
                     "lifecycle_confidence":0.0,"lifecycle_reasons":["insufficient_history_fallback"],
                     "data_quality":{"state":"degraded","fallback":"neutral_no_history","reason":"insufficient_history"}}
+        # Strict diagnostic fallback is a legacy compatibility surface; downstream
+        # routing treats either case as unknown and fail-closed.
         return {"as_of":as_of,"sector":name,"sector_strength":"unknown",
-                "sector_lifecycle":"unknown","lifecycle":"UNKNOWN",
+                "sector_lifecycle":"unknown","lifecycle":"unknown",
                 "lifecycle_confidence":0.0,"lifecycle_reasons":[],
                 "data_quality":{"state":"degraded"}}
     closes=[float(b["close"]) for b in hist]
