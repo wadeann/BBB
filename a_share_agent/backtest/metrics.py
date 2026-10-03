@@ -135,6 +135,15 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
         mfe_vals = [float(t.get("mfe_pct", 0) or 0) for t in items if t.get("mfe_pct") is not None]
         mae_vals = [float(t.get("mae_pct", 0) or 0) for t in items if t.get("mae_pct") is not None]
         row = dict(zip(keys, kt))
+        # Determine context quality from the most common data quality state across trades
+        quality_states = [t.get("theme_data_quality_at_signal") or {} for t in items]
+        state_counts: dict[str, int] = {}
+        for q in quality_states:
+            s = q.get("state", "unknown")
+            state_counts[s] = state_counts.get(s, 0) + 1
+        quality_state = max(state_counts, key=state_counts.get) if state_counts else "unknown"
+        if row.get("theme_lifecycle") == "UNKNOWN" and quality_state == "unknown":
+            quality_state = "degraded"
         row.update({
             "trades": len(items),
             "win_rate": round(win_rate, 4),
@@ -149,6 +158,8 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
             "avg_holding_days": round(avg_holding, 1),
             "avg_mfe_pct": round(mean(mfe_vals), 4) if mfe_vals else 0.0,
             "avg_mae_pct": round(mean(mae_vals), 4) if mae_vals else 0.0,
+            "context_quality": quality_state,
+            "usable_for_router": quality_state not in ("degraded", "unavailable"),
             "status": "INSUFFICIENT_DATA" if len(items) < 12 else "SUFFICIENT_DATA",
         })
         out.append(row)
