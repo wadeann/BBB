@@ -16,7 +16,9 @@
       "allow_as_delisting_date": false,
       "verification_file": "sse_delisting_date_verification.csv",
       "required_scope": "ALL_SSE_ROWS_USED_TO_SET_PIT_DELISTING_BOUNDARIES",
-      "reason": "The raw CSV header says 暂停上市日期. Several modern rows have been verified against official 摘牌 announcements and match the actual delisting date, but the header itself is semantically ambiguous and the mapping has not yet been verified source-wide. Production snapshot regeneration must therefore fail closed instead of silently treating the whole column as delisting_date."
+      "verification_count": 5,
+      "unverified_count": 13,
+      "reason": "The raw CSV header says 暂停上市日期. 5/18 SSE candidate rows verified against official 摘牌 announcements (600421, 600462, 600608, 600636, 600696) all MATCH. 13 remain unverified including 600705.SH (中航产融) and 601028.SH (玉龙股份) which lack the 退市 prefix and require individual scrutiny. The header is semantically ambiguous and the mapping is not yet verified source-wide. Production snapshot regeneration must therefore fail closed instead of silently treating the whole column as delisting_date."
     }
   }
 }
