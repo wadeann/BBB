@@ -49,10 +49,11 @@ class BacktestSettings:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+
 @dataclass
 class MarketRegimeSnapshot:
     """Point-in-time market regime classification with evidence and metadata.
-    
+
     Regime values per spec: BULL_TREND, BULL_VOLATILE, ROTATION, SIDEWAYS,
     BEAR, PANIC, RECOVERY. Backward-compatible mapping from legacy risk_on/risk_off/neutral.
     """
@@ -72,7 +73,7 @@ class MarketRegimeSnapshot:
 @dataclass
 class ThemeSnapshot:
     """Sector/theme lifecycle snapshot at a point in time.
-    
+
     Lifecycle values: EMERGING, ACCELERATING, LEADING, MATURE, DISTRIBUTING, FADING.
     """
     as_of: str
@@ -111,6 +112,14 @@ class Position:
     meta: dict[str, Any] = field(default_factory=dict)
     raw_entry_price: float = 0.0
     entry_slippage_cost: float = 0.0
+    # Entry attribution must survive until the position is closed.
+    pattern_id: str | None = None
+    pattern_version: str | None = None
+    regime_at_signal: str | None = None
+    theme: str | None = None
+    theme_lifecycle: str | None = None
+    signal_strength: str | None = None
+    risk_flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -148,7 +157,7 @@ class Trade:
     round_trip_fees: float | None = None
     round_trip_slippage: float | None = None
     llm_decision: str | None = None
-    # v0.8: unified trade attribution fields
+    # Entry attribution: immutable for the whole round trip.
     pattern_id: str | None = None
     pattern_version: str | None = None
     regime_at_signal: str | None = None
@@ -156,6 +165,10 @@ class Trade:
     theme_lifecycle: str | None = None
     signal_strength: str | None = None
     risk_flags: list[str] = field(default_factory=list)
+    # Exit context is separate so it cannot overwrite entry attribution.
+    regime_at_exit: str | None = None
+    theme_at_exit: str | None = None
+    theme_lifecycle_at_exit: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -177,7 +190,7 @@ class PendingOrder:
     route_multiplier: float = 1.0
     requested_quantity: int = 0
     signal_meta: dict[str, Any] = field(default_factory=dict)
-    # v0.8: pattern and context attribution carried through to execution
+    # Pattern and entry context carried through to execution.
     pattern_id: str | None = None
     pattern_version: str | None = None
     regime_at_signal: str | None = None
