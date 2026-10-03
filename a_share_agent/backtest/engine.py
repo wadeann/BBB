@@ -1,4 +1,5 @@
 from __future__ import annotations
+import uuid
 
 import bisect
 import json
@@ -339,10 +340,14 @@ class BacktestEngine:
                     strategy_id=str(o.strategy_id),strategy_family=str(o.strategy_family),score=float(o.score or 0),route_id=o.route_id,sector=o.sector,
                     cost_model=self.costs,meta=o.signal_meta,
                     pattern_id=o.pattern_id,pattern_version=o.pattern_version,
-                    regime_at_signal=o.regime_at_signal,theme=o.theme,theme_lifecycle=o.theme_lifecycle,
+                    regime_at_signal=o.regime_at_signal,
+                    regime_confidence_at_signal=o.regime_confidence_at_signal,
+                    regime_data_quality_at_signal=o.regime_data_quality_at_signal,
+                    theme=o.theme,theme_lifecycle=o.theme_lifecycle,
                     theme_lifecycle_confidence=o.theme_lifecycle_confidence,
                     theme_data_quality=o.theme_data_quality,
-                    signal_strength=o.signal_strength)
+                    signal_strength=o.signal_strength,
+                    round_trip_id=o.round_trip_id)
                 if tr:
                     executed_entries_today[d]=executed_entries_today.get(d,0)+1; self._log(d,"TRADE",trade=tr.to_dict())
 
@@ -468,7 +473,8 @@ class BacktestEngine:
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
-                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength")))
+                    rtid = str(uuid.uuid4())
+                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),regime_confidence_at_signal=x["market"].get("confidence"),regime_data_quality_at_signal=x["market"].get("data_quality"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength"),round_trip_id=rtid))
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)

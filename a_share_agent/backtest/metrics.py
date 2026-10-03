@@ -135,15 +135,14 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
         mfe_vals = [float(t.get("mfe_pct", 0) or 0) for t in items if t.get("mfe_pct") is not None]
         mae_vals = [float(t.get("mae_pct", 0) or 0) for t in items if t.get("mae_pct") is not None]
         row = dict(zip(keys, kt))
-        # Determine context quality from the most common data quality state across trades
+        # Context quality: report per-quality-state counts and coverage, not majority vote
         quality_states = [t.get("theme_data_quality_at_signal") or {} for t in items]
-        state_counts: dict[str, int] = {}
-        for q in quality_states:
-            s = q.get("state", "unknown")
-            state_counts[s] = state_counts.get(s, 0) + 1
-        quality_state = max(state_counts, key=state_counts.get) if state_counts else "unknown"
-        if row.get("theme_lifecycle") == "UNKNOWN" and quality_state == "unknown":
-            quality_state = "degraded"
+        q_ok = sum(1 for q in quality_states if q.get("state") == "ok")
+        q_degraded = sum(1 for q in quality_states if q.get("state") == "degraded")
+        q_unavailable = sum(1 for q in quality_states if q.get("state") == "unavailable")
+        q_unknown = sum(1 for q in quality_states if q.get("state", "unknown") in ("unknown", None, ""))
+        total = len(items)
+        quality_coverage = round(q_ok / total, 4) if total > 0 else 0.0
         row.update({
             "trades": len(items),
             "win_rate": round(win_rate, 4),
@@ -158,8 +157,13 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
             "avg_holding_days": round(avg_holding, 1),
             "avg_mfe_pct": round(mean(mfe_vals), 4) if mfe_vals else 0.0,
             "avg_mae_pct": round(mean(mae_vals), 4) if mae_vals else 0.0,
-            "context_quality": quality_state,
-            "usable_for_router": quality_state not in ("degraded", "unavailable"),
+            "quality_ok_trades": q_ok,
+            "quality_degraded_trades": q_degraded,
+            "quality_unavailable_trades": q_unavailable,
+            "quality_unknown_trades": q_unknown,
+            "quality_coverage": quality_coverage,
+            "context_quality": "ok" if quality_coverage == 1.0 else "mixed",
+            "usable_for_router": quality_coverage == 1.0,
             "status": "INSUFFICIENT_DATA" if len(items) < 12 else "SUFFICIENT_DATA",
         })
         out.append(row)
@@ -171,16 +175,48 @@ def regime_pattern_matrix(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return multi_key_trade_stats(trades, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
 
 
-def audit_trade_attribution(trade: dict) -> dict:
-    """Audit a single closed trade for attribution integrity.
-    
+_ENTRY_ATTRIBUTION_FIELDS = [
+    "pattern_id",
+    "pattern_version",
+    "regime_at_signal",
+    "theme",
+    "theme_lifecycle",
+    "theme_lifecycle_confidence_at_signal",
+    "theme_data_quality_at_signal",
+    "signal_strength",
+    "regime_confidence_at_signal",
+    "regime_data_quality_at_signal",
+]
+
+def _buy_map(trades: list[dict]) -> dict[str, dict]:
+    """Build {round_trip_id: BUY_trade_dict} from trades list."""
+    m: dict[str, dict] = {}
+    for t in trades:
+        if t.get("direction") == "BUY" and t.get("round_trip_id"):
+            m[t["round_trip_id"]] = t
+    return m
+
+def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = None) -> dict:
+    """Audit a single trade for attribution integrity.
+
     Returns dict with:
     - valid: bool
     - errors: list[str]
+    - round_trip_id: str | None
+    - symbol: str | None
     """
+    round_trip_id = trade.get("round_trip_id")
+    symbol = trade.get("symbol")
     errors = []
+
+    if trade.get("direction") == "BUY":
+        signal_date = trade.get("signal_date")
+        trade_date = trade.get("trade_date")
+        if trade_date and signal_date and trade_date <= signal_date:
+            errors.append("buy_trade_date must be after signal_date")
+
     if trade.get("direction") == "SELL":
-        # Entry attribution must be preserved
+        # Basic field presence
         if not trade.get("pattern_id"):
             errors.append("missing pattern_id")
         if not trade.get("regime_at_signal"):
@@ -192,30 +228,55 @@ def audit_trade_attribution(trade: dict) -> dict:
         trade_date = trade.get("trade_date")
         if trade_date and entry_date and trade_date < entry_date:
             errors.append("exit_date before entry_date")
-        # Entry attribution must not be contaminated by exit context
-        if trade.get("regime_at_exit") == trade.get("regime_at_signal") and trade.get("regime_at_exit") is not None:
-            pass  # Exit regime CAN equal entry regime; that's fine
-        # Verify BUY timing: buy_signal < buy_trade (from BUY records only)
-    if trade.get("direction") == "BUY":
-        signal_date = trade.get("signal_date")
-        trade_date = trade.get("trade_date")
-        if trade_date and signal_date and trade_date <= signal_date:
-            errors.append("buy_trade_date must be after signal_date")
-    return {"valid": len(errors) == 0, "errors": errors}
+
+        # BUY->SELL attribution comparison via round_trip_id
+        if buy_map is not None and round_trip_id and round_trip_id in buy_map:
+            buy_trade = buy_map[round_trip_id]
+            for field in _ENTRY_ATTRIBUTION_FIELDS:
+                buy_val = buy_trade.get(field)
+                sell_val = trade.get(field)
+                if isinstance(buy_val, dict) and isinstance(sell_val, dict):
+                    # Compare dicts by sorted items
+                    if sorted(buy_val.items()) != sorted(sell_val.items()):
+                        errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
+                elif isinstance(buy_val, float) and isinstance(sell_val, float):
+                    if abs(buy_val - sell_val) > 1e-9:
+                        errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
+                elif buy_val != sell_val:
+                    errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
+        elif buy_map is not None and round_trip_id:
+            errors.append("missing_matching_buy_trade")
+
+    return {"valid": len(errors) == 0, "errors": errors,
+            "round_trip_id": round_trip_id, "symbol": symbol}
 
 
 def batch_audit_attribution(trades: list[dict]) -> dict:
-    """Audit all closed trades and return summary.
-    
-    Checks attribution integrity for every closed trade.
+    """Audit all trades and return structured summary.
+
+    Checks attribution integrity for every closed trade (SELL),
+    comparing against the matching BUY trade via round_trip_id.
+
+    Returns:
+    - closed_trades: int
+    - valid: int
+    - invalid: int
+    - invalid_trades: list of {round_trip_id, symbol, errors}
+    - errors: list[str] (flat, for backward compat)
     """
+    bm = _buy_map(trades)
     closed = [t for t in trades if t.get("direction") == "SELL"]
-    results = [audit_trade_attribution(t) for t in closed]
-    valid_trades = [r for r in results if r["valid"]]
-    invalid_trades = [r for r in results if not r["valid"]]
+    results = [audit_trade_attribution(t, buy_map=bm) for t in closed]
+    valid_results = [r for r in results if r["valid"]]
+    invalid_results = [r for r in results if not r["valid"]]
+    invalid_trades = [
+        {"round_trip_id": r["round_trip_id"], "symbol": r["symbol"], "errors": r["errors"]}
+        for r in invalid_results
+    ]
     return {
         "closed_trades": len(closed),
-        "valid": len(valid_trades),
-        "invalid": len(invalid_trades),
-        "errors": [e for r in invalid_trades for e in r["errors"]],
+        "valid": len(valid_results),
+        "invalid": len(invalid_results),
+        "invalid_trades": invalid_trades,
+        "errors": [e for r in invalid_results for e in r["errors"]],
     }

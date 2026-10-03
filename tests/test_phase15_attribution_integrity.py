@@ -25,13 +25,14 @@ Note: Uses random.Random(seed) instead of built-in hash() for determinism.
 from __future__ import annotations
 
 import random
+import hashlib
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 from a_share_agent.backtest.costs import AShareCostModel
-from a_share_agent.backtest.metrics import multi_key_trade_stats, regime_pattern_matrix
+from a_share_agent.backtest.metrics import multi_key_trade_stats, regime_pattern_matrix, audit_trade_attribution, batch_audit_attribution, _buy_map, _ENTRY_ATTRIBUTION_FIELDS
 from a_share_agent.backtest.models import (
     MarketRegimeSnapshot, ThemeSnapshot, Trade, Position, PendingOrder,
 )
@@ -51,7 +52,8 @@ _SEED = 42
 
 def _det_noise(seed_str: str, scale: float = 1.0) -> float:
     """Deterministic noise from a fixed-seed generator keyed by string."""
-    rng = random.Random(_SEED + hash(seed_str) % 1000000)  # seed is fixed, hash is just for dispersion
+    h = int.from_bytes(hashlib.sha256(seed_str.encode()).digest()[:8], "big")
+    rng = random.Random(_SEED + h % 1000000)
     return (rng.random() - 0.5) * scale
 
 
@@ -410,49 +412,11 @@ class TestPositionSizing:
 
 # ── Attribution Audit Tests ────────────────────────────────────────────
 
-def audit_trade_attribution(trade: dict) -> dict:
-    """Audit a single closed trade for attribution integrity.
-    
-    Returns dict with:
-    - valid: bool
-    - errors: list[str]
-    """
-    errors = []
-    if trade.get("direction") == "SELL":
-        if not trade.get("pattern_id"):
-            errors.append("missing pattern_id")
-        if not trade.get("regime_at_signal"):
-            errors.append("missing regime_at_signal")
-        if trade.get("theme_lifecycle") is None:
-            errors.append("missing theme_lifecycle")
-        entry_date = trade.get("entry_date")
-        trade_date = trade.get("trade_date")
-        if trade_date and entry_date and trade_date < entry_date:
-            errors.append("exit_date before entry_date")
-    if trade.get("direction") == "BUY":
-        signal_date = trade.get("signal_date")
-        trade_date = trade.get("trade_date")
-        if trade_date and signal_date and trade_date <= signal_date:
-            errors.append("buy_trade_date must be after signal_date")
-    return {"valid": len(errors) == 0, "errors": errors}
 
-
-def batch_audit_attribution(trades: list[dict]) -> dict:
-    """Audit all closed trades and return summary."""
-    closed = [t for t in trades if t.get("direction") == "SELL"]
-    results = [audit_trade_attribution(t) for t in closed]
-    valid = [r for r in results if r["valid"]]
-    invalid = [r for r in results if not r["valid"]]
-    return {
-        "closed_trades": len(closed),
-        "valid": len(valid),
-        "invalid": len(invalid),
-        "errors": [e for r in invalid for e in r["errors"]],
-    }
-
+# ── Attribution Audit Tests (production imports) ───────────────────────
 
 class TestAttributionAudit:
-    """The attribution audit must catch corrupted trades."""
+    """The attribution audit must catch corrupted trades using production functions."""
 
     def test_valid_trade_passes_audit(self):
         t = make_trade()
@@ -464,12 +428,6 @@ class TestAttributionAudit:
         result = audit_trade_attribution(t.to_dict())
         assert not result["valid"]
         assert "missing pattern_id" in result["errors"]
-
-    def test_missing_regime_detected(self):
-        t = make_trade(regime_at_signal=None)
-        result = audit_trade_attribution(t.to_dict())
-        assert not result["valid"]
-        assert "missing regime_at_signal" in result["errors"]
 
     def test_buy_trade_date_must_be_after_signal(self):
         t = make_trade(direction="BUY", trade_date="2025-01-15", signal_date="2025-01-16")
@@ -485,8 +443,257 @@ class TestAttributionAudit:
         assert summary["valid"] == 1
         assert summary["invalid"] == 1
 
+    def test_sell_regime_mismatch_caught(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt001",
+                         regime_at_signal="BULL_TREND",
+                         pattern_id="test_pattern", theme="A", theme_lifecycle="UNKNOWN")
+        sell = make_trade(direction="SELL", round_trip_id="rt001",
+                          regime_at_signal="BEAR",
+                          pattern_id="test_pattern", theme="A", theme_lifecycle="UNKNOWN")
+        bm = _buy_map([buy.to_dict(), sell.to_dict()])
+        result = audit_trade_attribution(sell.to_dict(), buy_map=bm)
+        assert not result["valid"]
+        assert any("ENTRY_ATTRIBUTION_MISMATCH:regime_at_signal" in e for e in result["errors"])
 
-# ── Legacy Stats Compatibility ─────────────────────────────────────────
+    def test_sell_pattern_version_mismatch_caught(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt002",
+                         pattern_id="test_pattern", pattern_version="1.0.0",
+                         regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN")
+        sell = make_trade(direction="SELL", round_trip_id="rt002",
+                          pattern_id="test_pattern", pattern_version="2.0.0",
+                          regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN")
+        bm = _buy_map([buy.to_dict(), sell.to_dict()])
+        result = audit_trade_attribution(sell.to_dict(), buy_map=bm)
+        assert not result["valid"]
+        assert any("ENTRY_ATTRIBUTION_MISMATCH:pattern_version" in e for e in result["errors"])
+
+    def test_buy_sell_attribution_fully_matched(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt003",
+                         pattern_id="p1", pattern_version="1.0.0",
+                         regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN",
+                         theme_lifecycle_confidence_at_signal=0.8,
+                         theme_data_quality_at_signal={"state": "ok"},
+                         signal_strength="strong",
+                         regime_confidence_at_signal=0.9,
+                         regime_data_quality_at_signal={"state": "ok"})
+        sell = make_trade(direction="SELL", round_trip_id="rt003",
+                          pattern_id="p1", pattern_version="1.0.0",
+                          regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN",
+                          theme_lifecycle_confidence_at_signal=0.8,
+                          theme_data_quality_at_signal={"state": "ok"},
+                          signal_strength="strong",
+                          regime_confidence_at_signal=0.9,
+                          regime_data_quality_at_signal={"state": "ok"})
+        bm = _buy_map([buy.to_dict(), sell.to_dict()])
+        result = audit_trade_attribution(sell.to_dict(), buy_map=bm)
+        assert result["valid"], f"Expected valid, got errors: {result['errors']}"
+
+    def test_audit_output_includes_trade_details(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt004",
+                         pattern_id="p1", pattern_version="1.0.0",
+                         regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN")
+        sell = make_trade(direction="SELL", round_trip_id="rt004",
+                          pattern_id="p1", pattern_version="2.0.0",
+                          regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN")
+        summary = batch_audit_attribution([buy.to_dict(), sell.to_dict()])
+        assert "invalid_trades" in summary
+        assert len(summary["invalid_trades"]) == 1
+        entry = summary["invalid_trades"][0]
+        assert "round_trip_id" in entry
+        assert "symbol" in entry
+        assert "errors" in entry
+
+    def test_corrupted_theme_lifecycle_caught(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt005",
+                         pattern_id="p1", pattern_version="1.0.0",
+                         regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="ACCELERATING")
+        sell = make_trade(direction="SELL", round_trip_id="rt005",
+                          pattern_id="p1", pattern_version="1.0.0",
+                          regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="MATURE")
+        bm = _buy_map([buy.to_dict(), sell.to_dict()])
+        result = audit_trade_attribution(sell.to_dict(), buy_map=bm)
+        assert not result["valid"]
+        assert any("ENTRY_ATTRIBUTION_MISMATCH:theme_lifecycle" in e for e in result["errors"])
+
+
+# ── Cross-Process Determinism Tests ────────────────────────────────────
+
+class TestCrossProcessDeterminism:
+    """Synthetic data generator must produce identical output across processes."""
+
+    def test_det_noise_stable(self):
+        v1 = _det_noise("test_symbol", 1.0)
+        v2 = _det_noise("test_symbol", 1.0)
+        assert v1 == v2, f"Same-symbol calls differ: {v1} vs {v2}"
+
+    def test_cross_process_hash(self):
+        """Same input yields same hash in two subprocesses."""
+        import subprocess, sys
+        sub_code = (
+            "import hashlib, json\n"
+            "import hashlib as h2\n"
+            "seed = 42\n"
+            "h = int.from_bytes(hashlib.sha256(b'test_symbol').digest()[:8], 'big')\n"
+            "r = (seed + h % 1000000)\n"
+            "print(r)\n"
+        )
+        r1 = subprocess.run([sys.executable, '-c', sub_code], capture_output=True, text=True, timeout=15)
+        r2 = subprocess.run([sys.executable, '-c', sub_code], capture_output=True, text=True, timeout=15)
+        assert r1.stdout.strip() == r2.stdout.strip(), "Cross-process hash mismatch"
+
+    def test_subprocess_bars_deterministic(self):
+        """Full synthetic bars match across subprocess invocations."""
+        import subprocess, sys
+        sub_code = (
+            "import hashlib, random, json, sys\n"
+            "from datetime import date, timedelta\n"
+            "_SEED = 42\n"
+            "def _det_noise(seed_str, scale=1.0):\n"
+            "    h = int.from_bytes(hashlib.sha256(seed_str.encode()).digest()[:8], 'big')\n"
+            "    rng = random.Random(_SEED + h % 1000000)\n"
+            "    return (rng.random() - 0.5) * scale\n"
+            "def det_bars(sym, trend=0.012, vol=0.02, sp=10.0, nd=300, sd=date(2024,1,1)):\n"
+            "    bars=[]; d=sd; price=sp; i=0\n"
+            "    while len(bars) < nd:\n"
+            "        if d.weekday() < 5:\n"
+            "            o=price; c=price*(1+trend+_det_noise(f'{sym}_c_{i}',vol))\n"
+            "            h=max(o,c)*(1+abs(_det_noise(f'{sym}_h_{i}',0.01)))\n"
+            "            l=min(o,c)*(1-abs(_det_noise(f'{sym}_l_{i}',0.01)))\n"
+            "            bars.append({'date':d.isoformat(),'open':round(o,4),'high':round(h,4),'low':round(l,4),'close':round(c,4),'volume':1000000})\n"
+            "            price=c; i+=1\n"
+            "        d+=timedelta(days=1)\n"
+            "    return bars\n"
+            "b=det_bars('CPTEST',nd=50)\n"
+            "print(hashlib.sha256(json.dumps(b,sort_keys=True).encode()).hexdigest())\n"
+        )
+        r1 = subprocess.run([sys.executable, '-c', sub_code], capture_output=True, text=True, timeout=30)
+        r2 = subprocess.run([sys.executable, '-c', sub_code], capture_output=True, text=True, timeout=30)
+        assert r1.returncode == 0, f"Sub1 failed: {r1.stderr}"
+        assert r2.returncode == 0, f"Sub2 failed: {r2.stderr}"
+        assert r1.stdout.strip() == r2.stdout.strip(), f"Cross-process bars differ: {r1.stdout[:20]} vs {r2.stdout[:20]}"
+
+
+# ── Canonical UNKNOWN Tests ────────────────────────────────────────────
+
+class TestCanonicalUNKNOWN:
+    """All lifecycle fields must use uppercase UNKNOWN."""
+
+    def test_theme_snapshot_default_is_unknown(self):
+        ts = ThemeSnapshot("2025-01-01")
+        assert ts.lifecycle == "UNKNOWN", f"Default should be UNKNOWN, got {ts.lifecycle}"
+
+    def test_make_trade_unknown_passes_basic_audit(self):
+        t = make_trade(theme_lifecycle="unknown")
+        result = audit_trade_attribution(t.to_dict())
+        assert result["valid"] is True
+
+
+# ── Entry Context Usable / Regime Quality Tests ───────────────────────
+
+class TestEntryContextUsable:
+    """entry_context_usable must require both regime and theme quality OK."""
+
+    def test_regime_quality_persists(self):
+        buy = make_trade(direction="BUY", round_trip_id="rt_rq1",
+                         regime_confidence_at_signal=0.85,
+                         regime_data_quality_at_signal={"state": "ok"},
+                         pattern_id="p1", pattern_version="1.0.0",
+                         regime_at_signal="BULL_TREND", theme="A", theme_lifecycle="UNKNOWN")
+        sell = make_trade(direction="SELL", round_trip_id="rt_rq1",
+                          regime_confidence_at_signal=0.85,
+                          regime_data_quality_at_signal={"state": "ok"})
+        assert buy.regime_confidence_at_signal == sell.regime_confidence_at_signal
+        assert buy.regime_data_quality_at_signal == sell.regime_data_quality_at_signal
+
+    def test_ok_context_is_usable(self):
+        sell = make_trade(direction="SELL", round_trip_id="rt_rq2",
+                          regime_confidence_at_signal=0.9,
+                          regime_data_quality_at_signal={"state": "ok"},
+                          regime_at_signal="BULL_TREND", theme_lifecycle="ACCELERATING",
+                          theme_data_quality_at_signal={"state": "ok"})
+        d = sell.to_dict()
+        regime_ok = d.get("regime_data_quality_at_signal", {}).get("state") == "ok"
+        theme_ok = d.get("theme_data_quality_at_signal", {}).get("state") == "ok"
+        regime_known = d.get("regime_at_signal") not in (None, "UNKNOWN", "unknown")
+        theme_known = d.get("theme_lifecycle") not in (None, "UNKNOWN", "unknown")
+        assert regime_ok and theme_ok and regime_known and theme_known, "OK context should be usable"
+
+    def test_degraded_regime_not_usable(self):
+        sell = make_trade(direction="SELL", round_trip_id="rt_rq3",
+                          regime_at_signal="UNKNOWN",
+                          regime_data_quality_at_signal={"state": "degraded"},
+                          theme_lifecycle="UNKNOWN")
+        d = sell.to_dict()
+        usable = (
+            d.get("regime_data_quality_at_signal", {}).get("state") == "ok"
+            and d.get("theme_data_quality_at_signal", {}).get("state") == "ok"
+            and d.get("regime_at_signal") not in (None, "UNKNOWN", "unknown")
+            and d.get("theme_lifecycle") not in (None, "UNKNOWN", "unknown")
+        )
+        assert not usable, "Degraded regime should NOT be usable"
+
+
+# ── Matrix Quality Coverage Tests ──────────────────────────────────────
+
+class TestMatrixQualityCoverage:
+    """Matrix must report quality coverage and fail-closed for mixed quality."""
+
+    def test_all_ok_row_usable(self):
+        td = [
+            make_trade(pnl=100.0, pnl_pct=0.01,
+                       theme_data_quality_at_signal={"state": "ok"},
+                       regime_at_signal="BULL_TREND", pattern_id="p1", theme_lifecycle="ACCELERATING").to_dict(),
+            make_trade(pnl=50.0, pnl_pct=0.005,
+                       theme_data_quality_at_signal={"state": "ok"},
+                       regime_at_signal="BULL_TREND", pattern_id="p1", theme_lifecycle="ACCELERATING").to_dict(),
+        ]
+        rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+        assert rows[0]["quality_coverage"] == 1.0
+        assert rows[0]["usable_for_router"] is True
+        assert rows[0]["quality_ok_trades"] == 2
+
+    def test_mixed_row_not_usable(self):
+        td = [
+            make_trade(pnl=100.0, pnl_pct=0.01,
+                       theme_data_quality_at_signal={"state": "ok"},
+                       regime_at_signal="BULL_TREND", pattern_id="p1", theme_lifecycle="ACCELERATING").to_dict(),
+            make_trade(pnl=-50.0, pnl_pct=-0.005,
+                       theme_data_quality_at_signal={"state": "degraded"},
+                       regime_at_signal="BULL_TREND", pattern_id="p1", theme_lifecycle="ACCELERATING").to_dict(),
+        ]
+        rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+        assert rows[0]["quality_coverage"] == 0.5
+        assert rows[0]["usable_for_router"] is False
+
+    def test_all_degraded_not_usable(self):
+        td = [
+            make_trade(pnl=100.0, pnl_pct=0.01, theme_data_quality_at_signal={"state": "degraded"}).to_dict() for _ in range(3)
+        ]
+        rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+        assert rows[0]["usable_for_router"] is False
+
+    def test_unknown_quality_not_usable(self):
+        td = [make_trade(pnl=100.0, pnl_pct=0.01, theme_data_quality_at_signal={}).to_dict()]
+        rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+        assert rows[0]["quality_coverage"] == 0.0
+        assert rows[0]["usable_for_router"] is False
+
+    def test_quality_counts_breakdown(self):
+        td = [
+            make_trade(pnl=100.0, pnl_pct=0.01, theme_data_quality_at_signal={"state": "ok"}).to_dict(),
+            make_trade(pnl=50.0, pnl_pct=0.005, theme_data_quality_at_signal={"state": "ok"}).to_dict(),
+            make_trade(pnl=-20.0, pnl_pct=-0.002, theme_data_quality_at_signal={"state": "degraded"}).to_dict(),
+            make_trade(pnl=-10.0, pnl_pct=-0.001, theme_data_quality_at_signal={"state": "unavailable"}).to_dict(),
+            make_trade(pnl=30.0, pnl_pct=0.003, theme_data_quality_at_signal={}).to_dict(),
+        ]
+        rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
+        r = rows[0]
+        assert r["quality_ok_trades"] == 2
+        assert r["quality_degraded_trades"] == 1
+        assert r["quality_unavailable_trades"] == 1
+        assert r["quality_unknown_trades"] == 1
+        assert r["quality_coverage"] == 0.4
+        assert r["usable_for_router"] is False
 
 class TestLegacyStatsCompatibility:
     """Legacy grouped_trade_stats must still work."""

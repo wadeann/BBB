@@ -31,11 +31,14 @@ class Portfolio:
             pattern_id: str | None = None,
             pattern_version: str | None = None,
             regime_at_signal: str | None = None,
+            regime_confidence_at_signal: float | None = None,
+            regime_data_quality_at_signal: dict[str, Any] | None = None,
             theme: str | None = None,
             theme_lifecycle: str | None = None,
             theme_lifecycle_confidence: float | None = None,
             theme_data_quality: dict[str, Any] | None = None,
             signal_strength: str | None = None,
+            round_trip_id: str | None = None,
             ) -> Trade | None:
         if symbol in self.positions or quantity < 100:
             return None
@@ -58,7 +61,9 @@ class Portfolio:
             regime_at_signal=regime_at_signal, theme=theme, theme_lifecycle=theme_lifecycle,
             theme_lifecycle_confidence=theme_lifecycle_confidence,
             theme_data_quality=theme_data_quality or {},
-            signal_strength=signal_strength, risk_flags=risk_flags,
+            regime_confidence_at_signal=regime_confidence_at_signal,
+            regime_data_quality_at_signal=regime_data_quality_at_signal or {},
+            signal_strength=signal_strength, round_trip_id=round_trip_id, risk_flags=risk_flags,
         )
         self.positions[symbol] = pos
         tr = Trade(
@@ -69,11 +74,14 @@ class Portfolio:
             pattern_id=resolved_pattern_id,
             pattern_version=resolved_pattern_version,
             regime_at_signal=regime_at_signal,
+            regime_confidence_at_signal=regime_confidence_at_signal,
+            regime_data_quality_at_signal=regime_data_quality_at_signal or {},
             theme=theme,
             theme_lifecycle=theme_lifecycle,
             theme_lifecycle_confidence_at_signal=theme_lifecycle_confidence,
             theme_data_quality_at_signal=theme_data_quality or {},
             signal_strength=signal_strength,
+            round_trip_id=round_trip_id,
             risk_flags=risk_flags,
         )
         self.trades.append(tr)
@@ -130,11 +138,14 @@ class Portfolio:
             pattern_id=pos.pattern_id or pos.strategy_id,
             pattern_version=pos.pattern_version or "1.0.0",
             regime_at_signal=pos.regime_at_signal,
+            regime_confidence_at_signal=pos.regime_confidence_at_signal,
+            regime_data_quality_at_signal=dict(pos.regime_data_quality_at_signal),
             theme=pos.theme,
             theme_lifecycle=pos.theme_lifecycle,
             theme_lifecycle_confidence_at_signal=pos.theme_lifecycle_confidence,
             theme_data_quality_at_signal=dict(pos.theme_data_quality),
             signal_strength=pos.signal_strength,
+            round_trip_id=pos.round_trip_id,
             risk_flags=list(pos.risk_flags),
             # Keep execution-time context separate from entry attribution.
             regime_at_exit=exit_regime,
