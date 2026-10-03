@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from statistics import mean, pstdev
+from statistics import mean, median, pstdev
 from typing import Any
 
 
@@ -82,9 +82,11 @@ def grouped_trade_stats(trades: list[dict[str,Any]], key: str) -> list[dict[str,
 
 
 def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
-    """Group closed trades by multiple keys (e.g. regime x pattern) and compute stats.
-    
-    Each combination of key values produces one row with full statistics.
+    """Group closed trades by multiple keys and compute descriptive statistics.
+
+    This function does not decide whether a pattern should be enabled. Router enablement
+    belongs to the validation layer and must use out-of-sample evidence, not an in-sample
+    win-rate shortcut.
     """
     groups: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
     for t in trades:
@@ -92,39 +94,43 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
             continue
         key_tuple = tuple(str(t.get(k) or "unknown") for k in keys)
         groups[key_tuple].append(t)
+
     out = []
     for kt, items in groups.items():
         wins = [t for t in items if float(t["pnl"]) > 0]
         losses = [t for t in items if float(t["pnl"]) < 0]
+        returns = [float(t.get("pnl_pct", 0)) for t in items]
         win_rate = len(wins) / len(items) if items else 0.0
-        avg_return = mean(float(t.get("pnl_pct", 0)) for t in items) if items else 0.0
-        median_return = sorted([float(t.get("pnl_pct", 0)) for t in items])[len(items)//2] if items else 0.0
+        avg_return = mean(returns) if returns else 0.0
+        median_return = median(returns) if returns else 0.0
         gross_profit = sum(float(t["pnl"]) for t in wins)
         gross_loss = abs(sum(float(t["pnl"]) for t in losses))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
-        expectancy = sum(float(t.get("pnl_pct", 0)) for t in items) / len(items) if items else 0.0
+        expectancy = mean(returns) if returns else 0.0
         avg_win = mean(float(t.get("pnl_pct", 0)) for t in wins) if wins else 0.0
         avg_loss = mean(float(t.get("pnl_pct", 0)) for t in losses) if losses else 0.0
-        # Max drawdown on cumulative return
-        cumulative = 0.0
-        peak = 0.0
+
+        # Descriptive drawdown of the sequential round-trip return stream.
+        # Compound returns so the statistic is not distorted by additive percentages.
+        equity_index = 1.0
+        peak = 1.0
         max_dd = 0.0
-        for t in sorted(items, key=lambda x: str(x.get("trade_date") or "")):
-            cumulative += float(t.get("pnl_pct", 0))
-            if cumulative > peak:
-                peak = cumulative
-            dd = cumulative - peak
-            if dd < max_dd:
-                max_dd = dd
-        # Consecutive losses
+        ordered_items = sorted(items, key=lambda x: str(x.get("trade_date") or ""))
+        for t in ordered_items:
+            equity_index *= 1.0 + float(t.get("pnl_pct", 0))
+            peak = max(peak, equity_index)
+            dd = equity_index / peak - 1.0 if peak else 0.0
+            max_dd = min(max_dd, dd)
+
         streak = 0
         max_loss_streak = 0
-        for t in sorted(items, key=lambda x: str(x.get("trade_date") or "")):
+        for t in ordered_items:
             if float(t.get("pnl", 0)) < 0:
                 streak += 1
                 max_loss_streak = max(max_loss_streak, streak)
             else:
                 streak = 0
+
         avg_holding = mean(float(t.get("holding_days", 0) or 0) for t in items) if items else 0.0
         mfe_vals = [float(t.get("mfe_pct", 0) or 0) for t in items if t.get("mfe_pct") is not None]
         mae_vals = [float(t.get("mae_pct", 0) or 0) for t in items if t.get("mae_pct") is not None]
@@ -143,17 +149,12 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
             "avg_holding_days": round(avg_holding, 1),
             "avg_mfe_pct": round(mean(mfe_vals), 4) if mfe_vals else 0.0,
             "avg_mae_pct": round(mean(mae_vals), 4) if mae_vals else 0.0,
-            "status": "ENABLED" if len(items) >= 12 and win_rate >= 0.35 else (
-                "INSUFFICIENT_DATA" if len(items) < 12 else "DISABLED"
-            ),
+            "status": "INSUFFICIENT_DATA" if len(items) < 12 else "SUFFICIENT_DATA",
         })
         out.append(row)
     return sorted(out, key=lambda x: x.get("expectancy_pct", 0), reverse=True)
 
 
 def regime_pattern_matrix(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Generate Regime × Pattern × Theme Lifecycle performance matrix.
-    
-    Computes stats for each combination and flags INSUFFICIENT_DATA where sample < 12.
-    """
+    """Generate Regime × Pattern × Theme Lifecycle descriptive performance matrix."""
     return multi_key_trade_stats(trades, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
