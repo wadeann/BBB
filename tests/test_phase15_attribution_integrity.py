@@ -709,19 +709,26 @@ class TestPhase15C:
 
     def test_real_regime_confidence_reaches_sell(self):
         """Regime confidence from market context must flow through to SELL trade."""
-        from datetime import date, timedelta
-        from a_share_agent.backtest.regime import market_context_from_history
         from a_share_agent.backtest.engine import BacktestEngine
         from a_share_agent.backtest.models import BacktestSettings
         from a_share_agent.backtest.data import HistoricalDataProvider
         from a_share_agent.config import load_config
         root = Path(__file__).resolve().parent.parent
+        # Check if cached data exists; skip on CI or environments without it
+        cache_path = root / "data" / "backtest" / "cache" / "bars" / "000300_SH.json"
+        if not cache_path.exists():
+            pytest.skip("No cached benchmark data (CI or local-only test)")
         cfg = load_config(root)
         provider = HistoricalDataProvider(root, mcp=None, use_cache=True)
         s = BacktestSettings(start_date="2025-06-01", end_date="2025-09-30",
             benchmark="000300.SH", min_score=75, max_holding_days=20, max_positions=3,
             initial_cash=5_000_000)
-        report = BacktestEngine(cfg, provider, s).run(["600519.SH", "600036.SH"])
+        try:
+            report = BacktestEngine(cfg, provider, s).run(["600519.SH", "600036.SH"])
+        except RuntimeError as e:
+            if "benchmark bars unavailable" in str(e):
+                pytest.skip(f"Benchmark data not available: {e}")
+            raise
         trades = report.get("trades", [])
         has_confidence = any(
             t.get("regime_confidence_at_signal") is not None and t.get("regime_confidence_at_signal") > 0
@@ -729,7 +736,6 @@ class TestPhase15C:
         )
         if len([t for t in trades if t.get("direction") == "SELL"]) == 0:
             pytest.skip("No trades in this date range")
-        # At least some trades should have regime_confidence from market context
         assert has_confidence, "No trade has regime_confidence_at_signal > 0"
 
     def test_degraded_regime_good_theme_unusable(self):
