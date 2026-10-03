@@ -1,0 +1,49 @@
+# Walk-forward configuration — Phase 2A.1 frozen contract
+# This config is used by WalkForwardEngine and the preflight/stability pipeline.
+
+start_date: "2024-10-01"
+end_date: "2026-09-30"
+
+# 10 smoke-test symbols covering major A-share sectors
+universe:
+  - "000001.SZ"
+  - "000002.SZ"
+  - "000333.SZ"
+  - "000651.SZ"
+  - "000858.SZ"
+  - "002415.SZ"
+  - "002475.SZ"
+  - "300059.SZ"
+  - "300750.SZ"
+  - "600519.SH"
+
+# Month arithmetic: 12 training, 3 test/observation, 3 step
+train_months: 12
+test_months: 3
+step_months: 3
+
+warmup_bars: 260
+
+# Immutable settings overrides passed to BacktestSettings
+settings:
+  min_score: 75.0
+  max_positions: 5
+  max_holding_days: 20
+  risk_per_trade: 0.005
+  benchmark: "000300.SH"
+
+# Stability thresholds — pre-registered defaults (user-approved before use)
+# All comparisons are strict unless noted.
+stability_thresholds:
+  min_observed_folds: 4
+  min_informative_folds: 3
+  min_closed_per_fold: 10
+  min_total_closed: 40
+  required_context_coverage: 1.0
+  min_finite_pf_folds: 3
+  min_median_expectancy: 0.0
+  min_median_pf: 1.0
+  min_positive_fold_fraction: 0.6666666666666666  # 2/3
+  max_drawdown_loss: 0.15
+  min_worst_expectancy: -0.02
+  max_positive_concentration: 0.5

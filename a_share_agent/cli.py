@@ -18,7 +18,7 @@ from .backtest.service import BacktestService, settings_from
 from .backtest.data import HistoricalDataProvider
 from .backtest.engine import BacktestEngine
 from .backtest.report import BacktestReportWriter
-from .backtest.walk_forward import WalkForwardEngine
+from .backtest.walk_forward_service import run_stability
 from .backtest.research import ResearchLab, run_research_preflight
 
 
@@ -236,13 +236,36 @@ def cmd_backtest(args) -> None:
         if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"seed_symbols":len(symbols),"tested_union_symbols":report.get("coverage",{}).get("tested_symbols",0),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records,"dynamic_daily":uni.dynamic_daily,"dataset_version":uni.dataset_version,"coverage":uni.coverage}
         return report
     report=run_one(settings); path=BacktestReportWriter(root).write(report)
-    out={"run_id":report["run_id"],"report_dir":str(path),"metrics":report["metrics"],"coverage":report["coverage"],"data_quality":report["data_quality"]}
-    if args.walk_forward:
-        wf=WalkForwardEngine(run_one).run(settings,train_months=args.train_months,test_months=args.test_months)
-        (path/"walk_forward.json").write_text(json.dumps(wf,ensure_ascii=False,indent=2),encoding="utf-8")
-        out["walk_forward"]={"segments":len(wf.get("segments",[])),"file":str(path/"walk_forward.json")}
     print(json.dumps(out,ensure_ascii=False,indent=2,default=str))
 
+
+def cmd_walk_forward_stability(args) -> None:
+    root=_project_root(args.root); cfg=load_config(root)
+    import yaml
+    config_path=Path(args.config)
+    if not config_path.is_absolute(): config_path=root/args.config
+    if not config_path.exists():
+        raise SystemExit(f"config not found: {config_path}")
+    with config_path.open("r",encoding="utf-8") as fh:
+        wf_cfg=yaml.safe_load(fh) or {}
+    wf_cfg.setdefault("start_date",cfg.backtest.get("start_date","2024-10-01"))
+    wf_cfg.setdefault("end_date",cfg.backtest.get("end_date","2026-09-30"))
+    wf_cfg.setdefault("train_months",12); wf_cfg.setdefault("test_months",3); wf_cfg.setdefault("step_months",3)
+    wf_cfg.setdefault("warmup_bars",260); wf_cfg.setdefault("universe",[])
+    wf_cfg.setdefault("settings",{}); wf_cfg.setdefault("stability_thresholds",{})
+    output=Path(args.output)
+    if not output.is_absolute(): output=root/args.output
+    try:
+        result=run_stability(cfg,wf_cfg,output,run_id=args.run_id)
+    except FileExistsError as exc:
+        sys.stderr.write(f"COLLISION: {exc}\n"); raise SystemExit(3)
+    except RuntimeError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n"); raise SystemExit(3)
+    print(json.dumps(result,ensure_ascii=False,indent=2,default=str))
+    status=result.get("status","FAILED")
+    if status=="COMPLETED": raise SystemExit(0)
+    elif status=="PARTIAL": raise SystemExit(1)
+    else: raise SystemExit(2)
 
 
 def cmd_research_preflight(args) -> None:

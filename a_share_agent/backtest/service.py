@@ -15,7 +15,6 @@ from .data import HistoricalDataProvider
 from .engine import BacktestEngine
 from .models import BacktestSettings
 from .report import BacktestReportWriter
-from .walk_forward import WalkForwardEngine
 
 
 def settings_from(config: RuntimeConfig, overrides: dict[str,Any] | None=None) -> BacktestSettings:
@@ -40,9 +39,9 @@ class BacktestService:
 
     def submit(self, overrides: dict[str,Any] | None=None, symbols: list[str] | None=None, *, walk_forward: bool=False) -> dict[str,Any]:
         jid=f"job-{uuid.uuid4().hex[:12]}"; j={"job_id":jid,"status":"QUEUED","created_at":datetime.now().astimezone().isoformat(),"overrides":overrides or {},"symbol_count":len(symbols or []),"walk_forward":walk_forward}
-        self._save_job(j); self.pool.submit(self._run_job,jid,overrides or {},symbols or [],walk_forward); return j
+        self._save_job(j); self.pool.submit(self._run_job,jid,overrides or {},symbols or []); return j
 
-    def _run_job(self,jid:str,overrides:dict[str,Any],symbols:list[str],walk_forward:bool)->None:
+    def _run_job(self,jid:str,overrides:dict[str,Any],symbols:list[str])->None:
         j=self.get_job(jid) or {"job_id":jid}; j.update(status="RUNNING",started_at=datetime.now().astimezone().isoformat()); self._save_job(j)
         try:
             s=settings_from(self.config,overrides); provider=HistoricalDataProvider(self.config.project_root,self.mcp,use_cache=s.cache)
@@ -56,11 +55,7 @@ class BacktestService:
                     r["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"seed_symbols":len(symbols),"tested_union_symbols":r.get("coverage",{}).get("tested_symbols",0),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records,"dynamic_daily":uni.dynamic_daily,"dataset_version":uni.dataset_version,"coverage":uni.coverage}
                 return r
             report=run_one(s); path=self.writer.write(report)
-            wf=None
-            if walk_forward:
-                wf=WalkForwardEngine(run_one).run(s)
-                (path/"walk_forward.json").write_text(json.dumps(wf,ensure_ascii=False,indent=2),encoding="utf-8")
-            j.update(status="COMPLETED",completed_at=datetime.now().astimezone().isoformat(),run_id=report["run_id"],report_dir=str(path),metrics=report.get("metrics"),coverage=report.get("coverage"),walk_forward=wf)
+            j.update(status="COMPLETED",completed_at=datetime.now().astimezone().isoformat(),run_id=report["run_id"],report_dir=str(path),metrics=report.get("metrics"),coverage=report.get("coverage"))
         except Exception as exc:
             j.update(status="FAILED",completed_at=datetime.now().astimezone().isoformat(),error=f"{type(exc).__name__}: {exc}")
         self._save_job(j)

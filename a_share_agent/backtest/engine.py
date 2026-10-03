@@ -7,7 +7,7 @@ import bisect
 import json
 import math
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -104,7 +104,16 @@ class BacktestEngine:
             return {"as_of":d,"sector":name,"sector_strength":"neutral","sector_lifecycle":"unknown","sector_score":50.0,"data_quality":{"state":"ok","research_ablation":"sector_disabled"}}
         return sector_context_from_history(bars,d,name=name,fallback_neutral=self.s.sector_mode!="strict")
 
-    def run(self, symbols: list[str]) -> dict[str,Any]:
+    def run(self, symbols: list[str], evaluation_window: dict[str, Any] | None = None) -> dict[str,Any]:
+        # Validate evaluation_window if provided
+        if evaluation_window is not None:
+            if not isinstance(evaluation_window, dict):
+                raise TypeError("evaluation_window must be a dict or None")
+            for _key in ("fold_id", "entry_start", "entry_end_exclusive", "observation_end_exclusive"):
+                if _key not in evaluation_window:
+                    raise ValueError(f"evaluation_window missing required key: {_key}")
+            self.s.start_date = evaluation_window["entry_start"]
+            self.s.end_date = (datetime.strptime(evaluation_window["observation_end_exclusive"], "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
         benchmark_symbols=list(dict.fromkeys([self.s.benchmark, *[str(x) for x in self.cfg.defaults.get("benchmarks",{}).values()]]))
         benchmark_series={sym:self.provider.bars(sym,count=max(900,self.s.warmup_bars+550)) for sym in benchmark_symbols}
         benchmark=benchmark_series.get(self.s.benchmark) or next((v for v in benchmark_series.values() if v),[])
@@ -113,6 +122,8 @@ class BacktestEngine:
         dates=[b["date"] for b in benchmark if self.s.start_date <= b["date"] <= self.s.end_date]
         if not dates:
             raise RuntimeError("no benchmark trading dates in requested range")
+        if evaluation_window is not None:
+            dates = [d for d in dates if d < evaluation_window["observation_end_exclusive"]]
 
         # v0.7: symbols is a fallback/seed universe only. In point-in-time mode the
         # provider returns a different active universe for every historical date.
@@ -221,7 +232,7 @@ class BacktestEngine:
             if ca_engine is not None and hasattr(ca_engine, "process_actions"):
                 ca_events = ca_engine.process_actions(d, portfolio)
                 for ev in ca_events:
-                    self._log(d, "CORPORATE_ACTION", **ev)
+                    self._log(d, "CORPORATE_ACTION", **{k:v for k,v in ev.items() if k != "date"})
                     if ev.get("type") == "RIGHTS_ISSUE_INSUFFICIENT_CASH" or "STRICT_RESEARCH_INVALID" in str(ev.get("warning", "")):
                         self.data_quality["strict_invalid"] = True
                         self.data_quality["strict_invalid_reason"] = "RIGHTS_ISSUE_INSUFFICIENT_CASH: cash insufficient to exercise mandatory rights issue"
@@ -361,6 +372,9 @@ class BacktestEngine:
                 pos.highest_price=max(pos.highest_price,float(raw_b["high"])); pos.lowest_price=min(pos.lowest_price or pos.entry_price,float(raw_b["low"]));
                 if d>pos.entry_date: pos.holding_days += 1
                 if d>pos.entry_date and float(raw_b["low"]) <= pos.stop_price:
+                    if evaluation_window is not None:
+                        if (hasattr(self.provider, "is_market_tradable") and not self.provider.is_market_tradable(sym, d)):
+                            continue
                     raw_exec=min(float(raw_b["open"]),pos.stop_price) if float(raw_b["open"])<pos.stop_price else pos.stop_price
                     exit_sec = daily_sector_by_symbol.get(sym, ({"name":pos.sector},{"sector_lifecycle":"unknown","lifecycle":"unknown"}))
                     exit_sec_ctx = exit_sec[1] if isinstance(exit_sec, tuple) else {"sector_lifecycle":"unknown","lifecycle":"unknown"}
@@ -385,6 +399,7 @@ class BacktestEngine:
                     self._log(d,"EXIT_SIGNAL",symbol=sym,reason=reason,execute_date=next_d)
 
             # 4) Full-market entry scan over this date's PIT universe.
+            _in_entry_window = evaluation_window is None or d < evaluation_window["entry_end_exclusive"]
             daily_candidates=[]
             for sym in active_symbols:
                 if sym in portfolio.positions or any(o.symbol==sym and o.direction=="BUY" for o in pending): continue
@@ -433,7 +448,7 @@ class BacktestEngine:
                     stop_raw=stop_adj
                 daily_candidates.append({"symbol":sym,"score":score,"breakdown":breakdown,"primary":prim,"hits":hits,"route":route,"market":market,"sector":sector,"sector_name":secinfo.get("name"),"stop":stop_raw,"recent_bars":hist[-80:]})
 
-            if next_d:
+            if next_d and _in_entry_window:
                 daily_candidates.sort(key=lambda x:(x["score"],float(x["sector"].get("sector_score",50))),reverse=True)
                 max_new=int(self.cfg.defaults.get("trade_behavior",{}).get("max_new_positions_per_day",4))
                 route_caps=[x["route"].get("max_new_positions_override") for x in daily_candidates if x["route"].get("max_new_positions_override") is not None]
@@ -486,23 +501,39 @@ class BacktestEngine:
             equity_curve.append({"date":d,"equity":equity,"cash":portfolio.cash,"market_value":portfolio.market_value(current_prices),"positions":len(portfolio.positions),"market_regime":market.get("market_regime"),"active_universe":len(active_symbols)})
 
         last_date=dates[-1]
-        for sym in list(portfolio.positions):
-            if not ensure_symbol(sym): continue
-            pos = portfolio.positions[sym]
-            raw_bar = raw_map_by_symbol.get(sym, {}).get(last_date)
-            if raw_bar:
-                sec_info = daily_sector_by_symbol.get(sym, ({"name": pos.sector}, {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}))
-                sec_ctx = sec_info[1] if isinstance(sec_info, tuple) else {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}
-                tr = portfolio.sell(symbol=sym, date=last_date, signal_date=last_date,
-                    raw_price=float(raw_bar["close"]), reason="END_OF_BACKTEST",
-                    cost_model=self.costs,
-                    exit_regime=market.get("regime") if isinstance(market, dict) else None,
-                    exit_theme=sec_ctx.get("sector") or pos.sector,
-                    exit_theme_lifecycle=sec_ctx.get("lifecycle") or sec_ctx.get("sector_lifecycle"))
-                if tr:
-                    self._log(last_date, "TRADE", trade=tr.to_dict())
-        if equity_curve:
-            equity_curve[-1]["equity"]=portfolio.equity(current_prices); equity_curve[-1]["cash"]=portfolio.cash; equity_curve[-1]["market_value"]=portfolio.market_value(current_prices); equity_curve[-1]["positions"]=0
+        if evaluation_window is None:
+            for sym in list(portfolio.positions):
+                if not ensure_symbol(sym): continue
+                pos = portfolio.positions[sym]
+                raw_bar = raw_map_by_symbol.get(sym, {}).get(last_date)
+                if raw_bar:
+                    sec_info = daily_sector_by_symbol.get(sym, ({"name": pos.sector}, {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}))
+                    sec_ctx = sec_info[1] if isinstance(sec_info, tuple) else {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}
+                    tr = portfolio.sell(symbol=sym, date=last_date, signal_date=last_date,
+                        raw_price=float(raw_bar["close"]), reason="END_OF_BACKTEST",
+                        cost_model=self.costs,
+                        exit_regime=market.get("regime") if isinstance(market, dict) else None,
+                        exit_theme=sec_ctx.get("sector") or pos.sector,
+                        exit_theme_lifecycle=sec_ctx.get("lifecycle") or sec_ctx.get("sector_lifecycle"))
+                    if tr:
+                        self._log(last_date, "TRADE", trade=tr.to_dict())
+            if equity_curve:
+                equity_curve[-1]["equity"]=portfolio.equity(current_prices); equity_curve[-1]["cash"]=portfolio.cash; equity_curve[-1]["market_value"]=portfolio.market_value(current_prices); equity_curve[-1]["positions"]=0
+        else:
+            # Evaluation window active: no forced liquidation.
+            # Record remaining portfolio positions, censored, and pending orders.
+            _portfolio_positions = [pos.to_dict() for pos in portfolio.positions.values()]
+            censored: list[dict[str, Any]] = []
+            for sym, pos in list(portfolio.positions.items()):
+                raw_bar = raw_map_by_symbol.get(sym, {}).get(last_date)
+                current_price = float(raw_bar["close"]) if raw_bar else pos.entry_price
+                censored.append({
+                    "symbol": sym,
+                    "entry_date": pos.entry_date,
+                    "quantity": pos.quantity,
+                    "current_price": current_price,
+                    "reason": "OPEN_AT_OBSERVATION_END",
+                })
 
         trades=[x.to_dict() for x in portfolio.trades]
         metrics=performance_metrics(equity_curve,trades,self.s.initial_cash)
@@ -511,6 +542,7 @@ class BacktestEngine:
         target_hits=sum(1 for x in months if float(x.get("return",0))>=target)
         bperiod=[b for b in benchmark if self.s.start_date<=b["date"]<=self.s.end_date]
         benchmark_return=(float(bperiod[-1]["close"])/float(bperiod[0]["close"])-1) if len(bperiod)>=2 and float(bperiod[0]["close"]) else 0.0
+        metrics["starting_equity"] = float(self.s.initial_cash)
         metrics["benchmark_return"]=benchmark_return
         metrics["excess_return_vs_benchmark"]=float(metrics.get("total_return",0))-benchmark_return
         metrics["monthly_target"]=target; metrics["months_total"]=len(months); metrics["months_ge_target"]=target_hits
@@ -558,4 +590,9 @@ class BacktestEngine:
                 "market_benchmarks":benchmark_symbols,"universe_method":"daily_point_in_time_dynamic" if (bool(getattr(self.provider,"dynamic_universe_enabled",False)) and all(point_flags)) else "static_or_diagnostic_fallback",
             },
         }
+        if evaluation_window is not None:
+            report["evaluation_window"] = evaluation_window
+            report["portfolio_positions"] = _portfolio_positions
+            report["censored_positions"] = censored
+            report["pending_orders"] = [o.to_dict() for o in pending]
         return report
