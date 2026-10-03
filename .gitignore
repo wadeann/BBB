@@ -16,3 +16,6 @@ data/research/runs/
 data/research/*.zip
 data/research/handoff_*/
 
+
+# Exception for trading grade smoke artifact (committed for CI review)
+!data/diagnostics/trading_grade_smoke_latest.json

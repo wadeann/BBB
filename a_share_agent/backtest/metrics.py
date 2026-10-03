@@ -6,6 +6,60 @@ from statistics import mean, median, pstdev
 from typing import Any
 
 
+
+def entry_context_quality(trade: dict) -> dict:
+    """Evaluate whether a trade's entry context is usable for routing.
+
+    Both regime AND theme must be known and have OK-quality data.
+
+    Returns dict with:
+    - usable: bool (True iff all conditions met)
+    - regime_ok: bool
+    - regime_known: bool
+    - theme_ok: bool
+    - theme_known: bool
+    """
+    regime_state = (trade.get("regime_data_quality_at_signal") or {}).get("state")
+    theme_state = (trade.get("theme_data_quality_at_signal") or {}).get("state")
+    regime_known = trade.get("regime_at_signal") not in (None, "UNKNOWN", "unknown")
+    theme_known = trade.get("theme_lifecycle") not in (None, "UNKNOWN", "unknown")
+    regime_ok = regime_state == "ok"
+    theme_ok = theme_state == "ok"
+    usable = regime_ok and theme_ok and regime_known and theme_known
+    return {
+        "usable": usable,
+        "regime_ok": regime_ok,
+        "regime_known": regime_known,
+        "theme_ok": theme_ok,
+        "theme_known": theme_known,
+    }
+
+
+def _first_of(vals: list, *default):
+    """Return the first truthy value, else the first default."""
+    for v in vals:
+        if v:
+            return v
+    return default[0] if default else None
+
+
+def _quality_state(trade: dict) -> str:
+    """Derive combined quality state for a trade from regime + theme."""
+    ecq = entry_context_quality(trade)
+    if ecq["usable"]:
+        return "ok"
+    if not ecq["regime_known"] or not ecq["theme_known"]:
+        return "unknown"
+    regime_s = (trade.get("regime_data_quality_at_signal") or {}).get("state", "")
+    if not regime_s:
+        regime_s = "unknown"
+    theme_s = (trade.get("theme_data_quality_at_signal") or {}).get("state", "")
+    if not theme_s:
+        theme_s = "unknown"
+    if "unavailable" in (regime_s, theme_s):
+        return "unavailable"
+    return "degraded"
+
 def performance_metrics(equity_curve: list[dict[str,Any]], trades: list[dict[str,Any]], initial_cash: float) -> dict[str,Any]:
     if not equity_curve:
         return {}
@@ -135,12 +189,12 @@ def multi_key_trade_stats(trades: list[dict[str, Any]], keys: list[str]) -> list
         mfe_vals = [float(t.get("mfe_pct", 0) or 0) for t in items if t.get("mfe_pct") is not None]
         mae_vals = [float(t.get("mae_pct", 0) or 0) for t in items if t.get("mae_pct") is not None]
         row = dict(zip(keys, kt))
-        # Context quality: report per-quality-state counts and coverage, not majority vote
-        quality_states = [t.get("theme_data_quality_at_signal") or {} for t in items]
-        q_ok = sum(1 for q in quality_states if q.get("state") == "ok")
-        q_degraded = sum(1 for q in quality_states if q.get("state") == "degraded")
-        q_unavailable = sum(1 for q in quality_states if q.get("state") == "unavailable")
-        q_unknown = sum(1 for q in quality_states if q.get("state", "unknown") in ("unknown", None, ""))
+        # Context quality: evaluate regime + theme quality for each trade
+        quality_states = [_quality_state(t) for t in items]
+        q_ok = quality_states.count("ok")
+        q_degraded = quality_states.count("degraded")
+        q_unavailable = quality_states.count("unavailable")
+        q_unknown = quality_states.count("unknown")
         total = len(items)
         quality_coverage = round(q_ok / total, 4) if total > 0 else 0.0
         row.update({
@@ -190,10 +244,17 @@ _ENTRY_ATTRIBUTION_FIELDS = [
 
 def _buy_map(trades: list[dict]) -> dict[str, dict]:
     """Build {round_trip_id: BUY_trade_dict} from trades list."""
+    from collections import defaultdict
     m: dict[str, dict] = {}
+    seen: dict[str, int] = defaultdict(int)
     for t in trades:
         if t.get("direction") == "BUY" and t.get("round_trip_id"):
-            m[t["round_trip_id"]] = t
+            rtid = t["round_trip_id"]
+            seen[rtid] += 1
+            if rtid not in m:
+                m[rtid] = t
+    # Side-channel for duplicate detection
+    _buy_map._duplicates = [rid for rid, cnt in seen.items() if cnt > 1]  # type: ignore[attr-defined]
     return m
 
 def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = None) -> dict:
@@ -210,12 +271,16 @@ def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = No
     errors = []
 
     if trade.get("direction") == "BUY":
+        if not round_trip_id:
+            errors.append("MISSING_ROUND_TRIP_ID")
         signal_date = trade.get("signal_date")
         trade_date = trade.get("trade_date")
         if trade_date and signal_date and trade_date <= signal_date:
             errors.append("buy_trade_date must be after signal_date")
 
     if trade.get("direction") == "SELL":
+        if not round_trip_id:
+            errors.append("MISSING_ROUND_TRIP_ID")
         # Basic field presence
         if not trade.get("pattern_id"):
             errors.append("missing pattern_id")
@@ -230,22 +295,22 @@ def audit_trade_attribution(trade: dict, *, buy_map: dict[str, dict] | None = No
             errors.append("exit_date before entry_date")
 
         # BUY->SELL attribution comparison via round_trip_id
-        if buy_map is not None and round_trip_id and round_trip_id in buy_map:
-            buy_trade = buy_map[round_trip_id]
-            for field in _ENTRY_ATTRIBUTION_FIELDS:
-                buy_val = buy_trade.get(field)
-                sell_val = trade.get(field)
-                if isinstance(buy_val, dict) and isinstance(sell_val, dict):
-                    # Compare dicts by sorted items
-                    if sorted(buy_val.items()) != sorted(sell_val.items()):
+        if buy_map is not None and round_trip_id:
+            if round_trip_id in buy_map:
+                buy_trade = buy_map[round_trip_id]
+                for field in _ENTRY_ATTRIBUTION_FIELDS:
+                    buy_val = buy_trade.get(field)
+                    sell_val = trade.get(field)
+                    if isinstance(buy_val, dict) and isinstance(sell_val, dict):
+                        if sorted(buy_val.items()) != sorted(sell_val.items()):
+                            errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
+                    elif isinstance(buy_val, float) and isinstance(sell_val, float):
+                        if abs(buy_val - sell_val) > 1e-9:
+                            errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
+                    elif buy_val != sell_val:
                         errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
-                elif isinstance(buy_val, float) and isinstance(sell_val, float):
-                    if abs(buy_val - sell_val) > 1e-9:
-                        errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
-                elif buy_val != sell_val:
-                    errors.append(f"ENTRY_ATTRIBUTION_MISMATCH:{field}")
-        elif buy_map is not None and round_trip_id:
-            errors.append("missing_matching_buy_trade")
+            else:
+                errors.append("missing_matching_buy_trade")
 
     return {"valid": len(errors) == 0, "errors": errors,
             "round_trip_id": round_trip_id, "symbol": symbol}
@@ -262,9 +327,12 @@ def batch_audit_attribution(trades: list[dict]) -> dict:
     - valid: int
     - invalid: int
     - invalid_trades: list of {round_trip_id, symbol, errors}
+    - duplicate_round_trip_ids: list[str]
+    - missing_matching_buys: list[str]
     - errors: list[str] (flat, for backward compat)
     """
     bm = _buy_map(trades)
+    dup_buy_ids = list(getattr(_buy_map, "_duplicates", []))
     closed = [t for t in trades if t.get("direction") == "SELL"]
     results = [audit_trade_attribution(t, buy_map=bm) for t in closed]
     valid_results = [r for r in results if r["valid"]]
@@ -273,10 +341,17 @@ def batch_audit_attribution(trades: list[dict]) -> dict:
         {"round_trip_id": r["round_trip_id"], "symbol": r["symbol"], "errors": r["errors"]}
         for r in invalid_results
     ]
+    # Find SELL trades with no matching BUY
+    buy_ids = set(bm.keys())
+    sell_ids = [t.get("round_trip_id") for t in closed if t.get("round_trip_id")]
+    missing_buys = [rid for rid in sell_ids if rid and rid not in buy_ids]
+
     return {
         "closed_trades": len(closed),
         "valid": len(valid_results),
         "invalid": len(invalid_results),
         "invalid_trades": invalid_trades,
+        "duplicate_round_trip_ids": dup_buy_ids,
+        "missing_matching_buys": missing_buys,
         "errors": [e for r in invalid_results for e in r["errors"]],
     }

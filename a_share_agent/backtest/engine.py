@@ -1,10 +1,11 @@
 from __future__ import annotations
+
+import hashlib
 import uuid
 
 import bisect
 import json
 import math
-import uuid
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -469,12 +470,12 @@ class BacktestEngine:
                         reviewed += len(chunk)
                     daily_candidates=gated
 
-                for x in daily_candidates[:slots]:
+                for idx, x in enumerate(daily_candidates[:slots]):
                     meta={"score_breakdown":x["breakdown"],"hits":x["hits"],"market":x["market"],"sector":x["sector"]}
                     if x.get("llm_filter"):
                         meta["llm_filter"]=x["llm_filter"]; meta["llm_decision"]=x["llm_filter"].get("decision")
-                    rtid = str(uuid.uuid4())
-                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),regime_confidence_at_signal=x["market"].get("confidence"),regime_data_quality_at_signal=x["market"].get("data_quality"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength"),round_trip_id=rtid))
+                    rtid = hashlib.sha256(f"{x["symbol"]}|{d}|{next_d}|{x["primary"].get("pattern_id") or x["primary"]["signal"]}|{x["primary"].get("pattern_version","1.0.0")}|{idx}".encode()).hexdigest()[:16]
+                    pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),regime_confidence_at_signal=x["market"].get("regime_confidence"),regime_data_quality_at_signal=x["market"].get("data_quality"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength"),round_trip_id=rtid))
                     self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
 
             equity=portfolio.equity(current_prices)
@@ -483,15 +484,19 @@ class BacktestEngine:
         last_date=dates[-1]
         for sym in list(portfolio.positions):
             if not ensure_symbol(sym): continue
-            raw_bar=raw_map_by_symbol.get(sym,{}).get(last_date)
+            pos = portfolio.positions[sym]
+            raw_bar = raw_map_by_symbol.get(sym, {}).get(last_date)
             if raw_bar:
-                exit_sec_info = daily_sector_by_symbol.get(sym, ({"name":pos.sector},{"sector_lifecycle":"unknown","lifecycle":"unknown"})) if hasattr(self, 'daily_sector_by_symbol') else ({"name":pos.sector}, {"sector_lifecycle":"unknown","lifecycle":"unknown"})
-                exit_sec_ctx = exit_sec_info[1] if isinstance(exit_sec_info, tuple) else {"sector_lifecycle":"unknown","lifecycle":"unknown"}
-                tr=portfolio.sell(symbol=sym,date=last_date,signal_date=last_date,raw_price=float(raw_bar["close"]),reason="END_OF_BACKTEST",cost_model=self.costs,
+                sec_info = daily_sector_by_symbol.get(sym, ({"name": pos.sector}, {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}))
+                sec_ctx = sec_info[1] if isinstance(sec_info, tuple) else {"sector_lifecycle":"unknown","lifecycle":"UNKNOWN"}
+                tr = portfolio.sell(symbol=sym, date=last_date, signal_date=last_date,
+                    raw_price=float(raw_bar["close"]), reason="END_OF_BACKTEST",
+                    cost_model=self.costs,
                     exit_regime=market.get("regime") if isinstance(market, dict) else None,
-                    exit_theme=exit_sec_ctx.get("sector") or pos.sector,
-                    exit_theme_lifecycle=exit_sec_ctx.get("lifecycle") or exit_sec_ctx.get("sector_lifecycle"))
-                if tr: self._log(last_date,"TRADE",trade=tr.to_dict())
+                    exit_theme=sec_ctx.get("sector") or pos.sector,
+                    exit_theme_lifecycle=sec_ctx.get("lifecycle") or sec_ctx.get("sector_lifecycle"))
+                if tr:
+                    self._log(last_date, "TRADE", trade=tr.to_dict())
         if equity_curve:
             equity_curve[-1]["equity"]=portfolio.equity(current_prices); equity_curve[-1]["cash"]=portfolio.cash; equity_curve[-1]["market_value"]=portfolio.market_value(current_prices); equity_curve[-1]["positions"]=0
 

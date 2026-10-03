@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import sys
 import time
 from pathlib import Path
@@ -92,7 +93,40 @@ def _check_data_kind(provider: HistoricalDataProvider) -> str:
         return "SUSPICIOUS_EARLY"
     if last < "2025-01-01":
         return "STALE_CACHE"
-    return "REAL_HISTORICAL"
+    return "HISTORICAL_LOCAL_DATA"
+
+
+def _file_sha256(path: Path) -> str:
+    """Compute SHA256 of a file for provenance tracking."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _per_symbol_inputs(provider: HistoricalDataProvider, symbols: list[str], root: Path) -> list[dict]:
+    """Record physical input hashes for each tested symbol."""
+    inputs = []
+    for sym in symbols:
+        entry: dict[str, Any] = {"symbol": sym}
+        # Normalise symbol for filename (dot -> underscore)
+        fsafe = sym.replace(".", "_")
+        cache_path = root / "data" / "backtest" / "cache" / "bars" / f"{fsafe}.json"
+        raw_path = root / "data" / "backtest" / "raw_prices" / f"{fsafe}.csv"
+        bars = provider.bars(sym)
+        entry["adjusted_bars_source_path"] = str(cache_path)
+        entry["adjusted_bars_sha256"] = _file_sha256(cache_path) if cache_path.exists() else "MISSING"
+        entry["raw_bars_source_path"] = str(raw_path)
+        entry["raw_bars_sha256"] = _file_sha256(raw_path) if raw_path.exists() else "MISSING"
+        entry["rows"] = len(bars) if bars else 0
+        entry["first_date"] = bars[0]["date"] if bars else None
+        entry["last_date"] = bars[-1]["date"] if bars else None
+        # Fail if no raw execution data
+        if not raw_path.exists():
+            entry["raw_data_warning"] = "NO_RAW_EXECUTION_DATA"
+        inputs.append(entry)
+    return inputs
 
 
 def run_smoke(output_path: str | Path) -> dict[str, Any]:
@@ -106,9 +140,13 @@ def run_smoke(output_path: str | Path) -> dict[str, Any]:
 
     # Verify data kind
     data_kind = _check_data_kind(provider)
-    if data_kind != "REAL_HISTORICAL":
+    if data_kind != "HISTORICAL_LOCAL_DATA":
         msg = {"error": f"Data check failed: {data_kind}", "data_kind": data_kind}
         return msg
+
+    # Source provenance: we know it's local cached data but cannot
+    # independently verify provenance without the MCP audit trail.
+    source_verification = "UNVERIFIED_CACHE"
 
     # Build settings with defaults
     settings = BacktestSettings(
@@ -128,7 +166,11 @@ def run_smoke(output_path: str | Path) -> dict[str, Any]:
 
     if not tested_symbols:
         return {"error": "NO_TRADES", "data_kind": data_kind,
-                "reason": "All requested symbols have no cached data"}
+                "reason": "All requested symbols have no cached data",
+                "source_verification": source_verification}
+
+    # Record input hashes before running backtest
+    input_files = _per_symbol_inputs(provider, tested_symbols, data_root)
 
     # Run the backtest
     engine = BacktestEngine(cfg, provider, settings)
@@ -145,25 +187,38 @@ def run_smoke(output_path: str | Path) -> dict[str, Any]:
     sell_trades = [t for t in trades if t.get("direction") == "SELL"]
     buy_trades = [t for t in trades if t.get("direction") == "BUY"]
 
+    # Overall context quality
+    from a_share_agent.backtest.metrics import entry_context_quality
+    context_counts = {"ok": 0, "not_ok": 0}
+    for t in sell_trades:
+        ecq = entry_context_quality(t)
+        if ecq["usable"]:
+            context_counts["ok"] += 1
+        else:
+            context_counts["not_ok"] += 1
+
     artifact: dict[str, Any] = {
         # Metadata
-        "artifact_version": "1.1.0",
+        "artifact_version": "1.2.0",
         "git_commit_sha": _git_sha(),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         # Smoke config
         "data_kind": data_kind,
+        "source_verification": source_verification,
         "provider": "HistoricalDataProvider",
         "data_source": "data/backtest/cache/bars/",
-        "raw_source_paths": ["data/backtest/raw_prices/"],
         "date_range": {"start": SMOKE_START, "end": SMOKE_END},
         "symbols_requested": list(SMOKE_SYMBOLS),
         "symbols_tested": tested_symbols,
         "symbols_skipped": skipped_symbols,
         "universe_mode": "prefer_point_in_time",
+        "input_files": input_files,
         # Trade summary
         "total_trades": len(trades),
         "buy_trades": len(buy_trades),
         "closed_trades": len(sell_trades),
+        "context_usable_trades": context_counts["ok"],
+        "context_unusable_trades": context_counts["not_ok"],
         "patterns_seen": sorted(set(t.get("pattern_id") for t in trades if t.get("pattern_id"))),
         "regimes_seen": sorted(set(t.get("regime_at_signal") for t in trades if t.get("regime_at_signal"))),
         "lifecycles_seen": sorted(set(t.get("theme_lifecycle") for t in trades if t.get("theme_lifecycle"))),
@@ -207,6 +262,7 @@ def run_smoke(output_path: str | Path) -> dict[str, Any]:
     print(f"  attrib_invalid:   {audit['invalid']}")
     if audit.get("invalid_trades"):
         print(f"  attrib_errors:    {[e for it in audit['invalid_trades'] for e in it.get('errors', [])]}")
+    print(f"  source_verification: {artifact["source_verification"]}")
     print(f"  git_sha:          {artifact['git_commit_sha']}")
     print(f"  artifact:         {out}")
 
@@ -222,6 +278,7 @@ def main() -> int:
     artifact = run_smoke(args.output)
     if "error" in artifact:
         print(f"\nERROR: {artifact['error']}", file=sys.stderr)
+        print(f"  source_verification: {artifact.get('source_verification','?')}", file=sys.stderr)
         if artifact.get("attribution_audit", {}).get("invalid", 0) > 0:
             print(f"  attribution invalid: {artifact['attribution_audit']['invalid']}", file=sys.stderr)
         return 1

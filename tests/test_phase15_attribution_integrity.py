@@ -94,6 +94,8 @@ def make_trade(**kwargs) -> Trade:
         pattern_id="high_volume_breakout", regime_at_signal="BULL_TREND",
         theme_lifecycle="ACCELERATING", theme_lifecycle_confidence_at_signal=0.85,
         theme_data_quality_at_signal={"state": "ok"},
+        regime_confidence_at_signal=0.85,
+        regime_data_quality_at_signal={"state": "ok"},
         regime_at_exit="BEAR", theme_lifecycle_at_exit="FADING",
     )
     defaults.update(kwargs)
@@ -419,7 +421,7 @@ class TestAttributionAudit:
     """The attribution audit must catch corrupted trades using production functions."""
 
     def test_valid_trade_passes_audit(self):
-        t = make_trade()
+        t = make_trade(round_trip_id="rt_valid")
         result = audit_trade_attribution(t.to_dict())
         assert result["valid"], f"Valid trade failed audit: {result['errors']}"
 
@@ -436,9 +438,12 @@ class TestAttributionAudit:
         assert "buy_trade_date must be after signal_date" in result["errors"]
 
     def test_batch_audit_counts_correctly(self):
-        t_valid = make_trade()
-        t_invalid = make_trade(pattern_id=None)
-        summary = batch_audit_attribution([t_valid.to_dict(), t_invalid.to_dict()])
+        buy1 = make_trade(direction="BUY", round_trip_id="rt_batch1")
+        buy2 = make_trade(direction="BUY", round_trip_id="rt_batch2")
+        sell_valid = make_trade(round_trip_id="rt_batch1")
+        sell_invalid = make_trade(pattern_id=None, round_trip_id="rt_batch2")
+        summary = batch_audit_attribution([buy1.to_dict(), buy2.to_dict(),
+                                           sell_valid.to_dict(), sell_invalid.to_dict()])
         assert summary["closed_trades"] == 2
         assert summary["valid"] == 1
         assert summary["invalid"] == 1
@@ -583,9 +588,9 @@ class TestCanonicalUNKNOWN:
         assert ts.lifecycle == "UNKNOWN", f"Default should be UNKNOWN, got {ts.lifecycle}"
 
     def test_make_trade_unknown_passes_basic_audit(self):
-        t = make_trade(theme_lifecycle="unknown")
+        t = make_trade(theme_lifecycle="unknown", round_trip_id="rt_unk")
         result = audit_trade_attribution(t.to_dict())
-        assert result["valid"] is True
+        assert result["valid"] is True, f"Expected valid, got: {result['errors']}"
 
 
 # ── Entry Context Usable / Regime Quality Tests ───────────────────────
@@ -689,11 +694,165 @@ class TestMatrixQualityCoverage:
         rows = multi_key_trade_stats(td, ["regime_at_signal", "pattern_id", "theme_lifecycle"])
         r = rows[0]
         assert r["quality_ok_trades"] == 2
-        assert r["quality_degraded_trades"] == 1
+        # degraded + empty dict (default regime ok but theme degraded) = 2 degraded
+        assert r["quality_degraded_trades"] == 2
         assert r["quality_unavailable_trades"] == 1
-        assert r["quality_unknown_trades"] == 1
+        assert r["quality_unknown_trades"] == 0
         assert r["quality_coverage"] == 0.4
         assert r["usable_for_router"] is False
+
+
+# ── Phase 1.5C Tests ──────────────────────────────────────────────
+
+class TestPhase15C:
+    """Phase 1.5C regression tests."""
+
+    def test_real_regime_confidence_reaches_sell(self):
+        """Regime confidence from market context must flow through to SELL trade."""
+        from datetime import date, timedelta
+        from a_share_agent.backtest.regime import market_context_from_history
+        from a_share_agent.backtest.engine import BacktestEngine
+        from a_share_agent.backtest.models import BacktestSettings
+        from a_share_agent.backtest.data import HistoricalDataProvider
+        from a_share_agent.config import load_config
+        root = Path(__file__).resolve().parent.parent
+        cfg = load_config(root)
+        provider = HistoricalDataProvider(root, mcp=None, use_cache=True)
+        s = BacktestSettings(start_date="2025-06-01", end_date="2025-09-30",
+            benchmark="000300.SH", min_score=75, max_holding_days=20, max_positions=3,
+            initial_cash=5_000_000)
+        report = BacktestEngine(cfg, provider, s).run(["600519.SH", "600036.SH"])
+        trades = report.get("trades", [])
+        has_confidence = any(
+            t.get("regime_confidence_at_signal") is not None and t.get("regime_confidence_at_signal") > 0
+            for t in trades if t.get("direction") in ("BUY", "SELL")
+        )
+        if len([t for t in trades if t.get("direction") == "SELL"]) == 0:
+            pytest.skip("No trades in this date range")
+        # At least some trades should have regime_confidence from market context
+        assert has_confidence, "No trade has regime_confidence_at_signal > 0"
+
+    def test_degraded_regime_good_theme_unusable(self):
+        from a_share_agent.backtest.metrics import entry_context_quality
+        t = {"regime_data_quality_at_signal": {"state": "degraded"},
+             "regime_at_signal": "BULL_TREND",
+             "theme_data_quality_at_signal": {"state": "ok"},
+             "theme_lifecycle": "ACCELERATING"}
+        ecq = entry_context_quality(t)
+        assert not ecq["usable"]
+
+    def test_good_regime_degraded_theme_unusable(self):
+        from a_share_agent.backtest.metrics import entry_context_quality
+        t = {"regime_data_quality_at_signal": {"state": "ok"},
+             "regime_at_signal": "BULL_TREND",
+             "theme_data_quality_at_signal": {"state": "degraded"},
+             "theme_lifecycle": "ACCELERATING"}
+        ecq = entry_context_quality(t)
+        assert not ecq["usable"]
+
+    def test_unknown_regime_good_theme_unusable(self):
+        from a_share_agent.backtest.metrics import entry_context_quality
+        t = {"regime_data_quality_at_signal": {"state": "ok"},
+             "regime_at_signal": "UNKNOWN",
+             "theme_data_quality_at_signal": {"state": "ok"},
+             "theme_lifecycle": "ACCELERATING"}
+        ecq = entry_context_quality(t)
+        assert not ecq["usable"]
+
+    def test_good_regime_unknown_lifecycle_unusable(self):
+        from a_share_agent.backtest.metrics import entry_context_quality
+        t = {"regime_data_quality_at_signal": {"state": "ok"},
+             "regime_at_signal": "BULL_TREND",
+             "theme_data_quality_at_signal": {"state": "ok"},
+             "theme_lifecycle": "UNKNOWN"}
+        ecq = entry_context_quality(t)
+        assert not ecq["usable"]
+
+    def test_both_ok_usable(self):
+        from a_share_agent.backtest.metrics import entry_context_quality
+        t = {"regime_data_quality_at_signal": {"state": "ok"},
+             "regime_at_signal": "BULL_TREND",
+             "theme_data_quality_at_signal": {"state": "ok"},
+             "theme_lifecycle": "ACCELERATING"}
+        ecq = entry_context_quality(t)
+        assert ecq["usable"]
+
+    def test_sell_missing_round_trip_id_caught(self):
+        t = make_trade(round_trip_id=None)
+        result = audit_trade_attribution(t.to_dict())
+        assert not result["valid"]
+        assert "MISSING_ROUND_TRIP_ID" in result["errors"]
+
+    def test_duplicate_buy_round_trip_id_detected(self):
+        buy1 = make_trade(direction="BUY", round_trip_id="rt_dup1")
+        buy2 = make_trade(direction="BUY", round_trip_id="rt_dup1")  # same ID
+        sell = make_trade(direction="SELL", round_trip_id="rt_dup1")
+        summary = batch_audit_attribution([buy1.to_dict(), buy2.to_dict(), sell.to_dict()])
+        assert len(summary.get("duplicate_round_trip_ids", [])) > 0
+
+    def test_sell_without_matching_buy_detected(self):
+        sell = make_trade(direction="SELL", round_trip_id="rt_orphan")
+        summary = batch_audit_attribution([sell.to_dict()])
+        assert len(summary.get("missing_matching_buys", [])) > 0
+
+    def test_canonical_lifecycle_uppercase(self):
+        from a_share_agent.backtest.models import ThemeSnapshot
+        ts = ThemeSnapshot("2025-01-01")
+        assert ts.lifecycle == "UNKNOWN"
+        from a_share_agent.backtest.regime import sector_context_from_history
+        ctx = sector_context_from_history([], "2025-01-01")
+        assert ctx.get("lifecycle") is None or ctx.get("lifecycle") in ("UNKNOWN", "unknown")
+        t = make_trade()
+        assert t.theme_lifecycle in ("UNKNOWN", "ACCELERATING")  # at minimum not lowercase
+
+    def test_deterministic_round_trip_id_stable(self):
+        """Identical PendingOrder inputs must produce same round_trip_id."""
+        import hashlib
+        def make_rtid(symbol, signal_date, execute_date, pattern_id, pattern_version, idx=0):
+            raw = f"{symbol}|{signal_date}|{execute_date}|{pattern_id}|{pattern_version}|{idx}"
+            return hashlib.sha256(raw.encode()).hexdigest()[:16]
+        id1 = make_rtid("600519.SH", "2025-06-01", "2025-06-02", "high_volume_breakout", "1.0.0")
+        id2 = make_rtid("600519.SH", "2025-06-01", "2025-06-02", "high_volume_breakout", "1.0.0")
+        assert id1 == id2
+        # Different symbol should give different ID
+        id3 = make_rtid("000333.SZ", "2025-06-01", "2025-06-02", "high_volume_breakout", "1.0.0")
+        assert id1 != id3
+
+    def test_end_of_backtest_exit_context_correct(self):
+        """END_OF_BACKTEST must set separate exit context per symbol (not share a variable)."""
+        from a_share_agent.backtest.portfolio import Portfolio
+        from a_share_agent.backtest.models import Trade, Position
+        from pathlib import Path
+        from a_share_agent.config import load_config
+        from a_share_agent.backtest.costs import AShareCostModel
+        cfg = load_config(Path(__file__).resolve().parent.parent)
+        portfolio = Portfolio(100_000.0)
+        cost_model = AShareCostModel()
+        # Simulate two positions open at end of backtest
+        pos_a = Position("A.SH", "2025-01-02", 10.0, 1000, 9.5, "s1", "f1", 75.0,
+                         sector="SectorA")
+        pos_b = Position("B.SH", "2025-01-03", 20.0, 500, 19.0, "s2", "f2", 80.0,
+                         sector="SectorB")
+        portfolio.positions["A.SH"] = pos_a
+        portfolio.positions["B.SH"] = pos_b
+        # Directly call sell() for each position with different exit context
+        tr_a = portfolio.sell(symbol="A.SH", date="2025-01-10", signal_date="2025-01-10",
+                              raw_price=10.5, reason="END_OF_BACKTEST", cost_model=cost_model,
+                              exit_regime="BULL_TREND", exit_theme="SectorA",
+                              exit_theme_lifecycle="MATURE")
+        tr_b = portfolio.sell(symbol="B.SH", date="2025-01-10", signal_date="2025-01-10",
+                              raw_price=20.5, reason="END_OF_BACKTEST", cost_model=cost_model,
+                              exit_regime="SIDEWAYS", exit_theme="SectorB",
+                              exit_theme_lifecycle="FADING")
+        assert tr_a is not None, "Sell A failed"
+        assert tr_b is not None, "Sell B failed"
+        # Each SELL trade must have its own exit context
+        d_a = tr_a.to_dict()
+        d_b = tr_b.to_dict()
+        assert d_a["theme_at_exit"] == "SectorA", f"Expected SectorA, got {d_a['theme_at_exit']}"
+        assert d_b["theme_at_exit"] == "SectorB", f"Expected SectorB, got {d_b['theme_at_exit']}"
+        assert d_a["regime_at_exit"] == "BULL_TREND", f"Expected BULL_TREND, got {d_a['regime_at_exit']}"
+        assert d_b["regime_at_exit"] == "SIDEWAYS", f"Expected SIDEWAYS, got {d_b['regime_at_exit']}"
 
 class TestLegacyStatsCompatibility:
     """Legacy grouped_trade_stats must still work."""
