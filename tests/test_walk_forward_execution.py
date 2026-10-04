@@ -596,6 +596,7 @@ def test_evaluation_window_fold_id_in_report():
     report = engine.run(["TEST01.SH"], evaluation_window=window)
 
     assert report["evaluation_window"]["fold_id"] == 7
+    assert report["fold_id"] == 7
 
 
 # ---------------------------------------------------------------------------

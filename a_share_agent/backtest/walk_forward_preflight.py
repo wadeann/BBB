@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import math
 from collections import defaultdict
@@ -33,26 +34,35 @@ def _exchange_for_symbol(symbol: str) -> str:
     return "SSE"
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def _read_json(path: Path, ledger: Any = None) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
+        if ledger is not None:
+            data = ledger.read(path, kind="calendar_manifest", parser=lambda raw: json.loads(raw.decode("utf-8")))
+            return data if isinstance(data, dict) else {}
         data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, json.JSONDecodeError, UnicodeError):
         return {}
     return data if isinstance(data, dict) else {}
 
 
-def _read_csv_dates(path: Path) -> list[str]:
+def _read_csv_dates(path: Path, ledger: Any = None) -> list[str]:
     """Read a calendar CSV that has at least a 'date' column, OPEN_DATES_ONLY semantics."""
     if not path.exists():
         return []
+    if ledger is not None:
+        rows = ledger.read(path, kind="calendar", parser=lambda raw:
+            list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))))
+        return [str(row.get("date", "")).strip() for row in rows if row.get("date", "").strip()]
     with path.open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         return [str(row.get("date", "")).strip() for row in reader if row.get("date", "").strip()]
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, ledger: Any = None) -> str:
+    if ledger is not None:
+        return hashlib.sha256(ledger.read(path, kind="calendar_hash")).hexdigest()
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
@@ -119,13 +129,14 @@ def _validate_trading_grade_calendar(
     required_exchanges: set[str],
     warmup_start: str,
     observation_end: str,
+    ledger: Any = None,
 ) -> dict[str, Any]:
     """Validate TradingGrade calendar CSV+manifest. Returns calendar info or blocking reason."""
     cal_dir = root / "data" / "backtest"
     csv_path = cal_dir / "trading_grade_calendar.csv"
     manifest_path = cal_dir / "trading_grade_calendar_manifest.json"
 
-    manifest = _read_json(manifest_path)
+    manifest = _read_json(manifest_path, ledger)
     result: dict[str, Any] = {
         "verified": False,
         "reason": None,
@@ -145,9 +156,15 @@ def _validate_trading_grade_calendar(
     }
 
     if not csv_path.exists():
+        if ledger is not None:
+            ledger.append(kind="calendar", logical_key=str(csv_path), path=str(csv_path.absolute()),
+                source_type="physical", status="missing")
         result["reason"] = "TRADING_GRADE_CALENDAR_CSV_MISSING"
         return result
     if not manifest_path.exists():
+        if ledger is not None:
+            ledger.append(kind="calendar_manifest", logical_key=str(manifest_path), path=str(manifest_path.absolute()),
+                source_type="physical", status="missing")
         result["reason"] = "TRADING_GRADE_CALENDAR_MANIFEST_MISSING"
         return result
 
@@ -166,7 +183,7 @@ def _validate_trading_grade_calendar(
         result["reason"] = "TRADING_GRADE_CALENDAR_INVALID_DECLARED_HASH"
         return result
 
-    actual_hash = _sha256_file(csv_path)
+    actual_hash = _sha256_file(csv_path, ledger)
     if actual_hash != declared_hash:
         result["reason"] = "TRADING_GRADE_CALENDAR_HASH_MISMATCH"
         return result
@@ -176,7 +193,7 @@ def _validate_trading_grade_calendar(
         result["reason"] = f"TRADING_GRADE_CALENDAR_UNEXPECTED_FORMULA:{weekday_formula}"
         return result
 
-    dates = _read_csv_dates(csv_path)
+    dates = _read_csv_dates(csv_path, ledger)
     if not dates:
         result["reason"] = "TRADING_GRADE_CALENDAR_EMPTY"
         return result
@@ -528,6 +545,7 @@ def preflight_fold(
             required_exchanges,
             warmup_start,
             observation_end_exclusive,
+            ledger=getattr(provider, "ledger", None),
         )
         inputs_info["calendar"] = cal_result
 

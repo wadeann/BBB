@@ -1,0 +1,17 @@
+# Only complete authenticated generations authorize; loose snapshots are staging only.
+# Deployment must supply PolicyLoader's external integrity key and trusted identity.
+version: 1
+loading:
+  directories:
+    - "data/policy/live"
+  # Generation publication age, evaluated at the decision's as_of (0 disables).
+  max_file_age_seconds: 86400
+validation:
+  # Exact four-key identity is mandatory and cannot be configured away.
+  allow_future_effective: false
+defaults:
+  # Explicit approval is always required; no automatic approver.
+  expiry_days: 90
+audit:
+  enable_snapshots: true
+  snapshot_directory: "data/policy/audit"

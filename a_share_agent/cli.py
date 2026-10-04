@@ -255,8 +255,10 @@ def cmd_walk_forward_stability(args) -> None:
     wf_cfg.setdefault("settings",{}); wf_cfg.setdefault("stability_thresholds",{})
     output=Path(args.output)
     if not output.is_absolute(): output=root/args.output
+    backend=getattr(args,"backend",None) or cfg.runtime.get("backend","fake")
+    mcp=create_mcp_invoker(cfg,backend=backend)
     try:
-        result=run_stability(cfg,wf_cfg,output,run_id=args.run_id)
+        result=run_stability(cfg,wf_cfg,output,run_id=args.run_id,mcp=mcp)
     except FileExistsError as exc:
         sys.stderr.write(f"COLLISION: {exc}\n"); raise SystemExit(3)
     except RuntimeError as exc:
@@ -329,6 +331,13 @@ def main() -> None:
     p.add_argument("--root", help="runtime project root")
     p.add_argument("--backend", choices=["fake", "production"], help="override config/runtime.yaml backend")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("walk-forward-stability", help="run read-only historical walk-forward stability")
+    s.add_argument("--config", default="config/walk_forward.yaml")
+    s.add_argument("--output", default="data/backtest/walk_forward")
+    s.add_argument("--run-id")
+    s.add_argument("--backend", choices=["fake", "production"], default=argparse.SUPPRESS)
+    s.set_defaults(func=cmd_walk_forward_stability)
 
     s = sub.add_parser("demo", help="run safe fake-MCP end-to-end demo"); s.set_defaults(func=cmd_demo)
     s = sub.add_parser("phase", help="run one phase"); s.add_argument("phase"); s.set_defaults(func=cmd_phase)

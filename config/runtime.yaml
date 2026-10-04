@@ -5,8 +5,7 @@ code_version: runtime-v0.7.0
 model_id: external-llm
 strategy_version: skill-v5.0.0
 
-# Production MCP endpoints. Credentials are intentionally NOT stored here.
-# Set ASHARE_MCP_USERNAME / ASHARE_MCP_PASSWORD in the process environment.
+# Production MCP endpoints. Credentials are loaded from the project .env.
 mcp:
   transport: streamable_http
   protocol_version: "2025-06-18"
@@ -17,20 +16,22 @@ mcp:
   services:
     intel:
       enabled: true
-      url: "http://127.0.0.1:9001/mcp"
+      url: "https://mcp.salahe.us.ci/api/intel/mcp"
       url_env: ASHARE_INTEL_MCP_URL
       auth:
-        type: none
+        type: basic
+        username_env: ASHARE_MCP_USERNAME
+        password_env: ASHARE_MCP_PASSWORD
     risk:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/risk"
+      url: "https://mcp.salahe.us.ci/api/risk/mcp"
       auth:
         type: basic
         username_env: ASHARE_MCP_USERNAME
         password_env: ASHARE_MCP_PASSWORD
     exec:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/exec"
+      url: "https://mcp.salahe.us.ci/api/exec/mcp"
       auth:
         type: basic
         username_env: ASHARE_MCP_USERNAME

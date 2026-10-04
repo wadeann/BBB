@@ -9,6 +9,17 @@ import yaml
 
 from .utils import redact, stable_hash
 
+# Exact existing configuration inputs; no synthetic empty-section fallbacks.
+RULE_CONFIG_SOURCES = {
+    "router": ("strategy_router",),
+    "scanner": ("strategy_router.strategy_families", "backtest.enabled_strategies", "backtest.disabled_strategies"),
+    "regime": ("defaults.market_filter", "defaults.benchmarks"),
+    "context": ("defaults.sector_filter", "runtime.mcp"),
+    "scoring": ("defaults.score_weights", "backtest.min_score"),
+    "cost_source": tuple("backtest." + name for name in
+                         ("commission_rate", "commission_min", "stamp_tax_rate_sell", "transfer_fee_rate", "slippage_bps")),
+}
+
 
 @dataclass(frozen=True)
 class RuntimeConfig:
@@ -22,10 +33,27 @@ class RuntimeConfig:
     improvement: dict[str, Any]
     backtest: dict[str, Any]
     research: dict[str, Any]
+    pattern_enablement: dict[str, Any]
 
     @property
     def mode(self) -> str:
         return str(self.runtime.get("mode", self.defaults.get("mode", "paper")))
+
+    @property
+    def rule_hashes(self) -> dict[str, str]:
+        hashes = {}
+        for name, paths in RULE_CONFIG_SOURCES.items():
+            sources = {}
+            for path in paths:
+                parts = path.split(".")
+                value = getattr(self, parts[0], None)
+                for part in parts[1:]:
+                    value = value.get(part) if isinstance(value, dict) else None
+                if value is None or (isinstance(value, dict) and not value):
+                    raise ValueError(f"Required rule source missing or empty: {path}")
+                sources[path] = value
+            hashes[name + "_sha256"] = stable_hash(redact(sources))
+        return hashes
 
     @property
     def config_hash(self) -> str:
@@ -42,6 +70,7 @@ class RuntimeConfig:
             "improvement": self.improvement,
             "backtest": self.backtest,
             "research": self.research,
+            "pattern_enablement": self.pattern_enablement,
         }))
 
 
@@ -98,4 +127,5 @@ def load_config(project_root: str | Path) -> RuntimeConfig:
         improvement=_read_yaml(cfg / "improvement.yaml"),
         backtest=_read_yaml(cfg / "backtest.yaml"),
         research=_read_yaml(cfg / "research.yaml"),
+        pattern_enablement=_read_yaml(cfg / "pattern_enablement.yaml"),
     )
