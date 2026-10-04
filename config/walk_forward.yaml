@@ -26,7 +26,7 @@ warmup_bars: 260
 
 # Immutable settings overrides passed to BacktestSettings
 settings:
-  min_score: 75.0
+  min_score: 70.0
   max_positions: 5
   max_holding_days: 20
   risk_per_trade: 0.005

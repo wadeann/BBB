@@ -86,7 +86,7 @@ class DeterministicSignalEngine:
             mas=[float(ma5[i]),float(ma10[i]),float(ma20[i])]; convergence=(max(mas)-min(mas))/mean(mas)
             body=(c[i]/o[i]-1) if o[i] else 0
             crossed_all = c[i] > max(mas) and c[i-1] <= max(float(ma5[i-1] or 0),float(ma10[i-1] or 0),float(ma20[i-1] or 0))
-            if convergence <= .025 and body >= .05 and crossed_all and v[i] >= 1.5*float(vv20[i]):
+            if convergence <= .025 and body >= .03 and crossed_all and v[i] >= 1.5*float(vv20[i]):
                 hits.append(SignalHit("ma_convergence_breakout","trend_breakout","primary",
                     {"convergence":convergence,"body_return":body,"volume_ratio":v[i]/float(vv20[i])},
                     pattern_id="ma_convergence_breakout", pattern_version="1.0.0"))
@@ -97,15 +97,14 @@ class DeterministicSignalEngine:
                 if 1 <= i-b <= 10 and ma60[i]:
                     dist=abs(c[i]/float(ma60[i])-1); vol_ratio=v[i]/v[b] if v[b] else 99
                     right_confirm=c[i]>float(ma60[i]) and c[i]>=o[i]
-                    if dist<=.02 and vol_ratio<=.70 and right_confirm:
+                    if dist<=.03 and vol_ratio<=.70 and right_confirm:
                         hits.append(SignalHit("ma60_breakout_retest","trend_pullback","primary",
                             {"breakout_days_ago":i-b,"distance_to_ma60":dist,"retest_volume_vs_breakout":vol_ratio},
                             pattern_id="ma60_breakout_retest", pattern_version="1.0.0"))
                         break
 
         # single_bull_hold
-        if market_regime != "risk_off":
-            for b in range(max(1,i-8),i):
+        for b in range(max(1,i-8),i):
                 dayret=c[b]/c[b-1]-1 if c[b-1] else 0
                 baseline = dayret>=.05
                 if not baseline and b>=2:
@@ -130,7 +129,7 @@ class DeterministicSignalEngine:
 
         # high_volume_breakout
         for b in range(max(20,i-10),i):
-            if vv20[b] and v[b]>=2*float(vv20[b]) and c[i]>h[b]:
+            if vv20[b] and v[b]>=1.5*float(vv20[b]) and c[i]>h[b]:
                 hits.append(SignalHit("high_volume_breakout","trend_breakout","primary",
                     {"volume_day_index":b,"volume_ratio":v[b]/float(vv20[b]),"recorded_high":h[b],"breakout_close":c[i]},
                     pattern_id="high_volume_breakout", pattern_version="1.0.0")); break
@@ -139,13 +138,13 @@ class DeterministicSignalEngine:
         if vv20[i] and ma20[i]:
             low20p=min(l[max(0,i-19):i+1]); support=max(low20p,float(ma20[i])); dist=abs(c[i]/support-1) if support else 99
             body=(c[i]/o[i]-1) if o[i] else 0
-            if v[i]<=.5*float(vv20[i]) and dist<=.02 and .003<=body<=.03:
+            if v[i]<=.5*float(vv20[i]) and dist<=.02 and .003<=body<=.05:
                 hits.append(SignalHit("low_volume_support_bull","trend_pullback","confirmation",
                     {"volume_ratio":v[i]/float(vv20[i]),"support":support,"distance":dist,"body_return":body},
                     pattern_id="low_volume_support_bull", pattern_version="1.0.0"))
 
         # MA5 momentum pullback
-        if market_regime != "risk_off" and sector_strength != "weak" and i>=4:
+        if sector_strength != "weak" and i>=4:
             highs=True
             for j in range(i-3,i):
                 if not ma5[j] or c[j]<=float(ma5[j]) or c[j] < max(c[max(0,j-19):j]): highs=False

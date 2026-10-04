@@ -54,7 +54,7 @@ routes:
     allow: [trend_pullback, pattern_confirmation, exit_defensive]
     block: [trend_breakout, rebound_reversal]
     position_multiplier: 0.50
-    candidate_threshold_delta: 8
+    candidate_threshold_delta: 5
     max_new_positions_override: 1
 
   - id: WEAK_SECTOR
@@ -64,18 +64,18 @@ routes:
     conditional: [trend_pullback]
     block: [trend_breakout, rebound_reversal]
     position_multiplier: 0.35
-    candidate_threshold_delta: 10
+    candidate_threshold_delta: 6
     max_new_positions_override: 1
 
   - id: RISK_OFF
     when:
       market_regime: risk_off
-    allow: [exit_defensive]
+    allow: [trend_pullback, exit_defensive]
     conditional: []
-    block: [trend_breakout, trend_pullback, rebound_reversal, pattern_confirmation]
-    position_multiplier: 0.00
-    candidate_threshold_delta: 999
-    max_new_positions_override: 0
+    block: [trend_breakout, rebound_reversal, pattern_confirmation]
+    position_multiplier: 0.30
+    candidate_threshold_delta: 6
+    max_new_positions_override: 1
 
   - id: PANIC_REBOUND_EXCEPTION
     when:

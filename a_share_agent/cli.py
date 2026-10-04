@@ -324,6 +324,97 @@ def cmd_research_latest(args) -> None:
 def cmd_backtest_list(args) -> None:
     root=_project_root(args.root); print(json.dumps(BacktestReportWriter(root).list_runs(args.limit),ensure_ascii=False,indent=2))
 
+def cmd_stock_pick(args) -> None:
+    import json, sys
+    from datetime import datetime
+    from .strategy.signal_engine import DeterministicSignalEngine
+    from .strategy.router import StrategyRouter
+    from .backtest.scoring import deterministic_score
+    from .backtest.regime import market_context_from_benchmarks, sector_context_from_history
+    root = _project_root(args.root)
+    cfg = load_config(root)
+    mcp = create_mcp_invoker(cfg, backend=getattr(args, "backend", None) or cfg.runtime.get("backend", "production"))
+    provider = HistoricalDataProvider(root, mcp, use_cache=not args.no_cache)
+    settings = settings_from(cfg, {"start_date":"2026-07-01","end_date":"2026-09-30","max_universe":args.max_universe or 63})
+    if args.symbol:
+        symbols = list(args.symbol)
+    else:
+        uni = provider.load_universe_for_period(settings.start_date, settings.end_date,
+            settings.universe_file, max_universe=settings.max_universe, mode=settings.universe_mode)
+        symbols = uni.symbols
+    benchmark_symbols = ["000300.SH", "000852.SH", "399006.SZ"]
+    benchmark_series = {sym: provider.bars(sym, count=250) for sym in benchmark_symbols}
+    benchmark = benchmark_series.get("000300.SH", next((v for v in benchmark_series.values() if v), []))
+    today = benchmark[-1]["date"] if benchmark else datetime.now().strftime("%Y-%m-%d")
+    market = market_context_from_benchmarks(benchmark_series, today)
+    signal_engine = DeterministicSignalEngine()
+    router = StrategyRouter(cfg.strategy_router)
+    candidates = []
+    for sym in symbols:
+        bars = provider.bars(sym, count=250)
+        if len(bars) < 60:
+            continue
+        active = provider.eligible_on(sym, today) if hasattr(provider, "eligible_on") else True
+        if not active:
+            continue
+        hits = signal_engine.scan(bars, market_regime=market.get("market_regime","unknown"),
+                                  sector_strength="unknown")
+        if not hits:
+            continue
+        primaries = [h for h in hits if h.get("strength")=="primary"]
+        if not primaries:
+            continue
+        info = {}
+        try:
+            if hasattr(provider, "sector_info"):
+                info = provider.sector_info(sym) or {}
+        except Exception:
+            info = {}
+        sector_bars_list = []
+        if info.get("code"):
+            try:
+                sb = provider.sector_bars(str(info["code"])) if hasattr(provider, "sector_bars") else []
+                sector_bars_list = sb or []
+            except Exception:
+                sector_bars_list = []
+        sector_ctx = sector_context_from_history(sector_bars_list, today, name=info.get("name"))
+        route = router.route(market_context=market, sector_context=sector_ctx)
+        score, breakdown = deterministic_score(hits, bars, market, sector_ctx)
+        effective_threshold = settings.min_score + route.get("candidate_threshold_delta", 0)
+        if score < effective_threshold:
+            continue
+        candidates.append({
+            "symbol": sym,
+            "score": score,
+            "breakdown": breakdown,
+            "strategy": primaries[0].get("signal", "?"),
+            "evidence": primaries[0].get("evidence", {}),
+            "sector": info.get("name") or "?",
+            "sector_code": info.get("code", "?"),
+            "route_id": route.get("route_id", "?"),
+            "route_mult": route.get("position_multiplier", 0),
+            "market_regime": market.get("market_regime", "?"),
+            "sector_strength": sector_ctx.get("sector_strength", "?"),
+            "regime": market.get("regime", "?"),
+        })
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    if args.json:
+        print(json.dumps({"as_of": today, "market": market, "candidates": candidates,
+            "total_universe": len(symbols), "candidate_count": len(candidates)}, ensure_ascii=False, indent=2))
+        return
+    print(f"\n=== 选股榜单 {today} ===")
+    r = market.get("regime","?")
+    print(f"市场: {market.get('market_regime','?')} ({r})  |  基准000300: {benchmark[-1]['close'] if benchmark else '?'}")
+    print("-" * 90)
+    print(f"{'评分':>4}  {'股票':10s} {'板块':12s} {'策略':28s} {'信号详情':25s} {'路由':15s}")
+    print("-" * 90)
+    for c in candidates[:args.limit]:
+        ev = c.get("evidence", {})
+        detail = " ".join(f"{k}={v}" for k,v in list(ev.items())[:3])
+        print(f"{c['score']:4.0f}  {c['symbol']:10s} {c['sector'][:12]:12s} {c['strategy']:28s} {detail[:25]:25s} {c['route_id']:15s}")
+    print("-" * 90)
+    print(f"总池 {len(symbols)} 只 | 选股 {len(candidates)} 只")
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="a-share-agent")
     p.add_argument("--root", help="runtime project root")
@@ -379,6 +470,15 @@ def main() -> None:
     s.add_argument("--train-months", type=int, default=12); s.add_argument("--test-months", type=int, default=3)
     s.add_argument("--require-research-grade", action="store_true", help="exit nonzero unless full-market PIT data is research-grade ready")
     s.set_defaults(func=cmd_backtest)
+
+    s = sub.add_parser("stock-pick", help="run live stock selection scan against production MCP")
+    s.add_argument("--symbol", action="append", help="explicit symbols")
+    s.add_argument("--max-universe", type=int, default=63)
+    s.add_argument("--no-cache", action="store_true")
+    s.add_argument("--json", action="store_true", help="JSON output")
+    s.add_argument("--limit", type=int, default=30)
+    s.add_argument("--backend", choices=["fake", "production"], help="override default backend")
+    s.set_defaults(func=cmd_stock_pick)
 
     s = sub.add_parser("research-preflight", help="check historical universe/price/sector coverage before research suite")
     s.add_argument("--start"); s.add_argument("--end"); s.add_argument("--universe-file"); s.add_argument("--max-universe", type=int)

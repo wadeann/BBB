@@ -1,5 +1,5 @@
 version: 0.7.0
-backend: fake                 # fake | production; production must be an explicit deployment choice
+backend: production                 # fake | production; production must be an explicit deployment choice
 mode: paper
 code_version: runtime-v0.7.0
 model_id: external-llm
