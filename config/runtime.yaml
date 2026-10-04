@@ -17,10 +17,13 @@ mcp:
   services:
     intel:
       enabled: true
-      url: "http://127.0.0.1:9001/mcp"
+      url: "https://mcp.salahe.us.ci/api/intel"
       url_env: ASHARE_INTEL_MCP_URL
       auth:
-        type: none
+        type: basic
+        username_env: ASHARE_MCP_USERNAME
+        password_env: ASHARE_MCP_PASSWORD
+
     risk:
       enabled: true
       url: "https://mcp.salahe.us.ci/api/risk"

@@ -389,15 +389,370 @@ def aggregate_stability(
     return result
 
 
-def _json_safe(d: dict) -> None:
-    """Replace non-finite floats with None in-place."""
-    import math
-    for k, v in list(d.items()):
-        if isinstance(v, float) and not math.isfinite(v):
-            d[k] = None
-        elif isinstance(v, dict):
-            _json_safe(v)
-        elif isinstance(v, list):
-            for item in v:
-                if isinstance(item, dict):
-                    _json_safe(item)
+# ---------------------------------------------------------------------------
+# Four-key constants
+# ---------------------------------------------------------------------------
+FOUR_KEY_FIELDS: tuple[str, ...] = (
+    "regime_at_signal",
+    "theme_lifecycle",
+    "pattern_id",
+    "pattern_version",
+)
+
+DEFAULT_PER_KEY_SCHEMA_VERSION: str = "1.0"
+
+
+def _four_key_from_trade(trade: dict) -> tuple[str, str, str, str]:
+    """Extract the canonical four-key tuple from a trade dict.
+
+    Returns (regime_at_signal, theme_lifecycle, pattern_id, pattern_version).
+    None/missing fields default to "UNKNOWN".
+    """
+    return (
+        str(trade.get("regime_at_signal") or "UNKNOWN"),
+        str(trade.get("theme_lifecycle") or "UNKNOWN"),
+        str(trade.get("pattern_id") or "UNKNOWN"),
+        str(trade.get("pattern_version") or "UNKNOWN"),
+    )
+
+
+def _key_to_artifact_key(key: tuple[str, str, str, str]) -> str:
+    """Encode a four-key tuple as a colon-separated artifact key string."""
+    return "::".join(key)
+
+
+def _artifact_key_to_tuple(artifact_key: str) -> tuple[str, str, str, str]:
+    """Decode a colon-separated artifact key back to a four-key tuple."""
+    parts = artifact_key.split("::", 3)
+    return (parts[0], parts[1], parts[2], parts[3] if len(parts) >= 4 else "UNKNOWN")
+
+
+# ---------------------------------------------------------------------------
+# Per-four-key OOS stability
+# ---------------------------------------------------------------------------
+def per_key_oos_stability(
+    fold_reports: list[dict],
+    thresholds: dict | None = None,
+) -> dict:
+    """Compute per-four-key OOS stability from original fold reports.
+
+    For each unique four-key found across all folds, creates filtered
+    fold summaries (retaining zero-trade folds per key) and runs the
+    standard aggregate_stability gates on that key's data.
+
+    Args:
+        fold_reports: list of fold report dicts (from BacktestEngine.run
+            or synthetic fixtures). Each must have:
+            - fold_id: int or str
+            - complete: bool
+            - status: str
+            - trades: list[dict] with direction, pnl_pct, round_trip_id,
+              regime_at_signal, theme_lifecycle, pattern_id, pattern_version,
+              regime_data_quality_at_signal, theme_data_quality_at_signal
+            - coverage: float (optional, defaults 1.0)
+        thresholds: optional threshold overrides; defaults to locked set.
+
+    Returns:
+        dict with:
+            - keys: dict mapping artifact-key-string -> per-key result
+            - n_keys: int
+            - classification_summary: dict[str, int] count per classification
+    """
+    # Phase 1: collect all unique four-key tuples across all folds
+    all_keys: set[tuple[str, str, str, str]] = set()
+    for report in fold_reports:
+        for trade in (report.get("trades") or []):
+            if trade.get("direction") != "SELL":
+                continue
+            pnl = trade.get("pnl_pct")
+            if pnl is None:
+                continue
+            key = _four_key_from_trade(trade)
+            all_keys.add(key)
+
+    # Phase 2: for each key, build filtered fold reports and aggregate
+    keys_results: dict[str, dict] = {}
+    for key in sorted(all_keys):
+        key_str = _key_to_artifact_key(key)
+        key_fold_summaries: list[dict] = []
+
+        for report in fold_reports:
+            fold_id = report.get("fold_id", 0)
+            complete = bool(report.get("complete", True))
+            status = str(report.get("status", "COMPLETED"))
+            coverage = float(report.get("coverage", 1.0))
+            all_trades = list(report.get("trades") or [])
+
+            # Filter trades to only those matching this key
+            matched = [
+                t for t in all_trades
+                if _four_key_from_trade(t) == key
+                and t.get("direction") == "SELL"
+                and t.get("pnl_pct") is not None
+                and t.get("exit_reason") != "END_OF_BACKTEST"
+            ]
+
+            # Also include the BUY trades that map to matched SELLs
+            matched_rids = set(str(t.get("round_trip_id", "")) for t in matched)
+            buy_trades = [
+                t for t in all_trades
+                if t.get("direction") == "BUY"
+                and str(t.get("round_trip_id", "")) in matched_rids
+            ]
+
+            filtered_report = dict(report)
+            filtered_report["trades"] = buy_trades + matched
+
+            summary = summarize_fold(filtered_report)
+            summary["fold_id"] = fold_id
+            key_fold_summaries.append(summary)
+
+        # Run aggregate stability on this key's fold summaries
+        completed = [
+            s for s in key_fold_summaries
+            if s.get("status") in ("COMPLETED",) and s.get("complete")
+        ]
+
+        if not completed:
+            aggregate: dict = {
+                "classification": "INSUFFICIENT_DATA",
+                "n_observed_folds": 0,
+                "n_informative_folds": 0,
+                "n_failed_folds": len([s for s in key_fold_summaries if not s.get("complete")]),
+                "n_total_closed": 0,
+                "sample_size_reason": "no completed folds",
+            }
+        else:
+            aggregate = aggregate_stability(completed, thresholds=thresholds)
+
+        # Count zero-trade folds per key
+        zero_trade_fold_ids = [
+            str(s["fold_id"]) for s in key_fold_summaries
+            if s.get("n_closed", 0) == 0
+        ]
+
+        n_failed = len([s for s in key_fold_summaries if not s.get("complete")])
+
+        keys_results[key_str] = {
+            "key_tuple": list(key),
+            "key_fields": list(FOUR_KEY_FIELDS),
+            "n_folds_total": len(key_fold_summaries),
+            "n_folds_observed": len(completed),
+            "n_informative_folds": aggregate.get("n_informative_folds", 0),
+            "n_failed_folds": n_failed,
+            "n_total_closed": aggregate.get("n_total_closed", 0),
+            "zero_trade_fold_ids": zero_trade_fold_ids,
+            "classification": aggregate.get("classification", "INSUFFICIENT_DATA"),
+            "reasons": {
+                "sample_size_reason": aggregate.get("sample_size_reason"),
+                "coverage_reason": aggregate.get("coverage_reason"),
+                "pf_reason": aggregate.get("pf_reason"),
+                "expectancy_reason": aggregate.get("expectancy_reason"),
+                "drawdown_reason": aggregate.get("drawdown_reason"),
+                "concentration_reason": aggregate.get("concentration_reason"),
+            },
+            "fold_summaries": [
+                {
+                    "fold_id": s.get("fold_id"),
+                    "n_closed": s.get("n_closed", 0),
+                    "expectancy_pct": s.get("expectancy_pct"),
+                    "median_trade_pct": s.get("median_trade_pct"),
+                    "profit_factor": s.get("profit_factor"),
+                    "pf_reason": s.get("pf_reason"),
+                }
+                for s in key_fold_summaries
+            ],
+        }
+
+    # Count classifications
+    classification_counts: dict[str, int] = {}
+    for kr in keys_results.values():
+        c = kr["classification"]
+        classification_counts[c] = classification_counts.get(c, 0) + 1
+
+    return {
+        "keys": keys_results,
+        "n_keys": len(keys_results),
+        "classification_summary": classification_counts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Artifact builder with content hash
+# ---------------------------------------------------------------------------
+def build_per_key_oos_artifact(
+    per_key_result: dict,
+    run_id: str,
+    source_sha: str,
+    config_hash: str,
+    wf_config_hash: str,
+    rule_hashes: dict[str, str],
+    run_manifest: dict | None = None,
+) -> dict:
+    """Build a complete per-key OOS artifact dict with content hash.
+
+    The content_hash is a SHA-256 of the canonical JSON serialization of
+    the artifact *excluding* the content_hash field itself, so the hash
+    can be verified by recomputation.
+
+    Args:
+        per_key_result: result from per_key_oos_stability().
+        run_id: run identifier.
+        source_sha: git commit SHA of producer code.
+        config_hash: runtime config hash.
+        wf_config_hash: walk-forward config hash.
+        rule_hashes: dict of config section hashes.
+        run_manifest: optional run manifest dict for binding.
+
+    Returns:
+        dict ready for JSON serialization.
+    """
+    import hashlib
+    import json
+    from datetime import datetime, timezone
+
+    manifest_binding: dict[str, str] = {}
+    if run_manifest:
+        manifest_binding = {
+            "manifest_run_id": str(run_manifest.get("run_id", "")),
+            "manifest_source_sha": str(run_manifest.get("source_sha", "")),
+        }
+
+    # Build artifact without content_hash first
+    artifact = {
+        "schema_version": DEFAULT_PER_KEY_SCHEMA_VERSION,
+        "producer": "oos_stability.per_key_oos_stability",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "source_sha": source_sha,
+        "config_hash": config_hash,
+        "wf_config_hash": wf_config_hash,
+        "rule_hashes": dict(rule_hashes),
+        "input_manifest_binding": manifest_binding,
+        "n_keys": per_key_result.get("n_keys", 0),
+        "classification_summary": per_key_result.get("classification_summary", {}),
+        "keys": per_key_result.get("keys", {}),
+    }
+
+    # Compute content hash over all fields except content_hash
+    canonical = json.dumps(
+        artifact, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    artifact["content_hash"] = content_hash
+
+    return artifact
+
+
+# ---------------------------------------------------------------------------
+# Verification helper
+# ---------------------------------------------------------------------------
+def verify_per_key_oos_artifact(
+    artifact: dict,
+    request_key: tuple[str, str, str, str] | None = None,
+    expected_source_sha: str | None = None,
+) -> dict:
+    """Verify a per-key OOS artifact's integrity and key eligibility.
+
+    This function does NOT trust caller-created ``evidence_type`` metadata.
+    It validates:
+    - Schema version is present and recognized
+    - Content hash matches recomputation
+    - Producer field is present
+    - Run ID and source SHA are present
+    - If a key is requested, checks presence and classification
+    - If expected_source_sha is provided, checks provenance match
+
+    Args:
+        artifact: loaded artifact dict.
+        request_key: optional (regime, theme, pattern, version) tuple
+            to check for eligibility.
+        expected_source_sha: optional source SHA the caller expects.
+
+    Returns:
+        dict with:
+            - valid: bool
+            - reasons: list[str] (empty if valid)
+            - key_found: bool (only if request_key provided)
+            - key_eligible: bool (True only if key has STABLE_CANDIDATE)
+            - key_classification: str | None
+            - n_keys: int
+    """
+    import hashlib
+    import json
+
+    reasons: list[str] = []
+
+    # 1. Schema version
+    schema_ver = artifact.get("schema_version")
+    if not schema_ver:
+        reasons.append("missing schema_version")
+    elif schema_ver != DEFAULT_PER_KEY_SCHEMA_VERSION:
+        reasons.append(f"unsupported schema_version: {schema_ver}")
+
+    # 2. Producer
+    producer = artifact.get("producer")
+    if not producer:
+        reasons.append("missing producer")
+
+    # 3. Run ID
+    if not artifact.get("run_id"):
+        reasons.append("missing run_id")
+
+    # 4. Source SHA
+    source_sha = artifact.get("source_sha")
+    if not source_sha:
+        reasons.append("missing source_sha")
+
+    # 5. Content hash verification
+    recorded_hash = artifact.get("content_hash")
+    if not recorded_hash:
+        reasons.append("missing content_hash")
+    else:
+        content_blob = {k: v for k, v in artifact.items() if k != "content_hash"}
+        canonical = json.dumps(
+            content_blob, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
+        recomputed = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        if recorded_hash != recomputed:
+            reasons.append(
+                f"content_hash mismatch: recorded={recorded_hash}, "
+                f"recomputed={recomputed}"
+            )
+
+    # 6. Expected source SHA provenance
+    if expected_source_sha and source_sha:
+        if source_sha != expected_source_sha:
+            reasons.append(
+                f"source_sha mismatch: artifact={source_sha}, "
+                f"expected={expected_source_sha}"
+            )
+
+    n_keys = artifact.get("n_keys", 0)
+
+    # 7. Key eligibility check
+    key_found = None
+    key_eligible = None
+    key_classification = None
+    if request_key is not None:
+        key_str = _key_to_artifact_key(request_key)
+        keys_data = artifact.get("keys", {})
+        if key_str in keys_data:
+            key_found = True
+            key_classification = keys_data[key_str].get("classification", "UNKNOWN")
+            key_eligible = key_classification == "STABLE_CANDIDATE"
+        else:
+            key_found = False
+            key_eligible = False
+
+    valid = len(reasons) == 0
+
+    result: dict = {
+        "valid": valid,
+        "reasons": reasons,
+        "n_keys": n_keys,
+        "key_found": key_found,
+        "key_eligible": key_eligible,
+        "key_classification": key_classification,
+    }
+    return result

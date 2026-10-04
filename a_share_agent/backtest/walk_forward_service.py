@@ -46,7 +46,7 @@ except ImportError:
     _PREFLIGHT_AVAILABLE = False
 
 try:
-    from ..backtest.oos_stability import summarize_fold, aggregate_stability
+    from ..backtest.oos_stability import summarize_fold, aggregate_stability, per_key_oos_stability, build_per_key_oos_artifact
     _OOS_AVAILABLE = True
 except ImportError:
     summarize_fold = None  # type: ignore[assignment]
@@ -70,7 +70,7 @@ from ..backtest.walk_forward_persistence import (
     write_finite_json as _write_finite_json,
     write_csv as _write_csv,
     write_fold_artifacts,
-    write_oos_stability,
+    write_oos_stability, write_oos_per_key,
 )
 
 
@@ -379,7 +379,7 @@ def run_stability(
     # Pipeline state
     # -------------------------------------------------------------------
     fold_registry: dict[str, dict[str, Any]] = {}
-    fold_summaries: list[dict[str, Any]] = []
+    fold_reports: list[dict[str, Any]] = []
     fold_errors: list[dict[str, Any]] = []
     benchmark_symbols = list(dict.fromkeys([
         wf_cfg.get("settings", {}).get("benchmark", "000300.SH"),
@@ -468,6 +468,7 @@ def run_stability(
             }
             report = engine.run(symbols, evaluation_window=eval_window)
             report["fold_id"] = fold_id
+            fold_reports.append(report)
 
             # --- Summarize (peer: FlashOOSStats) ---
             summary = summarize_fold(report)
@@ -631,6 +632,29 @@ def run_stability(
         stability_result,
         completed or fold_summaries,
     )
+    # -------------------------------------------------------------------
+    # Per-four-key OOS stability (Phase 2B enablement gating)
+    # -------------------------------------------------------------------
+    per_key_result = per_key_oos_stability(fold_reports, thresholds=wf_config.stability_thresholds)
+    per_key_artifact = build_per_key_oos_artifact(
+        per_key_result,
+        run_id=resolved_run_id,
+        source_sha=git_meta.get("git_commit_sha", ""),
+        config_hash=runtime_cfg.config_hash,
+        wf_config_hash=wf_config.canonical_hash(),
+        rule_hashes=_compute_rule_hashes(runtime_cfg),
+        run_manifest=manifest,
+    )
+    per_key_hash = write_oos_per_key(output_dir / "oos_per_key.json", per_key_artifact)
+
+    # -------------------------------------------------------------------
+    # Update manifest with per-key artifact hash
+    # -------------------------------------------------------------------
+    _write_finite_json(
+        output_dir / "manifest.json",
+        {**manifest, "oos_per_key_sha256": per_key_hash},
+    )
+    manifest["oos_per_key_sha256"] = per_key_hash
 
     # -------------------------------------------------------------------
     # Latest pointer — only on non-failed overall

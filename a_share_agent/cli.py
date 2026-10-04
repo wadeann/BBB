@@ -236,7 +236,7 @@ def cmd_backtest(args) -> None:
         if uni: report["universe"]={"source":uni.source,"survivorship_bias":uni.survivorship_bias,"notes":uni.notes,"seed_symbols":len(symbols),"tested_union_symbols":report.get("coverage",{}).get("tested_symbols",0),"point_in_time":uni.point_in_time,"membership_records":uni.membership_records,"dynamic_daily":uni.dynamic_daily,"dataset_version":uni.dataset_version,"coverage":uni.coverage}
         return report
     report=run_one(settings); path=BacktestReportWriter(root).write(report)
-    print(json.dumps(out,ensure_ascii=False,indent=2,default=str))
+    print(json.dumps(report,ensure_ascii=False,indent=2,default=str))
 
 
 def cmd_walk_forward_stability(args) -> None:

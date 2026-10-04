@@ -67,3 +67,16 @@ def write_oos_stability(json_path: Path, csv_path: Path, stability: dict, summar
         fold_median_profit_factor=stability.get("fold_median_profit_factor"),
         max_fold_return_concentration=stability.get("max_fold_return_concentration")))
     write_csv(csv_path, rows)
+
+def write_oos_per_key(path: Path, artifact: dict) -> str:
+    """Write per-key OOS artifact to JSON and return its content_hash.
+
+    Args:
+        path: output JSON path (e.g. ``output_dir / "oos_per_key.json"``).
+        artifact: artifact dict from build_per_key_oos_artifact().
+
+    Returns:
+        The content_hash string recorded in the artifact, for manifest binding.
+    """
+    write_finite_json(path, artifact)
+    return str(artifact.get("content_hash", ""))
