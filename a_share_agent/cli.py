@@ -239,6 +239,79 @@ def cmd_backtest(args) -> None:
     print(json.dumps(report,ensure_ascii=False,indent=2,default=str))
 
 
+
+#
+# Strategy-family definitions and per-family backtesting.
+#
+
+STRATEGY_FAMILIES: dict[str, list[str]] = {
+    "trend_breakout": ["triple_golden_cross", "ma_convergence_breakout", "high_volume_breakout"],
+    "trend_pullback": ["ma60_breakout_retest", "ma5_momentum_pullback", "single_bull_hold", "low_volume_support_bull"],
+    "rebound_reversal": [],
+    "pattern_confirmation": ["long_bull_day7"],
+    "exit_defensive": ["shooting_star_high", "volume_price_divergence", "ma20_break", "ma_bearish_cut"],
+}
+
+
+def _fmt_month(month_label: str) -> str:
+    parts = month_label.split("-")
+    return f"{parts[0][2:]}-{parts[1]}" if len(parts) >= 2 else month_label
+
+
+def cmd_strategy_backtest(args) -> None:
+    root = _project_root(args.root)
+    cfg = load_config(root)
+    mcp = create_mcp_invoker(cfg, backend=getattr(args, "backend", None) or cfg.runtime.get("backend", "production"))
+    overrides = {k: v for k, v in {
+        "start_date": args.start, "end_date": args.end, "min_score": 70.0,
+        "cache": False, "route_mode": "disabled", "sector_mode": "historical_or_neutral",
+    }.items() if v is not None}
+    settings = settings_from(cfg, overrides)
+    provider = HistoricalDataProvider(root, mcp, use_cache=False)
+    symbols = list(args.symbol or [])
+    uni = None
+    if not symbols:
+        uni = provider.load_universe_for_period(settings.start_date, settings.end_date,
+            settings.universe_file, max_universe=63, mode=settings.universe_mode)
+        symbols = uni.symbols
+    if not symbols:
+        raise SystemExit("回测股票池为空")
+    for family_name, pattern_names in STRATEGY_FAMILIES.items():
+        print(f"\n=== 策略: {family_name} ===")
+        if not pattern_names:
+            print("(无信号模式 — 跳过)")
+            continue
+        ss = settings_from(cfg, {**overrides, "enabled_strategies": pattern_names, "cache": False})
+        report = BacktestEngine(cfg, provider, ss).run(symbols)
+        metrics = report.get("metrics", {})
+        trades = report.get("trades", [])
+        sells = [t for t in trades if t.get("direction") == "SELL" and t.get("pnl") is not None]
+        tr = float(metrics.get("total_return", 0))
+        wr = float(metrics.get("win_rate", 0))
+        sh = float(metrics.get("sharpe", 0))
+        dd = float(metrics.get("max_drawdown", 0))
+        print(f"总收益: {tr * 100:.2f}%")
+        print(f"平仓: {len(sells)} 笔 | 胜率: {wr * 100:.1f}%")
+        print(f"Sharpe: {sh:.2f} | 最大回撤: {dd * 100:.2f}%")
+        monthly_items = [f"{_fmt_month(m.get('month', '?'))}:{float(m.get('return', 0)) * 100:.1f}%" for m in report.get("monthly_returns", [])]
+        print(f"月收益: [{'  '.join(monthly_items)}]")
+        print(f"\n交易记录:")
+        print(f"{'日期':12s} {'方向':6s} {'股票代码':12s} {'价格':>8s} {'策略':24s} {'评分':>6s} {'盈亏%':>7s} {'持仓日':>4s} {'退出原因':20s}")
+        print("-" * 108)
+        for t in trades:
+            td = str(t.get("trade_date", "?"))
+            dr = str(t.get("direction", "?"))
+            sy = str(t.get("symbol", "?"))
+            pr = float(t.get("price", 0))
+            si = str(t.get("strategy_id") or "?")[:24]
+            sc = float(t.get("score", 0) or 0)
+            pp = float(t.get("pnl_pct", 0) or 0)
+            hd = int(t.get("holding_days", 0) or 0)
+            er = str(t.get("exit_reason") or "?")[:20]
+            print(f"{td:12s} {dr:6s} {sy:12s} {pr:>8.2f} {si:24s} {sc:>6.0f} {pp * 100:>7.2f}% {hd:>4d} {er:20s}")
+        print()
+
+
 def cmd_walk_forward_stability(args) -> None:
     root=_project_root(args.root); cfg=load_config(root)
     import yaml
@@ -325,13 +398,22 @@ def cmd_backtest_list(args) -> None:
     root=_project_root(args.root); print(json.dumps(BacktestReportWriter(root).list_runs(args.limit),ensure_ascii=False,indent=2))
 
 def cmd_stock_pick(args) -> None:
-    import json, sys
+    import csv, json, sys
     from datetime import datetime
     from .strategy.signal_engine import DeterministicSignalEngine
     from .strategy.router import StrategyRouter
     from .backtest.scoring import deterministic_score
     from .backtest.regime import market_context_from_benchmarks, sector_context_from_history
     root = _project_root(args.root)
+    # Build sector lookup from security_master
+    _sector_csv_path = root / "data/backtest/security_master.csv"
+    _sector_map = {}
+    if _sector_csv_path.exists():
+        with open(_sector_csv_path, "r", encoding="utf-8-sig") as _f:
+            for _r in csv.DictReader(_f):
+                _sym = _r.get("symbol") or _r.get("\ufeffsymbol")
+                if _sym:
+                    _sector_map[_sym] = {"name": _r.get("industry_name","?"), "code": _r.get("industry_code","?"), "stock_name": _r.get("name","?")}
     cfg = load_config(root)
     mcp = create_mcp_invoker(cfg, backend=getattr(args, "backend", None) or cfg.runtime.get("backend", "production"))
     provider = HistoricalDataProvider(root, mcp, use_cache=not args.no_cache)
@@ -370,6 +452,7 @@ def cmd_stock_pick(args) -> None:
                 info = provider.sector_info(sym) or {}
         except Exception:
             info = {}
+        info = info or _sector_map.get(sym, {})
         sector_bars_list = []
         if info.get("code"):
             try:
@@ -391,6 +474,7 @@ def cmd_stock_pick(args) -> None:
             "evidence": primaries[0].get("evidence", {}),
             "sector": info.get("name") or "?",
             "sector_code": info.get("code", "?"),
+            "stock_name": _sector_map.get(sym, {}).get("stock_name") or "?",
             "route_id": route.get("route_id", "?"),
             "route_mult": route.get("position_multiplier", 0),
             "market_regime": market.get("market_regime", "?"),
@@ -405,14 +489,14 @@ def cmd_stock_pick(args) -> None:
     print(f"\n=== 选股榜单 {today} ===")
     r = market.get("regime","?")
     print(f"市场: {market.get('market_regime','?')} ({r})  |  基准000300: {benchmark[-1]['close'] if benchmark else '?'}")
-    print("-" * 90)
-    print(f"{'评分':>4}  {'股票':10s} {'板块':12s} {'策略':28s} {'信号详情':25s} {'路由':15s}")
-    print("-" * 90)
+    print("-" * 120)
+    print(f"{'评分':>4}  {'股票':10s} {'名称':12s} {'板块':16s} {'策略':28s} {'信号详情':25s} {'路由':15s}")
+    print("-" * 120)
     for c in candidates[:args.limit]:
         ev = c.get("evidence", {})
         detail = " ".join(f"{k}={v}" for k,v in list(ev.items())[:3])
-        print(f"{c['score']:4.0f}  {c['symbol']:10s} {c['sector'][:12]:12s} {c['strategy']:28s} {detail[:25]:25s} {c['route_id']:15s}")
-    print("-" * 90)
+        print(f"{c['score']:4.0f}  {c['symbol']:10s} {c['stock_name'][:12]:12s} {c['sector'][:16]:16s} {c['strategy']:28s} {detail[:25]:25s} {c['route_id']:15s}")
+    print("-" * 120)
     print(f"总池 {len(symbols)} 只 | 选股 {len(candidates)} 只")
 
 def main() -> None:
@@ -498,8 +582,11 @@ def main() -> None:
     s.add_argument("--require-research-grade", action="store_true", help="exit nonzero unless full-market PIT data is research-grade ready")
     s.set_defaults(func=cmd_research_suite)
 
-    s = sub.add_parser("research-latest", help="show latest research suite feedback bundle path")
-    s.set_defaults(func=cmd_research_latest)
+    s = sub.add_parser("strategy-backtest", help="run per-strategy-family backtest for Q3 2026")
+    s.add_argument("--start", default="2026-07-01")
+    s.add_argument("--end", default="2026-09-30")
+    s.add_argument("--symbol", action="append", help="explicit universe symbol (repeatable)")
+    s.set_defaults(func=cmd_strategy_backtest)
 
     s = sub.add_parser("backtest-list", help="list saved backtest reports")
     s.add_argument("--limit", type=int, default=50); s.set_defaults(func=cmd_backtest_list)
@@ -521,3 +608,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
