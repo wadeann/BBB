@@ -741,6 +741,9 @@ class HistoricalDataProvider:
             try:
                 raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=count)
                 rows = normalize_bars(raw)
+                if not rows:
+                    raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
+                    rows = normalize_bars(raw)
             except Exception:
                 raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
                 rows = normalize_bars(raw)

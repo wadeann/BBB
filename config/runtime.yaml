@@ -17,7 +17,7 @@ mcp:
   services:
     intel:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/intel"
+      url: "https://mcp.salahe.us.ci/api/intel/mcp"
       url_env: ASHARE_INTEL_MCP_URL
       auth:
         type: basic
