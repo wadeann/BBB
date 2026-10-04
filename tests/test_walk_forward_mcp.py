@@ -49,9 +49,72 @@ def test_canonical_mcp_response_and_memory_origin(tmp_path):
     assert event['dataset_version'] == 'v1'
     assert event['sequence'] in snap['events'][-1]['origin_sequences']
     p.ledger.events[event['sequence'] - 1]['response_json'] = '{}'
-    assert snap['status'] == 'VERIFIED'
+    assert snap['status'] == 'UNVERIFIABLE'
     assert p.ledger.snapshot()['status'] == 'UNVERIFIABLE'
+def _wire_provider(tmp_path):
+    import httpx
+    from a_share_agent.mcp.http import StreamableHTTPMCPInvoker
+    payload = response()
+    payload['data'] = [{'symbol': 'X', 'active_from': '2020-01-01', 'active_to': None}]
+    captured = []
+    def handler(request):
+        rpc = json.loads(request.content)
+        method = rpc['method']
+        if method == 'notifications/initialized':
+            return httpx.Response(202)
+        result = ({'protocolVersion': '2025-06-18'} if method == 'initialize' else
+                  {'tools': []} if method == 'tools/list' else {'structuredContent': payload})
+        wire = json.dumps({'jsonrpc': '2.0', 'id': rpc['id'], 'result': result}).encode()
+        if method == 'tools/call':
+            captured.append(wire)
+        return httpx.Response(200, content=wire, headers={'content-type': 'application/json'})
+    inv = StreamableHTTPMCPInvoker({'services': {'intel': {'enabled': True, 'url': 'http://local/mcp'}}},
+                                   transport=httpx.MockTransport(handler))
+    base = tmp_path / 'data/backtest'
+    base.mkdir(parents=True)
+    for name in ('corporate_actions', 'historical_status_intervals', 'historical_sector_intervals'):
+        (base / f'{name}.csv').write_text('symbol,effective_from,effective_to\n')
+    return HistoricalDataProvider(tmp_path, inv, use_cache=False), captured
 
+
+def test_mcp_wire_commitment_persists_exact_response_artifact(tmp_path):
+    p, captured = _wire_provider(tmp_path)
+    try:
+        assert load(p).symbols == ['X']
+        event = next(e for e in p.ledger.events if e['source_type'] == 'mcp')
+        artifact = tmp_path / event['wire_artifact_path']
+        assert artifact.read_bytes() == captured[0]
+        assert event['wire_sha256'] == hashlib.sha256(captured[0]).hexdigest()
+        assert not __import__('pathlib').Path(event['wire_artifact_path']).is_absolute()
+        assert p.ledger.snapshot()['status'] == 'VERIFIED'
+    finally:
+        p.mcp.invoker.close()
+
+
+def test_mcp_wire_artifact_tampering_is_unverifiable(tmp_path):
+    p, _ = _wire_provider(tmp_path)
+    try:
+        load(p)
+        event = next(e for e in p.ledger.events if e['source_type'] == 'mcp')
+        artifact = tmp_path / event['wire_artifact_path']
+        artifact.chmod(0o600)
+        artifact.write_bytes(b'tampered')
+        assert p.ledger.snapshot()['status'] == 'UNVERIFIABLE'
+    finally:
+        p.mcp.invoker.close()
+
+
+def test_mcp_wire_artifact_path_escape_is_unverifiable(tmp_path):
+    p, captured = _wire_provider(tmp_path)
+    try:
+        load(p)
+        event = next(e for e in p.ledger.events if e['source_type'] == 'mcp')
+        outside = tmp_path.parent / (tmp_path.name + '-outside.bin')
+        outside.write_bytes(captured[0])
+        event['wire_artifact_path'] = str(outside)
+        assert p.ledger.snapshot()['status'] == 'UNVERIFIABLE'
+    finally:
+        p.mcp.invoker.close()
 
 @pytest.mark.parametrize('field', ['dataset_version', 'source', 'point_in_time', 'coverage', 'coverage_end'])
 def test_partial_mcp_metadata_unverifiable(tmp_path, field):
@@ -159,6 +222,137 @@ def test_bars_falls_back_to_fetch_when_tdx_window_is_short(tmp_path):
     rows = p.bars('600000.SH', count=900)
     assert len(rows) == 2
     assert calls == ['mcp_intel_tdx_kline', 'mcp_intel_fetch_kline']
+
+def test_mcp_bar_fetch_is_cached_per_symbol_for_pit_slicing(tmp_path):
+    calls = []
+    payload = {"Rows": [{"Data": "20240102", "Open": 1, "High": 2, "Low": 1,
+                          "Close": 2, "Volume": 100}]}
+
+    def invoke(tool, **kwargs):
+        calls.append((tool, kwargs))
+        return payload
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=invoke), use_cache=False,
+        read_only_mcp=True, strict_paid_source=True,
+    )
+    first = provider.bars("600000.SH", count=900)
+    second = provider.bars("600000.SH", count=900)
+    assert first == second
+    assert [tool for tool, _ in calls] == ["mcp_intel_tdx_kline"]
+
+
+def test_mcp_raw_bar_fetch_is_cached_per_symbol(tmp_path):
+    calls = []
+    payload = {"Rows": [{"Data": "20240102", "Open": 1, "High": 2, "Low": 1,
+                          "Close": 2, "Volume": 100}]}
+
+    def invoke(tool, **kwargs):
+        calls.append(tool)
+        return payload
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=invoke), use_cache=False,
+        read_only_mcp=True, strict_paid_source=True,
+    )
+    assert provider.raw_bars("600000.SH", count=900)
+    assert provider.raw_bars("600000.SH", count=900)
+    assert calls == ["mcp_intel_tdx_kline"]
+
+def test_historical_range_rejects_provider_declared_adjustment(tmp_path):
+    payload = historical_response()
+    payload.update(source='tdx', provider='tdx_mcp', adjustment='provider_declared')
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=lambda tool, **kwargs: payload), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=('2024-01-01', '2024-03-01'),
+    )
+    with pytest.raises(RuntimeError, match='historical bars adjustment mismatch'):
+        provider.bars('600000.SH', count=900)
+@pytest.mark.parametrize('adjustment', ['none', 'raw'])
+def test_historical_range_rejects_raw_adjustment_for_signal_bars(tmp_path, adjustment):
+    payload = historical_response()
+    payload.update(source='tdx', provider='tdx_mcp', adjustment=adjustment)
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=lambda tool, **kwargs: payload), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=('2024-01-01', '2024-03-01'),
+    )
+    with pytest.raises(RuntimeError, match='historical bars adjustment mismatch'):
+        provider.bars('600000.SH', count=900)
+
+
+def test_historical_range_mvp_fetches_date_bounded_bars_once(tmp_path):
+    payload = historical_response()
+    payload.update(source='tdx', provider='tdx_mcp', adjustment='qfq')
+    calls = []
+
+    def invoke(tool, **kwargs):
+        calls.append((tool, kwargs))
+        return payload
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=invoke), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=("2024-01-01", "2024-03-01"),
+    )
+    rows = provider.bars("600000.SH", count=900)
+    assert rows
+    assert calls == [("mcp_intel_historical_bars", {
+        "symbols": ["600000.SH"], "start_date": "2024-01-01",
+        "end_date": "2024-02-29", "period": "D",
+        "adjustment": "qfq", "max_bars_per_symbol": 900,
+        "provider": "tdx", "strict_paid_source": False,
+    })]
+
+
+def test_historical_range_raw_bars_use_same_date_bounded_mcp_path(tmp_path):
+    payload = historical_response()
+    payload.update(source='tdx', provider='tdx_mcp', adjustment='none')
+    calls = []
+
+    def invoke(tool, **kwargs):
+        calls.append((tool, kwargs))
+        return payload
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=invoke), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=("2024-01-01", "2024-03-01"),
+    )
+    assert provider.raw_bars("600000.SH", count=900)
+    assert calls == [("mcp_intel_historical_bars", {
+        "symbols": ["600000.SH"], "start_date": "2024-01-01",
+        "end_date": "2024-02-29", "period": "D",
+        "adjustment": "none", "max_bars_per_symbol": 900,
+        "provider": "tdx", "strict_paid_source": False,
+    })]
+def test_historical_range_rejects_non_tdx_fallback_source(tmp_path):
+    payload = historical_response()
+    payload.update(source='eastmoney', fallback_source='eastmoney', provider='eastmoney_push2his')
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=lambda tool, **kwargs: payload), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=('2024-01-01', '2024-03-01'),
+    )
+    with pytest.raises(RuntimeError, match='historical bars source mismatch'):
+        provider.bars('600000.SH', count=900)
+
+
+def test_historical_range_raw_bars_reject_ambiguous_adjustment(tmp_path):
+    payload = historical_response()
+    payload.update(source='tdx', provider='tdx_mcp', adjustment='provider_declared')
+
+    provider = HistoricalDataProvider(
+        tmp_path, SimpleNamespace(invoke=lambda tool, **kwargs: payload), use_cache=False,
+        read_only_mcp=True, strict_paid_source=False,
+        historical_range=('2024-01-01', '2024-03-01'),
+    )
+    with pytest.raises(RuntimeError, match='historical bars adjustment mismatch'):
+        provider.raw_bars('600000.SH', count=900)
+
+
 def test_production_mcp_disables_unverified_cache(tmp_path, monkeypatch):
     cfg = load_config(__import__('pathlib').Path(__file__).parents[1])
     cfg = replace(cfg, project_root=tmp_path)

@@ -257,3 +257,16 @@ industry_name
 - 不允许退回当前问财股票池
 
 这正是正式收益验证应使用的模式。
+
+## Phase 2B 历史行情与物理证据门禁
+
+- WF 内部区间为半开区间；`historical_bars` 的日期参数为闭区间。请求结束日取 exclusive end 前的最后一个真实交易日。
+- warmup 起点来自交易日历与冻结 `warmup_bars`，不再以固定年份截断。规划日历、交易所覆盖证明和实际股票 warmup 必须分别通过。
+- 信号行情显式请求 `qfq`；执行行情请求 `none`。未知 `provider_declared` 不得冒充 raw/none/qfq/hfq。qfq/hfq 必须具有匹配模式、逐日期有限正数 factors 与 PIT as-of 语义。
+- adjusted/raw 股票 train、test、observation 区间及 benchmark 要覆盖每个要求日期；仅有明确历史 `SUSPENDED`/`DELISTED` 状态的股票日期可豁免可执行行情。缺 raw benchmark 或任一要求日期会阻断。
+- 物理 provenance 使用单次调用证据，校验原始 JSON/SSE、JSON-RPC id、工具和参数、解析结果及响应内 metadata。可信 artifact root 来自 ledger，不来自响应；仅成功 HTTP 与完整绑定契约可标记 VERIFIED。
+- Pup per-symbol coverage 使用 `requested_start`、`requested_end`、`complete`、`status`、`symbols`，并与 `bars`、`returned_rows` 的日期/数量核对；完整抓取不等于 PIT/version 已被证明。
+
+2026-10-04 的真实只读冻结 WF 输出为 `data/backtest/phase2b_production_20261004T115407Z`：4 folds 均 `DATA_BLOCKED`，0 `RUN_FAILED`，0 completed；overall `FAILED` / `INSUFFICIENT_DATA`，physical provenance `UNVERIFIABLE`，没有 completion marker。前两个 folds 的 SZSE 覆盖证明开始于 2024-01-01，晚于所需 warmup；后两个 folds 的远端 catalog 缺少 `historical_bars`。
+
+另一次真实 `tdx_kline(count=2000)` 抓取覆盖全部 10 个冻结标的与 `000300.SH`，每个返回 700 bars（2023-11-14..2026-09-30），冻结起点前仅 215 bars，少于要求的 260；响应缺 raw/factors/PIT/version 契约。这是已观测结果，不是已证明的全局上游上限。认证有效；这些阻塞不是缺账号。本地 Pup 修复尚未部署，policy 与真实执行继续关闭。

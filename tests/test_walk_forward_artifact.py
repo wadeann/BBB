@@ -188,7 +188,7 @@ def test_run_stability_records_fold_exception(monkeypatch, temp_output):
     monkeypatch.setattr(service, "_PREFLIGHT_AVAILABLE", True)
     monkeypatch.setattr(service, "_OOS_AVAILABLE", True)
     monkeypatch.setattr(service, "WalkForwardConfig", lambda **kwargs: SimpleNamespace(
-        stability_thresholds={}, universe=(), canonical_hash=lambda: "wfhash",
+        stability_thresholds={}, universe=(), warmup_bars=kwargs.get("warmup_bars", 260), canonical_hash=lambda: "wfhash",
         to_dict=lambda: {"run_id": "exception-test"}))
     fold = {"fold_id": "f1", "train_start": "2020-01-01", "train_end_exclusive": "2021-01-01",
             "test_start": "2021-01-01", "test_end_exclusive": "2021-04-01", "complete": True}
@@ -395,7 +395,7 @@ def producer_runner(monkeypatch, tmp_path):
              "test_start": "2021-01-01", "test_end_exclusive": "2021-04-01", "complete": True}
             for i in range(4)]
     monkeypatch.setattr(service, "WalkForwardConfig", lambda **kwargs: SimpleNamespace(
-        stability_thresholds={}, universe=(), canonical_hash=lambda: "wfhash", to_dict=lambda: {}))
+        stability_thresholds={}, universe=(), warmup_bars=kwargs.get("warmup_bars", 260), canonical_hash=lambda: "wfhash", to_dict=lambda: {}))
     monkeypatch.setattr(service, "generate_folds", lambda cfg: (plan, None))
     monkeypatch.setattr(service, "HistoricalDataProvider", lambda *a, **k: SimpleNamespace(
         load_universe_for_period=lambda *a, **k: SimpleNamespace(symbols=["X"])))

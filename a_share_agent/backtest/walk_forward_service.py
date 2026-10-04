@@ -20,14 +20,14 @@ import platform
 import sys
 import uuid
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
 from ..config import RuntimeConfig
 from ..git_utils import get_git_metadata
 from .. import __version__
-from .data import ConsumedInputLedger
+from .data import ConsumedInputLedger, HistoricalDataUnavailable
 
 # ---------------------------------------------------------------------------
 # Peer interface imports — resolve at final merge
@@ -363,6 +363,34 @@ def run_stability(
         try:
             if fold_id in fold_registry:
                 raise ValueError(f"duplicate fold_id in expected plan: {fold_id}")
+            fold["warmup_end_exclusive"] = fold["train_start"]
+            calendar_path = project_root / "data/backtest/trading_grade_calendar.csv"
+            calendar_dates = []
+            if calendar_path.exists():
+                calendar_rows = ledger.read(calendar_path, kind="acquisition_calendar",
+                    parser=lambda raw: list(csv.DictReader(raw.decode("utf-8-sig").splitlines())))
+                calendar_dates = sorted({str(row.get("date", "")).strip()
+                    for row in calendar_rows if row.get("date")})
+            preceding_dates = [d for d in calendar_dates if d < fold["train_start"]]
+            required_warmup = max(0, int(wf_config.warmup_bars))
+            # Planning uses actual calendar dates; preflight still verifies source
+            # coverage and the actual raw/adjusted bar counts independently.
+            fold["warmup_start"] = (preceding_dates[-required_warmup]
+                if required_warmup and len(preceding_dates) >= required_warmup
+                else preceding_dates[0] if required_warmup and preceding_dates
+                else fold["train_start"])
+            fold_settings = settings_from(runtime_cfg, wf_cfg.get("settings", {}))
+            fold_settings.warmup_bars = required_warmup
+            # Last test close can enter next open; max-holding close exits the
+            # following open. Both execution sessions belong to observation.
+            tail_required = max(0, int(getattr(fold_settings, "max_holding_days", 20))) + 2
+            fold["observation_tail_bars_required"] = tail_required
+            tail_dates = [d for d in calendar_dates if d >= fold["test_end_exclusive"]][:tail_required]
+            fold["observation_end_exclusive"] = (
+                datetime.fromisoformat(tail_dates[-1]).date() + timedelta(days=1)).isoformat() if tail_dates else fold["test_end_exclusive"]
+            acquisition_dates = [d for d in calendar_dates
+                if fold["warmup_start"] <= d < fold["observation_end_exclusive"]]
+            historical_max_bars = max(1, len(acquisition_dates))
             # --- Fresh provider per fold (prevents CA leakage) ---
             provider = HistoricalDataProvider(
                 project_root,
@@ -370,11 +398,14 @@ def run_stability(
                 use_cache=False if mcp is not None else wf_cfg.get("settings", {}).get("cache", True),
                 ledger=ledger,
                 read_only_mcp=mcp is not None,
+                strict_paid_source=bool(mcp is not None and not wf_cfg.get("settings", {}).get("allow_unverified_mcp", False)),
+                historical_range=(fold["warmup_start"], fold["observation_end_exclusive"]),
+                historical_max_bars=historical_max_bars,
+                historical_request_end=acquisition_dates[-1] if acquisition_dates else None,
             )
             if getattr(provider, "ledger", None) is not ledger:
                 ledger.append(kind="provider", status="unrecordable",
                               error="provider does not share the consumed input ledger")
-            fold_settings = settings_from(runtime_cfg, wf_cfg.get("settings", {}))
             explicit_universe = list(wf_config.universe)
             if explicit_universe:
                 symbols = explicit_universe
@@ -407,14 +438,6 @@ def run_stability(
             if not symbols:
                 raise RuntimeError(f"Empty universe for fold {fold_id}")
 
-            # BSE/SZSE source files begin in 2024; use the latest verified
-            # common calendar start while retaining the configured 260-bar warmup.
-            fold["warmup_end_exclusive"] = fold["train_start"]
-            fold["warmup_start"] = str(max(
-                datetime.strptime(fold["train_start"], "%Y-%m-%d").date() - __import__("datetime").timedelta(days=730),
-                datetime.strptime("2024-01-01", "%Y-%m-%d").date(),
-            ))
-            fold["observation_end_exclusive"] = fold["test_end_exclusive"]
 
             # --- Preflight (peer: FlashPreflight) returns (status, complete, reasons, inputs_info) ---
             ledger.phase = "preflight"
@@ -487,10 +510,12 @@ def run_stability(
             write_fold_artifacts(fold_dir, report)
 
         except Exception as exc:
-            data_blocked = any(e['fold_id'] == fold_id and e['source_type'] == 'mcp'
-                               and e['status'] in {'error', 'empty', 'denied'} for e in ledger.events)
+            data_blocked = isinstance(exc, HistoricalDataUnavailable) or any(
+                e['fold_id'] == fold_id and e['source_type'] == 'mcp'
+                and e['status'] in {'error', 'empty', 'denied'} for e in ledger.events)
             fold_state['status'] = 'DATA_BLOCKED' if data_blocked else 'RUN_FAILED'
-            fold_state['error'] = type(exc).__name__ if data_blocked else f'{type(exc).__name__}: {exc}'
+            fold_state['error'] = (str(exc) if isinstance(exc, HistoricalDataUnavailable)
+                else type(exc).__name__ if data_blocked else f'{type(exc).__name__}: {exc}')
             if not data_blocked:
                 import traceback as _tb
                 fold_state['traceback'] = ''.join(_tb.format_exc())
@@ -720,7 +745,8 @@ def run_stability(
     if overall_status != "COMPLETED":
         _write_finite_json(output_dir / "diagnostics.json", {
             "status": overall_status,
-            "fold_errors": fold_errors,
+            "fold_errors": [state for state in fold_registry.values()
+                if state.get("status") != "COMPLETED"],
             "generated_at": datetime.now(timezone.utc).isoformat(),
         })
     # The directory is installed only after every file and marker is ready.

@@ -230,7 +230,9 @@ def _validate_trading_grade_calendar(
         for ex in exchanges:
             exchange_source_coverage[ex] = (manifest_cov_start, manifest_cov_end)
 
-    # Check each required exchange has coverage spanning warmup_start..observation_end
+    # Source coverage is inclusive; fold observation_end is half-open.
+    observation_last_date = (date.fromisoformat(observation_end) - timedelta(days=1)).isoformat()
+    # Require the entire included calendar interval, not only its last open date.
     for ex in sorted(required_exchanges):
         if ex in exchange_source_coverage:
             cov_start, cov_end = exchange_source_coverage[ex]
@@ -239,9 +241,9 @@ def _validate_trading_grade_calendar(
                     exchange_gaps.append(
                         f"{ex}:source_coverage_starts_{cov_start}_after_warmup_{warmup_start}"
                     )
-                if cov_end < observation_end:
+                if cov_end < observation_last_date:
                     exchange_gaps.append(
-                        f"{ex}:source_coverage_ends_{cov_end}_before_observation_{observation_end}"
+                        f"{ex}:source_coverage_ends_{cov_end}_before_observation_{observation_last_date}"
                     )
             else:
                 exchange_gaps.append(f"{ex}:source_coverage_incomplete")
@@ -288,6 +290,7 @@ def _validate_symbol_data(
     warmup_start: str,
     warmup_end_exclusive: str,
     train_start: str,
+    train_end_exclusive: str,
     test_start: str,
     test_end_exclusive: str,
     observation_end_exclusive: str,
@@ -352,13 +355,44 @@ def _validate_symbol_data(
             f"{symbol}:INSUFFICIENT_WARMUP_RAW:{warmup_raw_count}_lt_{warmup_bars_required}"
         )
 
-    # --- Tradability during test window ---
+    # Only dated historical states that rule out an executable bar may exempt
+    # calendar dates. Ineligibility alone can also mean missing data.
+    non_executable_dates = {
+        d for d in calendar_dates_set
+        if train_start <= d < observation_end_exclusive
+        and hasattr(provider, "status_on")
+        and provider.status_on(symbol, d) in {"SUSPENDED", "DELISTED"}
+    }
+    adj_dates = {str(b.get("date", "")).strip() for b in adj_bars}
+    raw_dates = {str(b.get("date", "")).strip() for b in raw_bars}
+    coverage: dict[str, int] = {}
+    for window, start, end in (
+        ("train", train_start, train_end_exclusive),
+        ("test", test_start, test_end_exclusive),
+        ("obs", test_end_exclusive, observation_end_exclusive),
+    ):
+        window_dates = {d for d in calendar_dates_set if start <= d < end}
+        expected_dates = window_dates - non_executable_dates
+        coverage[f"{window}_expected_dates"] = len(expected_dates)
+        coverage[f"{window}_non_executable_dates"] = len(window_dates & non_executable_dates)
+        for series, available_dates in (("adj", adj_dates), ("raw", raw_dates)):
+            missing_dates = sorted(expected_dates - available_dates)
+            present = len(expected_dates & available_dates)
+            coverage[f"{window}_{series}_bars"] = present
+            coverage[f"{window}_{series}_missing_dates"] = len(missing_dates)
+            if missing_dates:
+                issues.append(
+                    f"{symbol}:INCOMPLETE_{window.upper()}_{series.upper()}:"
+                    f"{present}_of_{len(expected_dates)}|missing={','.join(missing_dates[:5])}"
+                )
+
+    # An unexplained non-tradable date must still block, even if bars exist.
     test_date_set = {d for d in calendar_dates_set if test_start <= d < test_end_exclusive}
     if hasattr(provider, "eligible_on"):
-        non_tradable_dates: list[str] = []
-        for td in sorted(test_date_set):
-            if not provider.eligible_on(symbol, td):
-                non_tradable_dates.append(td)
+        non_tradable_dates = [
+            d for d in sorted(test_date_set - non_executable_dates)
+            if not provider.eligible_on(symbol, d)
+        ]
         if non_tradable_dates:
             status_evidence = ""
             if hasattr(provider, "status_on"):
@@ -369,15 +403,6 @@ def _validate_symbol_data(
             issues.append(
                 f"{symbol}:NOT_TRADABLE_ON_DATES:{ntd_sample}{more}|{status_evidence}"
             )
-
-    # --- Observation tail coverage ---
-    obs_date_set = {
-        d for d in calendar_dates_set
-        if test_end_exclusive <= d < observation_end_exclusive
-    }
-    obs_adj_count = _bar_date_count(adj_bars, obs_date_set)
-    obs_raw_count = _bar_date_count(raw_bars, obs_date_set)
-    obs_expected = len(obs_date_set)
 
     return {
         "symbol": symbol,
@@ -390,9 +415,7 @@ def _validate_symbol_data(
         "warmup_adj_bars": warmup_adj_count,
         "warmup_raw_bars": warmup_raw_count,
         "warmup_bars_required": warmup_bars_required,
-        "obs_adj_bars": obs_adj_count,
-        "obs_raw_bars": obs_raw_count,
-        "obs_expected_dates": obs_expected,
+        **coverage,
     }
 
 
@@ -425,24 +448,39 @@ def _validate_benchmark_data(
         if mal:
             issues.append(f"{benchmark_symbol}:MALFORMED:{';'.join(mal[:3])}")
 
+
+    if not raw_bars:
+        issues.append(f"{benchmark_symbol}:NO_RAW_BARS")
+    else:
+        raw_dups = _check_duplicates(raw_bars)
+        if raw_dups:
+            issues.append(f"{benchmark_symbol}:RAW_DUPLICATE_DATES:{','.join(raw_dups[:5])}")
+        raw_nonfinite = _check_nonfinite(raw_bars)
+        if raw_nonfinite:
+            issues.append(f"{benchmark_symbol}:RAW_NONFINITE:{','.join(raw_nonfinite)}")
+        raw_malformed = _check_malformed(raw_bars)
+        if raw_malformed:
+            issues.append(f"{benchmark_symbol}:RAW_MALFORMED:{';'.join(raw_malformed[:3])}")
     # Check coverage over full period
     full_date_set = {d for d in calendar_dates_set if warmup_start <= d < observation_end}
-    adj_count = _bar_date_count(bars, full_date_set)
-    raw_count = _bar_date_count(raw_bars, full_date_set)
+    adj_dates = {str(b.get("date", "")).strip() for b in bars}
+    raw_dates = {str(b.get("date", "")).strip() for b in raw_bars}
+    missing_adj_dates = sorted(full_date_set - adj_dates)
+    missing_raw_dates = sorted(full_date_set - raw_dates)
+    adj_count = len(full_date_set & adj_dates)
+    raw_count = len(full_date_set & raw_dates)
     expected = len(full_date_set)
 
-    # Allow up to 1% missing benchmark dates (real providers)
-    _coverage_ok = True
-    if expected > 0 and adj_count < expected and adj_count < expected * 0.95:
-        issues.append(
-            f"{benchmark_symbol}:INCOMPLETE_COVERAGE_ADJ:{adj_count}_of_{expected}"
-        )
-        _coverage_ok = False
-    if raw_bars and expected > 0 and raw_count < expected and raw_count < expected * 0.95:
-        issues.append(
-            f"{benchmark_symbol}:INCOMPLETE_COVERAGE_RAW:{raw_count}_of_{expected}"
-        )
-        _coverage_ok = False
+    # Benchmarks must cover every expected trading date, without tolerance.
+    for series, count, missing_dates in (
+        ("ADJ", adj_count, missing_adj_dates),
+        ("RAW", raw_count, missing_raw_dates),
+    ):
+        if missing_dates:
+            issues.append(
+                f"{benchmark_symbol}:INCOMPLETE_COVERAGE_{series}:{count}_of_{expected}"
+                f"|missing={','.join(missing_dates[:5])}"
+            )
 
     return {
         "symbol": benchmark_symbol,
@@ -453,6 +491,8 @@ def _validate_benchmark_data(
         "coverage_adj": adj_count,
         "coverage_raw": raw_count,
         "expected_dates": expected,
+        "missing_adj_dates": len(missing_adj_dates),
+        "missing_raw_dates": len(missing_raw_dates),
     }
 
 
@@ -524,6 +564,7 @@ def preflight_fold(
     if not isinstance(universe, list):
         universe = []
     warmup_bars_required = max(0, int(getattr(settings, "warmup_bars", 260)))
+    observation_tail_bars_required = max(0, int(fold.get("observation_tail_bars_required", 0)))
 
     # === STEP 1: CALENDAR ===
     trading_dates: list[str] = []
@@ -573,8 +614,14 @@ def preflight_fold(
         "train_trading_days": len(train_cal_dates),
         "test_trading_days": len(test_cal_dates),
         "observation_trading_days": len(obs_cal_dates),
+        "observation_tail_bars_required": observation_tail_bars_required,
         "total_trading_days": len(trading_dates),
     }
+
+    if len(obs_cal_dates) < observation_tail_bars_required:
+        reasons["blocking"]["observation_calendar"] = (
+            f"INSUFFICIENT_CALENDAR_OBSERVATION:{len(obs_cal_dates)}_lt_{observation_tail_bars_required}"
+        )
 
     # === STEP 2: UNIVERSE WARMUP COVERAGE ===
     inputs_info["warmup_coverage"] = {
@@ -599,7 +646,7 @@ def preflight_fold(
         sresult = _validate_symbol_data(
             sym, provider,
             warmup_start, warmup_end_exclusive,
-            train_start, test_start, test_end_exclusive,
+            train_start, train_end_exclusive, test_start, test_end_exclusive,
             observation_end_exclusive,
             warmup_bars_required,
             calendar_dates_set,
@@ -615,6 +662,7 @@ def preflight_fold(
                     "IPO_",
                     "NOT_TRADABLE",
                     "DUPLICATE", "NONFINITE", "MALFORMED",
+                    "INCOMPLETE_",
                 )):
                     symbol_blockers.append(issue)
                 else:
@@ -640,12 +688,30 @@ def preflight_fold(
         raw_files[sym] = {
             "bars": sr["raw_bars_total"],
             "warmup_bars": sr["warmup_raw_bars"],
-            "obs_bars": sr["obs_raw_bars"],
+            **{
+                f"{window}_{field}": sr[f"{window}_raw_{field}"]
+                for window in ("train", "test", "obs")
+                for field in ("bars", "missing_dates")
+            },
+            **{
+                f"{window}_{field}": sr[f"{window}_{field}"]
+                for window in ("train", "test", "obs")
+                for field in ("expected_dates", "non_executable_dates")
+            },
         }
         adj_files[sym] = {
             "bars": sr["adj_bars_total"],
             "warmup_bars": sr["warmup_adj_bars"],
-            "obs_bars": sr["obs_adj_bars"],
+            **{
+                f"{window}_{field}": sr[f"{window}_adj_{field}"]
+                for window in ("train", "test", "obs")
+                for field in ("bars", "missing_dates")
+            },
+            **{
+                f"{window}_{field}": sr[f"{window}_{field}"]
+                for window in ("train", "test", "obs")
+                for field in ("expected_dates", "non_executable_dates")
+            },
         }
     inputs_info["raw_files"] = raw_files
     inputs_info["adj_files"] = adj_files
@@ -674,6 +740,8 @@ def preflight_fold(
             "coverage_adj": br["coverage_adj"],
             "coverage_raw": br["coverage_raw"],
             "expected_dates": br["expected_dates"],
+            "missing_adj_dates": br["missing_adj_dates"],
+            "missing_raw_dates": br["missing_raw_dates"],
             "ok": br["ok"],
         }
         for bm, br in benchmark_results.items()
