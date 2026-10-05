@@ -439,7 +439,7 @@ class BacktestEngine:
                 if family in conditional: threshold += 3
                 if score < threshold:
                     self.rejections.append({"date":d,"symbol":sym,"reason":"SCORE_BELOW_THRESHOLD","score":score,"threshold":threshold,"strategy":prim["signal"],"route_id":route["route_id"]}); continue
-                info_sector = provider.sector_info(sym) if hasattr(provider, "sector_info") else {}
+                info_sector = self.provider.sector_info(sym) if hasattr(self.provider, "sector_info") else {}
                 sector_code = (info_sector or {}).get("code") if info_sector else None
                 resonance = sector_resonance_filter(sym, sector_code, None, daily_candidates, d, self.provider)
                 if resonance.get("sector_strength", 0) >= 2 or score >= 80 or resonance.get("reason") == "no_sector_data":

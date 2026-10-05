@@ -29,3 +29,52 @@ def deterministic_score(hits: list[dict[str, Any]], bars: list[dict[str, Any]], 
     pattern=min(20.0, 14 + len(conf)*2)
     breakdown={"trend":trend,"volume_price":vp,"pattern":pattern,"fundamental":7.5,"market":float(m),"sector":float(s),"liquidity":4.0}
     return round(score,2), breakdown
+
+def v4_score(
+    hits: list[dict[str, Any]],
+    bars: list[dict[str, Any]],
+    market: dict[str, Any],
+    sector: dict[str, Any],
+) -> tuple[float, dict[str, float]]:
+    """v4 100-point scoring card.
+
+    Returns (score: float, breakdown: dict[str, float])
+    """
+    # 1. 供需逻辑/催化 (0-20): base 10 + 2 per primary signal
+    n_prim = sum(1 for h in hits if h.get("strength") == "primary")
+    supply_demand = min(20, 10 + n_prim * 2)
+
+    # 2. 板块共振 (0-20): from sector context
+    sector_strength = sector.get("sector_strength", "unknown")
+    sector_resonance = {"strong": 18, "neutral": 12, "weak": 6, "unknown": 8}.get(sector_strength, 8)
+
+    # 3. 趋势结构 (0-20): from market regime + MA alignment
+    regime = market.get("market_regime", "unknown")
+    regime_score = {"risk_on": 16, "neutral": 12, "risk_off": 6}.get(regime, 8)
+
+    # 4. 资金筹码 (0-15): infer from volume pattern
+    vol_evidence = [
+        h.get("evidence", {}).get("volume_ratio", 1)
+        for h in hits
+        if "volume_ratio" in h.get("evidence", {})
+    ]
+    avg_vol = sum(vol_evidence) / len(vol_evidence) if vol_evidence else 1
+    fund_score = min(15, 5 + (avg_vol if avg_vol > 1.5 else 0) * 3)
+
+    # 5. 量价形态 (0-15): from signal quality
+    confidence_hits = len([h for h in hits if h.get("strength") in ("primary", "confirmation")])
+    pattern_score = min(15, 8 + confidence_hits * 2)
+
+    # 6. 消息/基本面 (0-10): neutral default (no real-time news in backtest)
+    fundamental = 7  # neutral positive
+
+    breakdown = {
+        "supply_demand": round(supply_demand, 1),
+        "sector_resonance": round(sector_resonance, 1),
+        "trend_structure": round(regime_score, 1),
+        "fund_chip": round(fund_score, 1),
+        "volume_price": round(pattern_score, 1),
+        "fundamental": round(fundamental, 1),
+    }
+    score = sum(breakdown.values())
+    return round(min(100, score), 2), breakdown
