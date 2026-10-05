@@ -26,14 +26,14 @@ mcp:
 
     risk:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/risk"
+      url: "https://mcp.salahe.us.ci/api/risk/mcp"
       auth:
         type: basic
         username_env: ASHARE_MCP_USERNAME
         password_env: ASHARE_MCP_PASSWORD
     exec:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/exec"
+      url: "https://mcp.salahe.us.ci/api/exec/mcp"
       auth:
         type: basic
         username_env: ASHARE_MCP_USERNAME
