@@ -401,7 +401,10 @@ def cmd_stock_pick(args) -> None:
     import csv, json, sys
     from datetime import datetime
     from .strategy.signal_engine import DeterministicSignalEngine
+    from .strategy.router import StrategyRouter
     from .strategy.resonance import sector_resonance_filter
+    from .backtest.scoring import deterministic_score
+    from .backtest.regime import market_context_from_benchmarks, sector_context_from_history
     root = _project_root(args.root)
     # Build sector lookup from security_master
     _sector_csv_path = root / "data/backtest/security_master.csv"
@@ -447,10 +450,14 @@ def cmd_stock_pick(args) -> None:
         info = {}
         try:
             if hasattr(provider, "sector_info"):
-                info = provider.sector_info(sym) or {}
+                raw = provider.sector_info(sym) or {}
+                # Only use provider data if it has real sector info
+                if raw.get("name") or raw.get("code"):
+                    info = raw
         except Exception:
-            info = {}
-        info = info or _sector_map.get(sym, {})
+            pass
+        if not info.get("name") and sym in _sector_map:
+            info = _sector_map[sym]
         sector_bars_list = []
         if info.get("code"):
             try:
