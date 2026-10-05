@@ -56,44 +56,18 @@ class MarketContextBuilder:
             state = "up" if closes[-1] > ma20 and slope > 0 else "down" if closes[-1] < ma20 and slope < 0 else "mixed"
             up += state == "up"; down += state == "down"
             benchmarks.append({"symbol": symbol, "state": state, "close": closes[-1], "ma20": ma20, "ma20_slope": slope})
-        health = {"blowup_rate": 0.0, "limit_up": 0, "limit_down": 0, "total": 0, "zdt": 0}
-        ladder = {"total": 0, "stocks": []}
-        lanes = {"total": 0, "lanes": []}
         try:
-            import httpx, os, json, threading
-            from ..mcp.http import _build_auth
-            mcp_cfg = self.config.runtime.get("mcp", {})
-            services = mcp_cfg.get("services", {})
-            intel_cfg = services.get("intel", {})
-            if intel_cfg.get("enabled"):
-                url_env = intel_cfg.get("url_env", "")
-                url = os.environ.get(url_env) if url_env else intel_cfg.get("url", "")
-                if url:
-                    auth, auth_headers = _build_auth(intel_cfg)
-                    headers = {"Content-Type": "application/json", **auth_headers}
-                    fast = httpx.Client(timeout=5.0, auth=auth, headers=headers, verify=False)
-                    def invoke_fast(tool, **kw):
-                        payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                                   "params": {"name": tool, "arguments": kw}}
-                        try:
-                            resp = fast.post(url.rstrip("/"), json=payload, timeout=5.0)
-                            if resp.status_code == 200:
-                                return resp.json().get("result", {}).get("content", [{}])[0].get("text", "{}")
-                        except:
-                            pass
-                        return "{}"
-                    raw_h = json.loads(invoke_fast("fetch_market_health"))
-                    if isinstance(raw_h, dict):
-                        health.update(raw_h)
-                    raw_l = json.loads(invoke_fast("get_limitup_ladder", date=None, min_streak=1))
-                    if isinstance(raw_l, dict):
-                        ladder.update(raw_l)
-                    raw_n = json.loads(invoke_fast("get_mainline_lanes", top_n=5))
-                    if isinstance(raw_n, dict):
-                        lanes.update(raw_n)
-                    fast.close()
+            health = self.mcp.invoke("mcp_intel_fetch_market_health")
         except Exception:
-            pass
+            health = {"blowup_rate": 0.0, "limit_up": 0, "limit_down": 0, "total": 0, "zdt": 0}
+        try:
+            ladder = self.mcp.invoke("mcp_intel_get_limitup_ladder", date=None, min_streak=1)
+        except Exception:
+            ladder = {"total": 0, "stocks": []}
+        try:
+            lanes = self.mcp.invoke("mcp_intel_get_mainline_lanes", top_n=5)
+        except Exception:
+            lanes = {"total": 0, "lanes": []}
         blowup = float(health.get("blowup_rate", 0.0)) if isinstance(health, dict) else 0.0
         weak_blowup = float(self.config.defaults.get("market_filter", {}).get("weak_blowup_rate", .45))
         if down >= 2 or blowup >= weak_blowup:

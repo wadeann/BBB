@@ -274,6 +274,22 @@ class DashboardService:
                 "event_id": r["event_id"], "event_time": r["event_time"], "symbol": r.get("symbol") or payload.get("symbol"),
                 "strategy_id": r.get("strategy_id") or payload.get("strategy_id"), "status": r.get("status"), "payload": payload,
             })
+        # Build stock name map from security_master
+        name_map = {}
+        csv_path = self.runtime.config.project_root / "data/backtest/security_master.csv"
+        if csv_path.exists():
+            import csv
+            with open(csv_path, "r", encoding="utf-8-sig") as f:
+                for rec in csv.DictReader(f):
+                    sym = rec.get("symbol")
+                    if sym:
+                        name_map[sym] = rec.get("name", "")
+        for s in signals:
+            sym = s.get("symbol", "")
+            s["name"] = name_map.get(sym, "")
+        for b in batch.get("batch", []):
+            sym = b.get("symbol", "")
+            b["name"] = name_map.get(sym, "")
         return {"trade_date": date, "batch": batch, "signal_decisions": signals}
 
     def audit_timeline(self, trade_date: str | None = None, limit: int = 80) -> list[dict[str, Any]]:
