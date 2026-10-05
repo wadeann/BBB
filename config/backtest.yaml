@@ -10,7 +10,7 @@ max_holding_days: 20
 risk_per_trade: 0.005
 max_single_position: 0.10
 max_total_position: 0.50
-min_score: 70
+min_score: 65
 entry_timing: next_open
 exit_timing: next_open
 commission_rate: 0.0003

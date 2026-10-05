@@ -59,6 +59,23 @@ class DeterministicSignalEngine:
     orders. Thresholds follow the v5 SKILL defaults and should be backtested before
     production changes.
     """
+    def _limitup_gene(self, bars: list[dict[str, Any]]) -> dict[str, Any]:
+        """Check for limit-up gene in last 20 bars.
+
+        Returns: {"has_gene": bool, "days_ago": int|None, "pct": float|None, "volume_ratio": float|None}
+        """
+        limit = min(20, len(bars) - 1)
+        recent = bars[-limit:] if limit > 0 else bars
+        for i in range(len(recent) - 1, -1, -1):
+            bar = recent[i]
+            pct = float(bar.get("pct", 0))
+            vol = float(bar.get("volume", 0))
+            if pct >= 9.5:
+                vv20 = sum(float(b.get("volume", 0)) for b in bars[-21:-1]) / 20 if len(bars) > 21 else 1
+                vol_ratio = vol / vv20 if vv20 else 1
+                return {"has_gene": True, "days_ago": len(recent) - 1 - i, "pct": pct, "volume_ratio": round(vol_ratio, 2)}
+        return {"has_gene": False, "days_ago": None, "pct": None, "volume_ratio": None}
+
     def scan(self, bars: list[dict[str, Any]], *, market_regime: str = "unknown",
              sector_strength: str = "unknown") -> list[dict[str, Any]]:
         if len(bars) < 60: return []
@@ -170,10 +187,8 @@ class DeterministicSignalEngine:
             hits.append(SignalHit("ma_bearish_cut","exit_defensive","exit",
                 {"ma5":ma5[i],"ma10":ma10[i]},
                 pattern_id="ma_bearish_cut", pattern_version="1.0.0"))
-        if vv20[i] and i>=5:
-            price_new_high=c[i]>=max(c[i-5:i+1]); vol_weak=v[i]<float(vv20[i])*.8
-            if price_new_high and vol_weak:
-                hits.append(SignalHit("volume_price_divergence","exit_defensive","exit",
-                    {"price_new_high":True,"volume_vs_ma20":v[i]/float(vv20[i])},
-                    pattern_id="volume_price_divergence", pattern_version="1.0.0"))
+        # limit-up gene enrichment for primary trend_pullback signals
+        for hit in hits:
+            if hit.family == "trend_pullback" and hit.strength == "primary":
+                hit.evidence["limitup_gene"] = self._limitup_gene(bars)
         return [x.to_dict() for x in hits]

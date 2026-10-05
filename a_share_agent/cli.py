@@ -401,9 +401,7 @@ def cmd_stock_pick(args) -> None:
     import csv, json, sys
     from datetime import datetime
     from .strategy.signal_engine import DeterministicSignalEngine
-    from .strategy.router import StrategyRouter
-    from .backtest.scoring import deterministic_score
-    from .backtest.regime import market_context_from_benchmarks, sector_context_from_history
+    from .strategy.resonance import sector_resonance_filter
     root = _project_root(args.root)
     # Build sector lookup from security_master
     _sector_csv_path = root / "data/backtest/security_master.csv"
@@ -481,22 +479,32 @@ def cmd_stock_pick(args) -> None:
             "sector_strength": sector_ctx.get("sector_strength", "?"),
             "regime": market.get("regime", "?"),
         })
-    candidates.sort(key=lambda c: c["score"], reverse=True)
+    # Apply sector resonance annotation
+    for c in candidates:
+        res = sector_resonance_filter(
+            symbol=c["symbol"],
+            sector_code=c.get("sector_code"),
+            sector_name=c.get("sector"),
+            all_candidates=candidates,
+            as_of=today,
+            provider=provider,
+        )
+        c["resonance"] = res
+        c["sector_strength_label"] = res.get("reason", "?")
+        c["sector_peer_count"] = res.get("sector_strength", 0)
+
     if args.json:
         print(json.dumps({"as_of": today, "market": market, "candidates": candidates,
             "total_universe": len(symbols), "candidate_count": len(candidates)}, ensure_ascii=False, indent=2))
         return
-    print(f"\n=== 选股榜单 {today} ===")
-    r = market.get("regime","?")
-    print(f"市场: {market.get('market_regime','?')} ({r})  |  基准000300: {benchmark[-1]['close'] if benchmark else '?'}")
-    print("-" * 120)
-    print(f"{'评分':>4}  {'股票':10s} {'名称':12s} {'板块':16s} {'策略':28s} {'信号详情':25s} {'路由':15s}")
-    print("-" * 120)
+    print("-" * 140)
+    print(f"{'评分':>4}  {'股票':10s} {'名称':12s} {'板块':16s} {'共振':14s} {'策略':28s} {'信号详情':25s} {'路由':15s}")
+    print("-" * 140)
     for c in candidates[:args.limit]:
         ev = c.get("evidence", {})
         detail = " ".join(f"{k}={v}" for k,v in list(ev.items())[:3])
-        print(f"{c['score']:4.0f}  {c['symbol']:10s} {c['stock_name'][:12]:12s} {c['sector'][:16]:16s} {c['strategy']:28s} {detail[:25]:25s} {c['route_id']:15s}")
-    print("-" * 120)
+        resonance = c.get("sector_strength_label", "?")
+        print(f"{c['score']:4.0f}  {c['symbol']:10s} {c['stock_name'][:12]:12s} {c['sector'][:16]:16s} {resonance[:14]:14s} {c['strategy']:28s} {detail[:25]:25s} {c['route_id']:15s}")
     print(f"总池 {len(symbols)} 只 | 选股 {len(candidates)} 只")
 
 def main() -> None:
