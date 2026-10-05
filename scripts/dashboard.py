@@ -88,9 +88,12 @@ def render_dashboard(data, backtest=None):
     if backtest:
         m = backtest.get("metrics", {})
         total_ret = m.get("total_return", 0) * 100
+        ret_str = f"+{total_ret:.1f}%" if total_ret > 0 else f"{total_ret:.1f}%"
+        ret_green = f"\033[1;32m{ret_str}\033[0m"
+        ret_red = f"\033[1;31m{ret_str}\033[0m"
+        ret_color = ret_green if total_ret > 0 else ret_red
         print(
-            f"  \033[1m最近回测\033[0m  收益: "
-            f"{f'\033[1;32m+{total_ret:.1f}%\033[0m' if total_ret > 0 else f'\033[1;31m{total_ret:.1f}%\033[0m'}"
+            f"  \033[1m最近回测\033[0m  收益: {ret_color}"
             f"  |  交易: {m.get('closed_trades', 0)}笔"
             f"  |  胜率: {m.get('win_rate', 0)*100:.0f}%"
             f"  |  Sharpe: {m.get('sharpe', 0):.2f}"
