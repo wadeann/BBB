@@ -12,7 +12,7 @@ mcp:
   protocol_version: "2025-06-18"
   client_name: a-share-agent
   client_version: "0.7.0"
-  timeout_seconds: 15
+  timeout_seconds: 45
   verify_tls: false
   services:
     intel:
