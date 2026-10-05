@@ -291,7 +291,8 @@ class DashboardService:
         for b in batch.get("batch", []):
             sym = b.get("symbol", "")
             b["name"] = name_map.get(sym, "")
-        return {"trade_date": date, "batch": batch, "signal_decisions": signals}
+        return {"trade_date": date, "batch": batch, "signal_decisions": signals,
+                "name_map": dict(list(name_map.items())[:500])}
 
     def audit_timeline(self, trade_date: str | None = None, limit: int = 80) -> list[dict[str, Any]]:
         date = trade_date or as_trade_date()
