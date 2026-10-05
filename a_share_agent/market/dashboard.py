@@ -244,7 +244,7 @@ class DashboardService:
     def limitup(self, *, force: bool = False) -> dict[str, Any]:
         return self._cached(
             "limitup",
-            lambda: _normalize_limitup(self.mcp.invoke("mcp_intel_get_limitup_ladder", date=as_trade_date(), min_streak=1)),
+            lambda: _normalize_limitup(self.mcp.invoke("mcp_intel_get_limitup_ladder", date=None, min_streak=1)),
             force=force,
         )
 
