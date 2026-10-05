@@ -115,47 +115,6 @@ def _sector_lifecycle(score: float | None, trend: dict[str, Any], lane: dict[str
     return "neutral"
 
 
-def _normalize_limitup(ladder: Any) -> dict[str, Any]:
-    if not isinstance(ladder, dict):
-        return {"max_streak": None, "levels": [], "stocks": []}
-    raw_levels = ladder.get("levels", {})
-    levels: list[dict[str, Any]] = []
-    if isinstance(raw_levels, dict):
-        for k, v in raw_levels.items():
-            try:
-                streak = int(str(k).replace("板", ""))
-            except ValueError:
-                continue
-            count = int(v.get("count", 0)) if isinstance(v, dict) else int(v or 0)
-            levels.append({"streak": streak, "count": count})
-    elif isinstance(raw_levels, list):
-        for item in raw_levels:
-            if isinstance(item, dict):
-                streak = int(_num(item, "streak", "level", "板数") or 0)
-                count = int(_num(item, "count", "数量") or 0)
-                if streak:
-                    levels.append({"streak": streak, "count": count})
-    levels.sort(key=lambda x: x["streak"], reverse=True)
-
-    stocks = _as_list(ladder, "stocks", "leaders", "items", "data")
-    normalized: list[dict[str, Any]] = []
-    for item in stocks:
-        normalized.append({
-            "symbol": _text(item, "symbol", "code", "证券代码"),
-            "name": _text(item, "name", "stock", "证券简称"),
-            "streak": int(_num(item, "streak", "height", "连板", "连板数") or 0),
-            "sector": _text(item, "sector", "theme", "题材", "板块"),
-            "limit_time": _text(item, "limit_time", "first_limit_time", "封板时刻"),
-            "seal_amount": _num(item, "seal_amount", "seal_value", "封单金额"),
-            "blowups": int(_num(item, "blowups", "open_count", "炸板次数") or 0),
-        })
-    normalized.sort(key=lambda x: (x["streak"], x.get("seal_amount") or 0), reverse=True)
-    return {
-        "max_streak": int(_num(ladder, "max_streak", "max_height", "最高板") or (levels[0]["streak"] if levels else 0)),
-        "levels": levels,
-        "stocks": normalized,
-    }
-
 
 @dataclass
 class CacheItem:
@@ -163,12 +122,50 @@ class CacheItem:
     value: Any
 
 
-class DashboardService:
-    """Read-only aggregation layer for the web console.
+def _normalize_limitup(ladder: Any) -> dict[str, Any]:
+    if not isinstance(ladder, dict):
+        return {"max_streak": None, "levels": [], "stocks": []}
+    ls = ladder.get("ladder_summary", ladder.get("summary", {}))
+    levels = []
+    if isinstance(ls, dict):
+        for k, v in ls.items():
+            s = str(k).replace("板", "").strip()
+            if s == "首板":
+                levels.append({"streak": 1, "count": int(v or 0)})
+            else:
+                try:
+                    levels.append({"streak": int(s), "count": int(v or 0)})
+                except ValueError:
+                    pass
+    levels.sort(key=lambda x: x["streak"], reverse=True)
+    raw_ladder = ladder.get("ladder", {})
+    all_stocks = []
+    if isinstance(raw_ladder, dict):
+        for streak_key, stock_list in raw_ladder.items():
+            streak_val = 1 if streak_key == "首板" else int(streak_key) if streak_key.isdigit() else 0
+            for item in (stock_list if isinstance(stock_list, list) else []):
+                all_stocks.append({
+                    "symbol": _text(item, "symbol", "code"),
+                    "name": _text(item, "name", "stock"),
+                    "streak": streak_val,
+                    "sector": _text(item, "sector", "theme"),
+                    "limit_time": _text(item, "limit_time", "first_limit_time", "seal_time"),
+                    "blowups": int(_num(item, "break_count", "blowups") or 0),
+                })
+    for s in (ladder.get("yesterday_broken_leaders", []) or []):
+        all_stocks.append({
+            "symbol": _text(s, "symbol", "code"),
+            "name": _text(s, "name", "stock"),
+            "streak": int(_num(s, "streak") or 0),
+            "sector": _text(s, "sector", "theme"),
+            "limit_time": _text(s, "limit_time"),
+            "blowups": int(_num(s, "break_count") or 0),
+        })
+    all_stocks = [s for s in all_stocks if s["symbol"]]
+    return {"max_streak": int(ladder.get("max_height", ladder.get("max_streak", 0)) or 0),
+            "levels": levels, "stocks": all_stocks}
 
-    It intentionally does not submit or cancel orders. Trading side effects remain in
-    ExecutionEngine so the dashboard cannot bypass phase permissions or risk checks.
-    """
+class DashboardService:
 
     def __init__(self, runtime: Any, mcp: MCPInvoker, config: RuntimeConfig, ttl_seconds: int = 30):
         self.runtime = runtime
@@ -197,12 +194,12 @@ class DashboardService:
         def build() -> list[dict[str, Any]]:
             top_n = int(self.config.runtime.get("web", {}).get("hot_sector_top_n", 8))
             lanes = self.mcp.invoke("mcp_intel_get_mainline_lanes", top_n=top_n)
-            lane_list = _as_list(lanes, "data", "items", "lanes", "sectors")
+            lane_list = _as_list(lanes, "data", "items", "lanes", "sectors", "top_lanes")
             if not lane_list and isinstance(lanes, list):
                 lane_list = [x for x in lanes if isinstance(x, dict)]
             out: list[dict[str, Any]] = []
             for rank, lane in enumerate(lane_list, start=1):
-                name = _text(lane, "sector", "name", "板块", "题材") or f"板块{rank}"
+                name = _text(lane, "theme", "sector", "name", "板块", "题材") or f"板块{rank}"
                 code = _text(lane, "code", "sector_code", "板块代码")
                 score = _num(lane, "score", "total_score", "攻击分", "资金百分位")
                 history: Any = []
@@ -217,7 +214,11 @@ class DashboardService:
                 lifecycle = _sector_lifecycle(score, trend, lane)
                 sector_context = {"sector_strength": strength, "sector_lifecycle": lifecycle}
                 route = self.router.route(market_context=market, sector_context=sector_context)
-                leaders = _as_list(lane, "leaders", "stocks", "风向标", "龙头")
+                raw_ld = lane.get("leader", lane.get("leaders", lane.get("stocks", lane.get("风向标", lane.get("龙头")))))
+                if isinstance(raw_ld, dict) and raw_ld.get("name"):
+                    leaders = [raw_ld]
+                else:
+                    leaders = _as_list(lane, "leader", "leaders", "stocks", "风向标", "龙头")
                 out.append({
                     "rank": rank,
                     "name": name,
