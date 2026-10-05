@@ -13,31 +13,24 @@ mcp:
   client_name: a-share-agent
   client_version: "0.7.0"
   timeout_seconds: 15
-  verify_tls: true
+  verify_tls: false
   services:
     intel:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/intel/mcp"
-      url_env: ASHARE_INTEL_MCP_URL
+      url: "http://localhost:9001/mcp"
       auth:
-        type: basic
-        username_env: ASHARE_MCP_USERNAME
-        password_env: ASHARE_MCP_PASSWORD
+        type: none
 
     risk:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/risk/mcp"
+      url: "http://localhost:9002/mcp"
       auth:
-        type: basic
-        username_env: ASHARE_MCP_USERNAME
-        password_env: ASHARE_MCP_PASSWORD
+        type: none
     exec:
       enabled: true
-      url: "https://mcp.salahe.us.ci/api/exec/mcp"
+      url: "http://localhost:9003/mcp"
       auth:
-        type: basic
-        username_env: ASHARE_MCP_USERNAME
-        password_env: ASHARE_MCP_PASSWORD
+        type: none
     jin10:
       enabled: false
       url_env: ASHARE_JIN10_MCP_URL
