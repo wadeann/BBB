@@ -21,6 +21,7 @@ from .models import BacktestSettings, PendingOrder
 from .portfolio import Portfolio
 from .regime import market_context_from_benchmarks, sector_context_from_history
 from .scoring import deterministic_score
+from ..strategy.resonance import sector_resonance_filter
 from .llm_filter import HistoricalLLMFilter
 
 
@@ -438,6 +439,14 @@ class BacktestEngine:
                 if family in conditional: threshold += 3
                 if score < threshold:
                     self.rejections.append({"date":d,"symbol":sym,"reason":"SCORE_BELOW_THRESHOLD","score":score,"threshold":threshold,"strategy":prim["signal"],"route_id":route["route_id"]}); continue
+                info_sector = provider.sector_info(sym) if hasattr(provider, "sector_info") else {}
+                sector_code = (info_sector or {}).get("code") if info_sector else None
+                resonance = sector_resonance_filter(sym, sector_code, None, daily_candidates, d, self.provider)
+                if resonance.get("sector_strength", 0) >= 2 or score >= 80 or resonance.get("reason") == "no_sector_data":
+                    pass  # allow
+                else:
+                    self.rejections.append({"date": d, "symbol": sym, "reason": f"SECTOR_RESONANCE: {resonance.get('reason','?')}"})
+                    continue
                 stop_adj=self._stop_for_entry(hist,float(hist[-1]["close"]))
                 adj_close=float(hist[-1]["close"])
                 raw_b_today=raw_map_by_symbol.get(sym,{}).get(d)

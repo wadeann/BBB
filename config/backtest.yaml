@@ -31,7 +31,7 @@ report_title: "A股 Agent 两年回测"
 # v0.6 research controls
 enabled_strategies: []
 disabled_strategies: []
-route_mode: enabled
+route_mode: disabled
 universe_mode: prefer_point_in_time
 llm_filter_enabled: false
 llm_filter_top_n: 20

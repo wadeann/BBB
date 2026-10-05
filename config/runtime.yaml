@@ -88,7 +88,7 @@ safety:
   reject_on_schema_failure: true
 
 web:
-  dashboard_refresh_seconds: 30
+  dashboard_refresh_seconds: 120
   hot_sector_top_n: 8
   allow_phase_control: false
   expose_order_actions: false
