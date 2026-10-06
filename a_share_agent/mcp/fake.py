@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time as _time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -13,6 +14,9 @@ class FakeMCPInvoker:
         self.registered: dict[str, dict[str, Any]] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.positions: list[dict[str, Any]] = []
+        self._kill_switch: bool = False
+        self._daily_loss_hit: bool = False
+        self._call_timestamps: list[float] = []
 
     def invoke(self, tool_name: str, **kwargs: Any) -> Any:
         self.calls.append((tool_name, kwargs))
@@ -68,6 +72,22 @@ class FakeMCPInvoker:
         if tool_name == "mcp_intel_tdx_quotes": return {"price": 10.0, "bid1": 9.99, "ask1": 10.0}
         if tool_name == "mcp_risk_check_intent": return {"status": "PASS", "reason": "fake risk pass"}
         if tool_name == "mcp_risk_batch_check": return [{"status": "PASS"} for _ in kwargs.get("intents", [])]
+
+        # ── Phase 8 safety checks (evaluated before exec handlers) ───────────
+        if tool_name in {"mcp_exec_place_order", "mcp_exec_register_approved_intent"}:
+            now = _time.time()
+            self._call_timestamps = [t for t in self._call_timestamps if now - t < 60]
+            self._call_timestamps.append(now)
+            if len(self._call_timestamps) > 20:
+                return {"status": "RATE_LIMIT_EXCEEDED", "reason": "too many requests per minute"}
+            if self._kill_switch:
+                return {"status": "KILL_SWITCH_ACTIVE", "reason": "kill switch is active"}
+            if self._daily_loss_hit:
+                if kwargs.get("direction", "").upper() == "BUY":
+                    return {"status": "DAILY_LOSS_LIMIT", "reason": "daily loss limit exceeded"}
+        if tool_name == "mcp_exec_cancel_order" and self._kill_switch:
+            return {"status": "KILL_SWITCH_ACTIVE", "reason": "kill switch is active"}
+        # ── Exec handlers ────────────────────────────────────────────────────
         if tool_name == "mcp_exec_register_approved_intent":
             self.registered[kwargs["intent_id"]] = dict(kwargs)
             return {"status": "REGISTERED", "intent_id": kwargs["intent_id"]}
@@ -101,4 +121,12 @@ class FakeMCPInvoker:
                 {"type":"breakout","sector":"半导体","strength":81,"note":"板块放量突破"},
             ]
         if tool_name == "mcp_jin10_list_calendar": return []
+        if tool_name == "mcp_exec_reconcile":
+            return {
+                "status": "OK",
+                "missing_orders": [],
+                "extra_orders": [],
+                "matched_orders": [{"order_id": o.get("order_id"), "status": o.get("status")} for o in self.orders],
+                "reconciled_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
+            }
         raise KeyError(f"fake MCP does not implement {tool_name}")
