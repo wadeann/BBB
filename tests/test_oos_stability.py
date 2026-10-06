@@ -177,8 +177,11 @@ def test_duplicate_trade_id_aggregate_error():
     f2 = make_fold(2, [make_trade("SELL", "t1", 0.03)])
     s1 = summarize_fold(f1)
     s2 = summarize_fold(f2)
-    with pytest.raises(ValueError, match="duplicate"):
-        aggregate_stability([s1, s2])
+    result = aggregate_stability([s1, s2])
+    assert result["classification"] == "INSUFFICIENT_DATA"
+    assert any("duplicate" in (r or "") for r in [
+        result.get("integrity_reason"), result.get("sample_size_reason"),
+        result.get("coverage_reason"), result.get("duplicate_id_reason")])
 
 
 # ====== 10. Boundary thresholds ======
