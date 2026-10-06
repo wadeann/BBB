@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from dataclasses import dataclass
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -31,6 +32,37 @@ EXPECTED_TOOLS_BY_SERVICE = {
 
 class MCPConfigurationError(MCPError):
     pass
+
+
+@dataclass(frozen=True)
+class MCPResponseEnvelope:
+    """Exact transport response bytes plus commitments for provenance consumers."""
+
+    wire_bytes: bytes
+    status_code: int
+    content_type: str
+    transport: str = "streamable_http"
+    request_bytes: bytes = b""
+
+    @property
+    def wire_sha256(self) -> str:
+        import hashlib
+        return hashlib.sha256(self.wire_bytes).hexdigest()
+
+    @property
+    def wire_byte_count(self) -> int:
+        return len(self.wire_bytes)
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            isinstance(self.wire_bytes, bytes)
+            and isinstance(self.status_code, int)
+            and 100 <= self.status_code <= 599
+            and bool(self.content_type.strip())
+            and self.transport == "streamable_http"
+            and len(self.wire_sha256) == 64
+        )
 
 
 @dataclass
@@ -155,6 +187,9 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
         self._locks: dict[str, threading.RLock] = {}
         self._request_id = 0
         self._id_lock = threading.Lock()
+        self.last_response_envelope: MCPResponseEnvelope | None = None
+        self._invocation_evidence: ContextVar[MCPResponseEnvelope | None] = ContextVar(
+            f'mcp_evidence_{id(self)}', default=None)
 
     def close(self) -> None:
         for client in self._clients.values():
@@ -220,11 +255,19 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
             resp = client.post(url, json=payload, headers=headers)
         except httpx.HTTPError as exc:
             raise MCPError(f"MCP {service} transport failure: {type(exc).__name__}") from exc
+        envelope = MCPResponseEnvelope(
+            wire_bytes=bytes(resp.content),
+            status_code=resp.status_code,
+            content_type=resp.headers.get("content-type", ""),
+            request_bytes=bytes(resp.request.content),
+        )
+        self.last_response_envelope = envelope
+        if payload.get('method') == 'tools/call':
+            self._invocation_evidence.set(envelope)
         if resp.status_code in (401, 403):
             raise MCPError(f"MCP {service} authentication failed (HTTP {resp.status_code})")
         if resp.status_code >= 400:
-            body = resp.text[:500].replace("\n", " ")
-            raise MCPError(f"MCP {service} HTTP {resp.status_code}: {body}")
+            raise MCPError(f"MCP {service} HTTP {resp.status_code}")
         sid = resp.headers.get("mcp-session-id") or resp.headers.get("Mcp-Session-Id")
         if sid:
             state.session_id = sid
@@ -280,6 +323,21 @@ class StreamableHTTPMCPInvoker(MCPInvoker):
             state.initialized = True
 
     def invoke(self, tool_name: str, **kwargs: Any) -> Any:
+        result, _evidence = self.invoke_with_evidence(tool_name, **kwargs)
+        return result
+
+    def invoke_with_evidence(self, tool_name: str, **kwargs: Any) -> tuple[Any, MCPResponseEnvelope | None]:
+        token = self._invocation_evidence.set(None)
+        try:
+            result = self._invoke(tool_name, **kwargs)
+            return result, self._invocation_evidence.get()
+        except Exception as exc:
+            exc.response_envelope = self._invocation_evidence.get()
+            raise
+        finally:
+            self._invocation_evidence.reset(token)
+
+    def _invoke(self, tool_name: str, **kwargs: Any) -> Any:
         service = TOOL_TO_SERVICE.get(tool_name)
         if not service:
             raise MCPError(f"unknown MCP tool: {tool_name}")

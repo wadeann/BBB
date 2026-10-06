@@ -19,13 +19,15 @@ import os
 import platform
 import sys
 import uuid
-from datetime import datetime, timezone
+import tempfile
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
 from ..config import RuntimeConfig
 from ..git_utils import get_git_metadata
 from .. import __version__
+from .data import ConsumedInputLedger, HistoricalDataUnavailable
 
 # ---------------------------------------------------------------------------
 # Peer interface imports — resolve at final merge
@@ -77,20 +79,11 @@ from ..backtest.walk_forward_persistence import (
 # ---------------------------------------------------------------------------
 # Config rule keys for rule hashing
 # ---------------------------------------------------------------------------
-_CONFIG_RULE_KEYS = (
-    "router", "scanner", "regime", "context", "scoring", "cost_source",
-)
 
 
 def _compute_rule_hashes(runtime_cfg: RuntimeConfig) -> dict[str, str]:
-    """Compute SHA-256 hashes for relevant config rule sections."""
-    hashes: dict[str, str] = {}
-    for key in _CONFIG_RULE_KEYS:
-        section = getattr(runtime_cfg, key, None) or {}
-        raw = json.dumps(section, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        h = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        hashes[f"{key}_sha256"] = h
-    return hashes
+    """Bind rule names to explicit, required, redacted RuntimeConfig sources."""
+    return runtime_cfg.rule_hashes
 
 
 def _stable_hash(obj: Any) -> str:
@@ -99,69 +92,6 @@ def _stable_hash(obj: Any) -> str:
     ).hexdigest()
 
 
-def _file_entry(path: Path, *tags: str) -> dict[str, Any]:
-    """Build a file input entry with SHA-256."""
-    try:
-        sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-    except Exception:
-        sha256 = None
-    return {
-        "path": str(path.relative_to(path.anchor)),
-        "sha256": sha256,
-        "size_bytes": path.stat().st_size if path.exists() else None,
-        "tags": sorted(set(tags)),
-    }
-
-
-def _scan_physical_inputs(project_root: Path) -> list[dict[str, Any]]:
-    """List all consumed physical input files with their properties."""
-    inputs: list[dict[str, Any]] = []
-    data_dir = project_root / "data"
-
-    # Calendar sources
-    cal_path = data_dir / "backtest" / "trading_grade_calendar.csv"
-    if cal_path.is_file():
-        inputs.append(_file_entry(cal_path, "calendar"))
-
-    # tier 2: all backtest data files
-    for pattern in ("backtest/**/*.csv", "backtest/**/*.json", "backtest/**/*.parquet"):
-        for p in sorted(data_dir.glob(pattern)):
-            if p.is_file() and p != cal_path:
-                tags = ["data"]
-                name_lower = p.name.lower()
-                if "sector" in name_lower:
-                    tags.append("sector")
-                if "status" in name_lower or "tradable" in name_lower:
-                    tags.append("status")
-                if "universe" in name_lower:
-                    tags.append("universe")
-                if "corporate" in name_lower or "action" in name_lower:
-                    tags.append("corporate_action")
-                if "benchmark" in name_lower:
-                    tags.append("benchmark")
-                if "calendar" in name_lower:
-                    tags.append("calendar")
-                inputs.append(_file_entry(p, *tags))
-
-    # Config files
-    for p in sorted((project_root / "config").rglob("*.yaml")):
-        inputs.append(_file_entry(p, "config"))
-
-    # Key source files
-    for rel in (
-        "a_share_agent/backtest/walk_forward.py",
-        "a_share_agent/backtest/engine.py",
-        "a_share_agent/backtest/data.py",
-        "a_share_agent/backtest/models.py",
-        "a_share_agent/backtest/metrics.py",
-        "a_share_agent/backtest/report.py",
-        "a_share_agent/config/backtest.yaml",
-    ):
-        p = project_root / rel
-        if p.is_file():
-            inputs.append(_file_entry(p, "source"))
-
-    return inputs
 
 
 def _assert_finite_json(raw: str) -> None:
@@ -172,10 +102,8 @@ def _assert_finite_json(raw: str) -> None:
 
 
 def _write_finite_json(path: Path, data: Any) -> None:
-    """Write JSON strictly without NaN/Infinity."""
-    raw = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True, default=str)
-    _assert_finite_json(raw)
-    path.write_text(raw, encoding="utf-8")
+    from .walk_forward_persistence import write_finite_json
+    write_finite_json(path, data)
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -215,8 +143,20 @@ def _list_non_empty(directory: Path) -> list[Path]:
 
 
 def _is_incomplete_run(directory: Path) -> bool:
-    """Check if a directory represents an incomplete run (no manifest)."""
-    return not (directory / "manifest.json").exists()
+    """Only a hash-bound completion marker publishes a generation."""
+    try:
+        manifest_path = directory / "manifest.json"
+        marker_path = directory / "completion.json"
+        if manifest_path.is_symlink() or marker_path.is_symlink():
+            return True
+        manifest = json.loads(manifest_path.read_text())
+        marker = json.loads(marker_path.read_text())
+        return not (manifest.get("overall_status") == "COMPLETED"
+                    and manifest.get("generation_id")
+                    and marker.get("generation_id") == manifest["generation_id"]
+                    and marker.get("manifest_sha256") == hashlib.sha256(manifest_path.read_bytes()).hexdigest())
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return True
 
 
 def _has_matching_run_id(directory: Path, run_id: str) -> bool:
@@ -281,11 +221,14 @@ def _resolve_dependencies() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
+
+
 def run_stability(
     runtime_cfg: RuntimeConfig,
     wf_cfg: dict[str, Any],
     output: Path,
     run_id: str | None = None,
+    *, mcp: Any = None,
 ) -> dict[str, Any]:
     """Execute the complete walk-forward stability pipeline.
 
@@ -296,9 +239,11 @@ def run_stability(
     wf_cfg : dict
         Walk-forward configuration: start_date, end_date, universe, settings,
         train_months=12, test_months=3, step_months=3, warmup_bars=260,
-        stability_thresholds (optional overrides).
+        stability_thresholds (optional overrides), declared_keys (optional
+        four-dimensional key universe, including keys without trades).
     output : Path
-        Output directory (``data/research/walk_forward/<run_id>``).
+        Requested output directory. Reruns preserve it and install a sibling
+        generation; consumers use returned output_dir or atomic latest.json.
     run_id : str, optional
         Explicit run ID. Auto-generated if None.
 
@@ -336,23 +281,31 @@ def run_stability(
     # Resolve run_id and output directory
     # -------------------------------------------------------------------
     resolved_run_id = _safe_run_id(run_id)
-    output_dir = output.resolve()
-    manifest_path = output_dir / "manifest.json"
-    latest_path = output_dir.parent / "latest.json"
+    requested_output = output.absolute()
+    if requested_output.is_symlink():
+        raise ValueError("output directory must not be a symlink")
+    latest_path = requested_output.parent / "latest.json"
+    generation_id = uuid.uuid4().hex
+    output_dir = requested_output
 
     # Collision detection
     if output_dir.exists():
         existing = _list_non_empty(output_dir)
         if existing and not _is_incomplete_run(output_dir):
             if run_id and _has_matching_run_id(output_dir, run_id):
-                pass  # Resumable — same run_id, already-tracked directory
+                pass  # Same run ID is allowed, but the old generation is immutable.
             else:
                 raise FileExistsError(
                     f"Output directory {output_dir} already contains results. "
                     f"Use a different --run-id or a clean --output path."
                 )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    requested_output.parent.mkdir(parents=True, exist_ok=True)
+    # Never mutate an existing output, including legacy or incomplete runs.
+    final_output = (requested_output if not requested_output.exists() or not _list_non_empty(requested_output)
+                    else requested_output.with_name(f"{requested_output.name}-{generation_id}"))
+    output_dir = Path(tempfile.mkdtemp(prefix=f".tmp-{resolved_run_id}-", dir=requested_output.parent))
+    manifest_path = output_dir / "manifest.json"
 
     # -------------------------------------------------------------------
     # Build WalkForwardConfig (peer: FlashFoldContracts)
@@ -381,10 +334,13 @@ def run_stability(
     fold_registry: dict[str, dict[str, Any]] = {}
     fold_reports: list[dict[str, Any]] = []
     fold_errors: list[dict[str, Any]] = []
+    consumed_universes: dict[str, dict[str, Any]] = {}
+    preflight_commitments: dict[str, Any] = {}
     benchmark_symbols = list(dict.fromkeys([
         wf_cfg.get("settings", {}).get("benchmark", "000300.SH"),
         *runtime_cfg.defaults.get("benchmarks", {}).values(),
     ]))
+    ledger = ConsumedInputLedger(project_root)
 
     # -------------------------------------------------------------------
     # Process each fold
@@ -392,6 +348,8 @@ def run_stability(
     for fold in folds:
         fold_id = str(fold["fold_id"])
         fold_dir = output_dir / "folds" / fold_id
+        ledger.fold_id = fold_id
+        ledger.phase = "initialization"
         fold_dir.mkdir(parents=True, exist_ok=True)
 
         fold_state: dict[str, Any] = {
@@ -402,31 +360,86 @@ def run_stability(
         }
 
         try:
+            if fold_id in fold_registry:
+                raise ValueError(f"duplicate fold_id in expected plan: {fold_id}")
+            fold["warmup_end_exclusive"] = fold["train_start"]
+            calendar_path = project_root / "data/backtest/trading_grade_calendar.csv"
+            calendar_dates = []
+            if calendar_path.exists():
+                calendar_rows = ledger.read(calendar_path, kind="acquisition_calendar",
+                    parser=lambda raw: list(csv.DictReader(raw.decode("utf-8-sig").splitlines())))
+                calendar_dates = sorted({str(row.get("date", "")).strip()
+                    for row in calendar_rows if row.get("date")})
+            preceding_dates = [d for d in calendar_dates if d < fold["train_start"]]
+            required_warmup = max(0, int(wf_config.warmup_bars))
+            # Planning uses actual calendar dates; preflight still verifies source
+            # coverage and the actual raw/adjusted bar counts independently.
+            fold["warmup_start"] = (preceding_dates[-required_warmup]
+                if required_warmup and len(preceding_dates) >= required_warmup
+                else preceding_dates[0] if required_warmup and preceding_dates
+                else fold["train_start"])
+            fold_settings = settings_from(runtime_cfg, wf_cfg.get("settings", {}))
+            fold_settings.warmup_bars = required_warmup
+            # Last test close can enter next open; max-holding close exits the
+            # following open. Both execution sessions belong to observation.
+            tail_required = max(0, int(getattr(fold_settings, "max_holding_days", 20))) + 2
+            fold["observation_tail_bars_required"] = tail_required
+            tail_dates = [d for d in calendar_dates if d >= fold["test_end_exclusive"]][:tail_required]
+            fold["observation_end_exclusive"] = (
+                datetime.fromisoformat(tail_dates[-1]).date() + timedelta(days=1)).isoformat() if tail_dates else fold["test_end_exclusive"]
+            acquisition_dates = [d for d in calendar_dates
+                if fold["warmup_start"] <= d < fold["observation_end_exclusive"]]
+            historical_max_bars = max(1, len(acquisition_dates))
             # --- Fresh provider per fold (prevents CA leakage) ---
             provider = HistoricalDataProvider(
                 project_root,
-                mcp=None,
-                use_cache=wf_cfg.get("settings", {}).get("cache", True),
+                mcp=mcp,
+                use_cache=False if mcp is not None else wf_cfg.get("settings", {}).get("cache", True),
+                ledger=ledger,
+                read_only_mcp=mcp is not None,
+                strict_paid_source=bool(mcp is not None and not wf_cfg.get("settings", {}).get("allow_unverified_mcp", False)),
+                historical_range=(fold["warmup_start"], fold["observation_end_exclusive"]),
+                historical_max_bars=historical_max_bars,
+                historical_request_end=acquisition_dates[-1] if acquisition_dates else None,
             )
-            # Initialize universe for this fold
-            fold_settings = settings_from(runtime_cfg, wf_cfg.get("settings", {}))
-            uni = provider.load_universe_for_period(
-                fold["test_start"],
-                fold["test_end_exclusive"],
-                fold_settings.universe_file,
-                max_universe=fold_settings.max_universe,
-                mode=fold_settings.universe_mode,
-            )
-            symbols = list(uni.symbols) if uni else list(wf_config.universe)
+            if getattr(provider, "ledger", None) is not ledger:
+                ledger.append(kind="provider", status="unrecordable",
+                              error="provider does not share the consumed input ledger")
+            explicit_universe = list(wf_config.universe)
+            if explicit_universe:
+                symbols = explicit_universe
+                uni = type("ExplicitUniverse", (), {
+                    "symbols": symbols,
+                    "source": "walk_forward_config",
+                    "dataset_version": None,
+                    "point_in_time": False,
+                })()
+            else:
+                uni = provider.load_universe_for_period(
+                    fold["test_start"],
+                    fold["test_end_exclusive"],
+                    fold_settings.universe_file,
+                    max_universe=fold_settings.max_universe,
+                    mode=fold_settings.universe_mode,
+                )
+                symbols = list(uni.symbols) if uni else []
+            fold["universe"] = symbols
+            consumed_universes[fold_id] = {
+                "symbols": symbols, "universe_sha256": _stable_hash(symbols),
+                "source": getattr(uni, "source", None),
+                "dataset_version": getattr(uni, "dataset_version", None),
+                "point_in_time": getattr(uni, "point_in_time", None),
+                "provider": f"{type(provider).__module__}.{type(provider).__qualname__}",
+                "universe_file": str(fold_settings.universe_file),
+                "universe_mode": fold_settings.universe_mode,
+                "max_universe": fold_settings.max_universe,
+            }
             if not symbols:
                 raise RuntimeError(f"Empty universe for fold {fold_id}")
 
-            # Augment fold with warmup/observation fields for preflight
-            fold["warmup_end_exclusive"] = fold["train_start"]
-            fold["warmup_start"] = str((datetime.strptime(fold["train_start"], "%Y-%m-%d").date() - __import__("datetime").timedelta(days=730)).isoformat())
-            fold["observation_end_exclusive"] = fold["test_end_exclusive"]
 
             # --- Preflight (peer: FlashPreflight) returns (status, complete, reasons, inputs_info) ---
+            ledger.phase = "preflight"
             preflight_status, preflight_complete, preflight_reasons, preflight_inputs = preflight_fold(
                 provider,
                 fold,
@@ -435,6 +448,7 @@ def run_stability(
                 calendar_dates=None,
             )
             preflight_status = str(preflight_status)
+            preflight_commitments[fold_id] = preflight_inputs
 
             if preflight_status != "READY":
                 fold_state.update(
@@ -451,12 +465,20 @@ def run_stability(
                     "n_open": 0,
                     "n_censored": 0,
                 })
+                fold_reports.append({
+                    "fold_id": fold_id,
+                    "complete": False,
+                    "status": "DATA_BLOCKED",
+                    "trades": [],
+                    "coverage": 1.0,
+                })
                 _write_finite_json(fold_dir / "report.json", fold_state)
                 _preflight_dict = {"status": preflight_status, "complete": preflight_complete, "reasons": preflight_reasons, "inputs_info": preflight_inputs}
                 _write_finite_json(fold_dir / "preflight.json", _preflight_dict)
                 continue
 
             # --- Execute fold (peer: FlashFoldExecution) ---
+            ledger.phase = "execution"
             engine = BacktestEngine(runtime_cfg, provider, fold_settings)
             eval_window = {
                 "fold_id": fold["fold_id"],
@@ -472,11 +494,11 @@ def run_stability(
 
             # --- Summarize (peer: FlashOOSStats) ---
             summary = summarize_fold(report)
-            summary["fold_id"] = fold_id
+            fold_reports.append(report)
             fold_summaries.append(summary)
             fold_registry[fold_id] = {
                 "fold_id": fold_id,
-                "status": "COMPLETED" if summary.get("complete", True) else "PARTIAL",
+                "status": summary.get("status", "COMPLETED") if summary.get("complete") else "PARTIAL",
                 "n_closed": summary.get("n_closed", 0),
                 "evaluation_window": eval_window,
             }
@@ -484,33 +506,51 @@ def run_stability(
             write_fold_artifacts(fold_dir, report)
 
         except Exception as exc:
-            fold_state["status"] = "RUN_FAILED"
-            fold_state["error"] = f"{type(exc).__name__}: {exc}"
-            import traceback as _tb
-            fold_state["traceback"] = "".join(_tb.format_exc())
+            data_blocked = isinstance(exc, HistoricalDataUnavailable) or any(
+                e['fold_id'] == fold_id and e['source_type'] == 'mcp'
+                and e['status'] in {'error', 'empty', 'denied'} for e in ledger.events)
+            fold_state['status'] = 'DATA_BLOCKED' if data_blocked else 'RUN_FAILED'
+            fold_state['error'] = (str(exc) if isinstance(exc, HistoricalDataUnavailable)
+                else type(exc).__name__ if data_blocked else f'{type(exc).__name__}: {exc}')
+            if not data_blocked:
+                import traceback as _tb
+                fold_state['traceback'] = ''.join(_tb.format_exc())
             fold_errors.append(fold_state)
             fold_registry[fold_id] = fold_state
             fold_summaries.append({
                 "fold_id": fold_id,
                 "complete": False,
-                "status": "RUN_FAILED",
+                "status": fold_state['status'],
                 "n_closed": 0,
                 "n_open": 0,
                 "n_censored": 0,
             })
+            fold_reports.append({
+                "fold_id": fold_id,
+                "complete": False,
+                "status": fold_state['status'],
+                "trades": [],
+                "coverage": 1.0,
+            })
             _write_finite_json(fold_dir / "report.json", fold_state)
+        finally:
+            events = [e for e in ledger.events if e["fold_id"] == fold_id]
+            _write_finite_json(fold_dir / "consumed_inputs.json", {
+                "events": events, "sha256": ledger.digest(events),
+                "status": "VERIFIED" if events and all(e["verifiable"] for e in events) else "UNVERIFIABLE",
+            })
 
     # -------------------------------------------------------------------
-    # Aggregate stability (only from completed folds, peer: FlashOOSStats)
+    # Aggregate the entire plan, retaining failed and incomplete folds.
     # -------------------------------------------------------------------
     completed = [
         s for s in fold_summaries
         if s.get("status") in ("COMPLETED", "READY") and s.get("complete")
     ]
     stability_result: dict[str, Any] = {"classification": "NO_COMPLETED_FOLDS"}
-    if completed:
+    if fold_summaries:
         thresholds = wf_config.stability_thresholds
-        stability_result = aggregate_stability(completed, thresholds=thresholds)
+        stability_result = aggregate_stability(fold_summaries, thresholds=thresholds)
 
     # -------------------------------------------------------------------
     # Stitch partial tail info
@@ -529,11 +569,10 @@ def run_stability(
     # Determine overall status
     # -------------------------------------------------------------------
     all_runnable = all(
-        s.get("status") != "RUN_FAILED"
+        s.get("status") == "COMPLETED" and s.get("complete")
         for s in fold_summaries
-        if s.get("status") not in ("DATA_BLOCKED",)
     )
-    has_any_completed = any(s.get("complete") for s in fold_summaries)
+    has_any_completed = bool(completed)
     overall_status = (
         "COMPLETED" if (has_any_completed and all_runnable)
         else "PARTIAL" if has_any_completed
@@ -582,12 +621,26 @@ def run_stability(
     # Build manifest
     # -------------------------------------------------------------------
     git_meta = get_git_metadata(project_root)
+    ledger_snapshot = ledger.snapshot(verify_files=True)
     manifest: dict[str, Any] = {
         "manifest_version": "1.0",
         "producer": "walk_forward_service.run_stability",
         "code_version": __version__,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "run_id": resolved_run_id,
+        "generation_id": generation_id,
+        "completion": overall_status == "COMPLETED",
+        "artifact_path": "oos_per_key.json",
+        "consumed_universes": consumed_universes,
+        "declared_keys": wf_cfg.get("declared_keys"),
+        "preflight_input_commitments": preflight_commitments,
+        "physical_provenance": {
+            "status": ledger_snapshot["status"], "reasons": ledger_snapshot["reasons"],
+        },
+        "consumed_input_ledger": ledger_snapshot,
+        "consumed_input_ledger_sha256": ledger_snapshot["sha256"],
+        "physical_inputs": ledger_snapshot["physical_inputs"],
+        "project_root": str(Path(project_root).absolute()),
         "source_sha": git_meta.get("git_commit_sha"),
         "dirty": not git_meta.get("tracked_tree_clean", False),
         "tracked_changes": git_meta.get("tracked_changes", []),
@@ -601,7 +654,7 @@ def run_stability(
             "platform": platform.platform(),
         },
         "dependencies": _resolve_dependencies(),
-        "physical_inputs": _scan_physical_inputs(project_root),
+        "physical_input_inventory": [],
         "settings": {
             "wf_config_keys": list(wf_cfg.keys()),
             "stability_thresholds": dict(wf_config.stability_thresholds or {}),
@@ -619,18 +672,18 @@ def run_stability(
                 for f in folds
             ],
         },
+        "overall_status": overall_status,
     }
 
     # -------------------------------------------------------------------
-    # Write outputs
+    # Write outputs (manifest only once, after all outputs are ready)
     # -------------------------------------------------------------------
-    _write_finite_json(output_dir / "manifest.json", manifest)
     _write_finite_json(output_dir / "methodology.json", methodology)
     write_oos_stability(
         output_dir / "oos_stability.json",
         output_dir / "oos_stability.csv",
         stability_result,
-        completed or fold_summaries,
+        fold_summaries,
     )
     # -------------------------------------------------------------------
     # Per-four-key OOS stability (Phase 2B enablement gating)
@@ -662,21 +715,27 @@ def run_stability(
     latest_data: dict[str, Any] = {
         "run_id": resolved_run_id,
         "status": overall_status,
-        "path": str(output_dir),
+        "path": str(final_output),
+        "generation_id": generation_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "stability_classification": stability_result.get("classification"),
         "total_folds": len(folds),
         "completed_folds": methodology["completed_folds"],
     }
 
-    if overall_status != "FAILED":
-        _write_finite_json(latest_path, latest_data)
-    else:
+    if overall_status != "COMPLETED":
         _write_finite_json(output_dir / "diagnostics.json", {
             "status": overall_status,
-            "fold_errors": fold_errors,
+            "fold_errors": [state for state in fold_registry.values()
+                if state.get("status") != "COMPLETED"],
             "generated_at": datetime.now(timezone.utc).isoformat(),
         })
+    # The directory is installed only after every file and marker is ready.
+    os.replace(output_dir, final_output)
+    output_dir = final_output
+    manifest_path = output_dir / "manifest.json"
+    if overall_status == "COMPLETED":
+        _write_finite_json(latest_path, latest_data)
 
     # -------------------------------------------------------------------
     # Return summary

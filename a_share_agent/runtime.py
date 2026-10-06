@@ -19,13 +19,15 @@ from .llm.decision_agent import DecisionAgent
 from .review.daily import DailyReviewer
 from .risk.engine import LocalRiskEngine
 from .strategy.signal_engine import DeterministicSignalEngine
+from .strategy.policy_loader import PolicyLoader
 from .worker_state import WorkerStateStore
 from .notifications.dispatcher import NotificationDispatcher
 
 
 class AgentRuntime:
-    def __init__(self, project_root: str | Path, mcp: MCPInvoker, llm: LLMClient | None = None):
+    def __init__(self, project_root: str | Path, mcp: MCPInvoker, llm: LLMClient | None = None, *, policy_loader=None):
         self.config = load_config(project_root)
+        self.policy_loader = policy_loader if policy_loader is not None else PolicyLoader.from_runtime_config(self.config)
         self.mcp = mcp
         self.permissions = PhasePermissions(self.config.permissions)
         self.scheduler = Scheduler(self.config.schedule, self.permissions, mode=self.config.mode)
@@ -38,8 +40,8 @@ class AgentRuntime:
         self.local_risk = LocalRiskEngine(self.config)
         self.signal_engine = DeterministicSignalEngine()
         self.recovery = RecoveryManager(mcp, self.intents)
-        self.execution = ExecutionEngine(self.config, mcp, self.audit, self.permissions, self.intents, self.local_risk)
-        self.orchestrator = AgentOrchestrator(self.config, mcp, self.audit, self.replay, self.reviewer, self.manifest, self.recovery)
+        self.execution = ExecutionEngine(self.config, mcp, self.audit, self.permissions, self.intents, self.local_risk, policy_loader=self.policy_loader)
+        self.orchestrator = AgentOrchestrator(self.config, mcp, self.audit, self.replay, self.reviewer, self.manifest, self.recovery, policy_loader=self.policy_loader)
         worker_db = self.config.runtime.get("worker", {}).get("state_db", "data/audit/worker_state.sqlite")
         self.worker_state = WorkerStateStore(self.config.project_root / worker_db)
         self.notifications = NotificationDispatcher(self.config, self.audit.index)

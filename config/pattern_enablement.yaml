@@ -1,84 +1,17 @@
-# Pattern Enablement Configuration
-# This file defines the policy schema and loading behavior for Pattern Registry
-# Generated policies are written to data/policy/ as individual JSON files
-
-version: 1.0
-
-# Policy loading configuration
+# Only complete authenticated generations authorize; loose snapshots are staging only.
+# Deployment must supply PolicyLoader's external integrity key and trusted identity.
+version: 1
 loading:
-  # Directories to search for policy JSON files (in order of precedence)
-  # Higher index overrides lower for same policy key
   directories:
-    - "data/policy/live"    # Currently active approved policies
-    - "data/policy/staging" # Pending approval policies
-    - "data/policy/archive" # Expired/revoked policies for audit
-    - "data/policy/default" # Fallback policies (if any)
-
-  # Whether to watch for file changes (development mode)
-  watch_changes: false
-
-  # Maximum age of policy file before considering stale (seconds)
-  # Set to 0 to disable staleness check
-  max_file_age_seconds: 86400  # 24 hours
-
-# Policy validation rules
+    - "data/policy/live"
+  # Generation publication age, evaluated at the decision's as_of (0 disables).
+  max_file_age_seconds: 86400
 validation:
-  # Require exact four-key match (regime, theme, pattern_id, pattern_version)
-  require_exact_match: true
-
-  # Whether to allow policies with future effective dates
+  # Exact four-key identity is mandatory and cannot be configured away.
   allow_future_effective: false
-
-  # Whether to allow policies that are already expired at load time
-  allow_expired_on_load: false
-
-  # Required fields that must be present
-  required_fields:
-    - "key"
-    - "evidence_id"
-    - "evidence_version"
-    - "context_version"
-    - "config_hash"
-    - "issued_at"
-    - "valid_from"
-    - "expires_at"
-    - "status"
-
-  # Valid status transitions (for audit)
-  valid_transitions:
-    PENDING: [APPROVED, DISABLED, EXPIRED]
-    APPROVED: [EXPIRED, REVOKED, DISABLED]
-    EXPIRED: []  # Terminal state
-    REVOKED: []  # Terminal state
-    DISABLED: [APPROVED]  # Can re-enable after fix
-
-# Default expiry duration in days (can be overridden per policy)
 defaults:
+  # Explicit approval is always required; no automatic approver.
   expiry_days: 90
-  # If no approver specified, use this for auto-approval (set to null to require manual approval)
-  default_approver: "walk_forward_system"
-  # Auto-approve policies that meet minimum thresholds
-  auto_approve_thresholds:
-    min_observed_folds: 4
-    min_informative_folds: 3
-    min_closed_per_fold: 10
-    min_total_closed: 40
-    required_context_coverage: 1.0
-    min_finite_pf_folds: 3
-    min_median_expectancy: 0.0  # strict >
-    min_median_pf: 1.0          # strict >
-    min_positive_fold_fraction: 2 / 3
-    max_drawdown_loss: 0.15
-    min_worst_expectancy: -0.02
-    max_positive_concentration: 0.5
-
-# Audit configuration
 audit:
-  # Enable audit snapshots of policy changes
   enable_snapshots: true
-  # Directory for audit snapshots (each change creates a timestamped copy)
   snapshot_directory: "data/policy/audit"
-  # Maximum number of snapshots to keep per policy (0 = keep all)
-  max_snapshots_per_policy: 100
-  # Whether to include full policy content in snapshots
-  include_full_content: true

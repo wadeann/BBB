@@ -10,10 +10,13 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from ..config import RuntimeConfig
+from ..audit.event_writer import AuditEventWriter
 from ..strategy.signal_engine import DeterministicSignalEngine
 from ..strategy.router import StrategyRouter
+from ..strategy.policy_loader import PolicyLoader
 from .costs import AShareCostModel, locked_at_limit, price_limit_pct, board_aware_lot_size, calculate_trading_days_since_listing
 from .data import HistoricalDataProvider
 from .metrics import performance_metrics, monthly_returns, grouped_trade_stats, regime_pattern_matrix, batch_audit_attribution
@@ -45,13 +48,16 @@ class BacktestEngine:
     Entries/exits created from close signals execute no earlier than the next session.
     Stop-loss checks can execute intraday using the day's high/low, subject to T+1.
     """
-    def __init__(self, runtime_config: RuntimeConfig, provider: HistoricalDataProvider, settings: BacktestSettings, llm_filter: HistoricalLLMFilter | None = None):
+    def __init__(self, runtime_config: RuntimeConfig, provider: HistoricalDataProvider, settings: BacktestSettings, llm_filter: HistoricalLLMFilter | None = None, *, policy_loader=None):
         self.cfg=runtime_config
         self.provider=provider
         self.s=settings
         self.llm_filter=llm_filter
         self.signal_engine=DeterministicSignalEngine()
-        self.router=StrategyRouter(runtime_config.strategy_router)
+        self.policy_loader = policy_loader if policy_loader is not None else PolicyLoader.from_runtime_config(runtime_config)
+        self.audit = AuditEventWriter(runtime_config) if self.policy_loader is not None else None
+        self.policy_run_id = str(uuid.uuid4())
+        self.router=StrategyRouter(runtime_config.strategy_router, policy_loader=self.policy_loader, audit=self.audit)
         self.costs=AShareCostModel(settings.commission_rate,settings.commission_min,settings.stamp_tax_rate_sell,settings.transfer_fee_rate,settings.slippage_bps)
         self.logs: list[dict[str,Any]]=[]
         self.rejections: list[dict[str,Any]]=[]
@@ -61,6 +67,13 @@ class BacktestEngine:
 
     def _log(self, date: str, kind: str, **payload: Any) -> None:
         self.logs.append({"date":date,"type":kind,**payload})
+
+    def _audit_policy(self, date: str, symbol: str, decision: dict, boundary: str) -> None:
+        self.audit.write_event(event_type="POLICY_DECISION", phase="BACKTEST", run_id=self.policy_run_id,
+            trace_id=str(uuid.uuid4()), trade_date=date, symbol=symbol,
+            producer={"type": "strategy", "id": "backtest-engine"},
+            status="ok" if decision["allowed"] else "reject",
+            payload={"boundary": boundary, "policy_decision": decision})
 
     def _next_date(self, dates: list[str], i: int) -> str | None:
         return dates[i+1] if i+1 < len(dates) else None
@@ -88,7 +101,7 @@ class BacktestEngine:
         fn=getattr(self.provider,"eligible_on",None)
         return bool(fn(symbol,d)) if callable(fn) else True
 
-    def _route(self, market: dict[str,Any], sector: dict[str,Any]) -> dict[str,Any]:
+    def _route(self, market: dict[str,Any], sector: dict[str,Any], *, signal=None, as_of=None) -> dict[str,Any]:
         if self.s.route_mode == "disabled":
             return {
                 "route_id":"ROUTER_DISABLED",
@@ -98,7 +111,10 @@ class BacktestEngine:
                 "market_regime":market.get("market_regime"),"sector_strength":sector.get("sector_strength"),
                 "route_reasons":["research_ablation:router_disabled"],"data_quality":{"state":"ok"},
             }
-        return self.router.route(market_context=market,sector_context=sector)
+        context = {"phase": "BACKTEST", "run_id": self.policy_run_id, "trace_id": str(uuid.uuid4())}
+        if as_of is not None:
+            context["trade_date"] = datetime.fromtimestamp(as_of, ZoneInfo("Asia/Shanghai")).date().isoformat()
+        return self.router.route(market_context=market,sector_context=sector,signal=signal,as_of=as_of, audit_context=context)
 
     def _sector_context(self, bars: list[dict[str,Any]], d: str, name: str | None) -> dict[str,Any]:
         if self.s.sector_mode == "disabled":
@@ -329,6 +345,16 @@ class BacktestEngine:
                     if tr:
                         self._log(d, "TRADE", trade=tr.to_dict())
                     continue
+                if self.policy_loader is not None:
+                    decision = self.policy_loader.authorize_entry(
+                        {"pattern_id": o.pattern_id, "pattern_version": o.pattern_version},
+                        market_context=market, sector_context=daily_sector_by_symbol[o.symbol][1],
+                        as_of=datetime.fromisoformat(d + "T09:30:00").replace(tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+                    self._audit_policy(d, o.symbol, decision, "backtest_fill")
+                    if not decision["allowed"]:
+                        self.rejections.append({"date": d, "symbol": o.symbol, "reason": "POLICY_BLOCK", "policy_decision": decision})
+                        self._log(d, "POLICY_BLOCK", symbol=o.symbol, policy_decision=decision)
+                        continue
                 if o.symbol in portfolio.positions:
                     continue
                 if o.symbol not in set(active_symbols) or not self._eligible(o.symbol, d):
@@ -422,6 +448,14 @@ class BacktestEngine:
                     if hit.get("strength")=="primary":
                         if self.enabled_strategies and sid0 not in self.enabled_strategies: continue
                         if sid0 in self.disabled_strategies: continue
+                        if self.policy_loader is not None:
+                            decision = self.policy_loader.authorize_entry(hit, market_context=market, sector_context=sector,
+                                as_of=datetime.fromisoformat(d + "T15:00:00").replace(tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+                            self._audit_policy(d, sym, decision, "backtest_scanner")
+                            if not decision["allowed"]:
+                                self.rejections.append({"date": d, "symbol": sym, "reason": "POLICY_BLOCK", "policy_decision": decision})
+                                self._log(d, "POLICY_BLOCK", symbol=sym, policy_decision=decision)
+                                continue
                     filtered_hits.append(hit)
                 prim=self._primary_hit(filtered_hits)
                 if not prim:
@@ -429,6 +463,13 @@ class BacktestEngine:
                         self.rejections.append({"date":d,"symbol":sym,"reason":"NO_ENABLED_PRIMARY_STRATEGY","strategies":[h.get("signal") for h in hits if h.get("strength")=="primary"]})
                     continue
                 hits=filtered_hits
+                if self.policy_loader is not None:
+                    route = self._route(market, sector, signal=prim,
+                        as_of=datetime.fromisoformat(d + "T15:00:00").replace(tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+                    if "policy_decision" not in route:
+                        route["policy_decision"] = self.policy_loader.authorize_entry(prim, market_context=market, sector_context=sector,
+                            as_of=datetime.fromisoformat(d + "T15:00:00").replace(tzinfo=ZoneInfo("Asia/Shanghai")).timestamp())
+                        self._audit_policy(d, sym, route["policy_decision"], "backtest_router")
                 sid=str(prim.get("signal")); signal_count+=1; signal_stats[sid]=signal_stats.get(sid,0)+1
                 family=str(prim["family"])
                 allowed=set(route.get("allowed_strategy_families",[])); conditional=set(route.get("conditional_strategy_families",[]))
@@ -504,7 +545,8 @@ class BacktestEngine:
                     raw = f"{sym}|{d}|{next_d}|{pat_id}|{pat_ver}|{idx}"
                     rtid = hashlib.sha256(raw.encode()).hexdigest()[:16]
                     pending.append(PendingOrder(x["symbol"],"BUY",d,next_d,"ENTRY_SIGNAL",str(x["primary"]["signal"]),str(x["primary"]["family"]),float(x["score"]),str(x["route"]["route_id"]),x["sector_name"],float(x["stop"]),float(x["route"].get("position_multiplier",1.0)),0,meta,pattern_id=x["primary"].get("pattern_id") or x["primary"]["signal"],pattern_version=x["primary"].get("pattern_version","1.0.0"),regime_at_signal=x["market"].get("regime") or x["market"].get("market_regime"),regime_confidence_at_signal=x["market"].get("regime_confidence"),regime_data_quality_at_signal=x["market"].get("data_quality"),theme=x["sector"].get("sector") or x["sector_name"],theme_lifecycle=x["sector"].get("lifecycle") or x["sector"].get("sector_lifecycle"),theme_lifecycle_confidence=x["sector"].get("lifecycle_confidence"),theme_data_quality=x["sector"].get("data_quality"),signal_strength=x["primary"].get("strength"),round_trip_id=rtid))
-                    self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"))
+                    policy_audit = {"policy_decision": x["route"]["policy_decision"]} if self.policy_loader is not None else {}
+                    self._log(d,"ENTRY_SIGNAL",symbol=x["symbol"],score=x["score"],strategy=x["primary"]["signal"],route_id=x["route"]["route_id"],execute_date=next_d,llm_decision=(x.get("llm_filter") or {}).get("decision"), **policy_audit)
 
             equity=portfolio.equity(current_prices)
             equity_curve.append({"date":d,"equity":equity,"cash":portfolio.cash,"market_value":portfolio.market_value(current_prices),"positions":len(portfolio.positions),"market_regime":market.get("market_regime"),"active_universe":len(active_symbols)})
@@ -601,6 +643,7 @@ class BacktestEngine:
         }
         if evaluation_window is not None:
             report["evaluation_window"] = evaluation_window
+            report["fold_id"] = evaluation_window["fold_id"]
             report["portfolio_positions"] = _portfolio_positions
             report["censored_positions"] = censored
             report["pending_orders"] = [o.to_dict() for o in pending]

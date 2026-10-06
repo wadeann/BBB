@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from typing import Any
+import uuid
 
 from ..utils import now_shanghai
 
 
 class StrategyRouter:
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], *, policy_loader=None, audit=None):
         self.cfg = config
         self.routes = {r["id"]: r for r in config.get("routes", [])}
+        self.policy_loader = policy_loader
+        self.audit = audit
 
     @staticmethod
     def _matches(route: dict[str, Any], ctx: dict[str, Any]) -> bool:
@@ -17,7 +20,7 @@ class StrategyRouter:
                 return False
         return True
 
-    def route(self, *, market_context: dict[str, Any], sector_context: dict[str, Any]) -> dict[str, Any]:
+    def route(self, *, market_context: dict[str, Any], sector_context: dict[str, Any], signal=None, as_of=None, audit_context=None) -> dict[str, Any]:
         ctx = {
             "market_regime": market_context.get("market_regime", "unknown"),
             "market_trend": market_context.get("market_trend", "unknown"),
@@ -46,7 +49,7 @@ class StrategyRouter:
                 if chosen: break
             if not chosen:
                 chosen = {"id": "FALLBACK_CONSERVATIVE", "allow": ["exit_defensive"], "conditional": ["trend_pullback"], "block": ["trend_breakout", "rebound_reversal"], "position_multiplier": .35, "candidate_threshold_delta": 10, "max_new_positions_override": 0}
-        return {
+        result = {
             "as_of": now_shanghai().isoformat(),
             "route_id": chosen["id"],
             **ctx,
@@ -59,3 +62,23 @@ class StrategyRouter:
             "route_reasons": [f"matched:{chosen['id']}", f"market={ctx['market_regime']}", f"sector={ctx['sector_strength']}"],
             "data_quality": {"state": "ok" if "UNKNOWN" not in chosen["id"] else "degraded"},
         }
+        if self.policy_loader is not None:
+            decision = self.policy_loader.authorize_entry(signal or {}, market_context=market_context,
+                                                         sector_context=sector_context, as_of=as_of)
+            result["policy_decision"] = decision
+            if self.audit is not None:
+                context = dict(audit_context or {})
+                context.setdefault("phase", "DESCRIPTIVE_ROUTER")
+                context.setdefault("run_id", str(uuid.uuid4()))
+                context.setdefault("trace_id", str(uuid.uuid4()))
+                self.audit.write_event(event_type="POLICY_DECISION", **context,
+                    producer={"type": "strategy", "id": "strategy-router"},
+                    status="ok" if decision["allowed"] else "reject",
+                    payload={"boundary": "router", "policy_decision": decision})
+            if not decision["allowed"]:
+                families = set(result["allowed_strategy_families"] + result["conditional_strategy_families"])
+                result["blocked_strategy_families"] = sorted(set(result["blocked_strategy_families"]) | (families - {"exit_defensive"}))
+                result["allowed_strategy_families"] = [f for f in result["allowed_strategy_families"] if f == "exit_defensive"]
+                result["conditional_strategy_families"] = []
+                result["route_reasons"].append("policy:" + decision["reason"])
+        return result

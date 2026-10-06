@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..audit.event_writer import AuditEventWriter
@@ -11,6 +12,8 @@ from ..mcp.base import MCPInvoker
 from ..models import IntentRecord, RunContext
 from ..risk.engine import LocalRiskEngine
 from ..utils import as_trade_date, now_shanghai, stable_hash
+from ..strategy.policy_loader import PolicyLoader, policy_decision, decision_key
+from ..strategy.enablement import _timestamp
 from .intent_store import DuplicateIntent, IntentStore
 
 
@@ -20,9 +23,10 @@ class ExecutionRejected(RuntimeError):
 
 class ExecutionEngine:
     def __init__(self, config: RuntimeConfig, mcp: MCPInvoker, audit: AuditEventWriter,
-                 permissions: PhasePermissions, intents: IntentStore, risk: LocalRiskEngine):
+                 permissions: PhasePermissions, intents: IntentStore, risk: LocalRiskEngine, *, policy_loader=None):
         self.config, self.mcp, self.audit = config, mcp, audit
         self.permissions, self.intents, self.risk = permissions, intents, risk
+        self.policy_loader = policy_loader if policy_loader is not None else PolicyLoader.from_runtime_config(config)
 
     def execute_signal(self, run: RunContext, signal: dict[str, Any], route: dict[str, Any], *, sector: str | None = None) -> dict[str, Any]:
         symbol = signal["symbol"]; direction = str(signal.get("direction", "BUY")).upper()
@@ -33,6 +37,40 @@ class ExecutionEngine:
         self.permissions.require(run.phase, "place_order", direction=direction)
         if is_new_entry:
             self.permissions.require(run.phase, "new_entry")
+            if self.policy_loader is not None:
+                current_at = time.time()
+                market_context = {"regime": signal.get("regime"), "data_quality": signal.get("regime_data_quality", signal.get("data_quality", {}))}
+                sector_context = {"lifecycle": signal.get("pattern_state"), "data_quality": signal.get("pattern_state_data_quality", signal.get("data_quality", {}))}
+                def reject_policy(decision):
+                    self.audit.write_event(event_type="POLICY_BLOCK", phase=run.phase, run_id=run.run_id,
+                        trace_id=trace_id, producer={"type": "scheduler", "id": "execution-engine"},
+                        symbol=symbol, strategy_id=strategy_id, status="reject",
+                        payload={"policy_decision": decision})
+                    raise ExecutionRejected("policy rejected: " + decision["reason"])
+                try:
+                    raw_at = signal.get("as_of", run.as_of)
+                    if isinstance(raw_at, str):
+                        parsed_at = datetime.fromisoformat(raw_at.replace("Z", "+00:00"))
+                        if parsed_at.tzinfo is None:
+                            raise ValueError("decision timestamp must include timezone")
+                        raw_at = parsed_at.timestamp()
+                    decision_at = _timestamp(raw_at, "as_of")
+                    if decision_at > current_at:
+                        raise ValueError("future decision timestamp")
+                except (ValueError, TypeError, OverflowError):
+                    reject_policy(policy_decision(reason="invalid decision timestamp",
+                        key=decision_key(signal, market_context, sector_context)))
+                decision = self.policy_loader.authorize_entry(signal, market_context=market_context,
+                    sector_context=sector_context, as_of=decision_at)
+                # Historical authorization cannot bypass current expiry or manual revocation.
+                if decision["allowed"] and decision_at != current_at:
+                    current = self.policy_loader.authorize_entry(signal, market_context=market_context,
+                        sector_context=sector_context, as_of=current_at)
+                    if not current["allowed"]:
+                        reject_policy(current)
+                if not decision["allowed"]:
+                    reject_policy(decision)
+                route = dict(route, policy_decision=decision)
         mode = run.mode
         if mode not in {"paper", "live_proposal"}:
             raise ExecutionRejected(f"execution disabled in mode={mode}")

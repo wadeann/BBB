@@ -3,6 +3,8 @@
 Phase 2A gate: evaluates out-of-sample stability of a strategy across
 multiple walk-forward folds. Produces classification: INSUFFICIENT_DATA,
 UNSTABLE, or STABLE_CANDIDATE.
+
+Phase 2B extension: per-four-key OOS stability for exact key gating.
 """
 from __future__ import annotations
 
@@ -70,7 +72,7 @@ def summarize_fold(report: dict) -> dict:
 
     Returns fold-level statistics dict.
     """
-    fold_id = int(report.get("fold_id", 0))
+    fold_id = report.get("fold_id", 0)
     complete = bool(report.get("complete", True))
     status = str(report.get("status", "COMPLETED"))
     raw_cov = report.get("coverage", 1.0)
@@ -83,12 +85,17 @@ def summarize_fold(report: dict) -> dict:
     closed: list[dict] = []
     n_censored = 0
     buy_rids: set[str] = set()
+    buys_by_id: dict[str, list[dict]] = defaultdict(list)
+    attribution_valid = True
 
     for t in all_trades:
         if t.get("direction") == "BUY":
             rid = str(t.get("round_trip_id") or "")
             if rid:
                 buy_rids.add(rid)
+                buys_by_id[rid].append(t)
+            else:
+                attribution_valid = False
 
     closed_rids: set[str] = set()
     for t in all_trades:
@@ -100,10 +107,15 @@ def summarize_fold(report: dict) -> dict:
                 f"Trade {t.get('round_trip_id')} in fold {fold_id} "
                 "has None pnl_pct"
             )
+        rid = str(t.get("round_trip_id") or "")
+        buys = buys_by_id.get(rid, [])
+        if (not rid or len(buys) != 1
+                or _four_key_from_trade(buys[0]) != _four_key_from_trade(t)):
+            attribution_valid = False
+            continue
         if t.get("exit_reason") == "END_OF_BACKTEST":
             n_censored += 1
             continue
-        rid = str(t.get("round_trip_id") or "")
         if rid:
             closed_rids.add(rid)
         closed.append(t)
@@ -116,6 +128,8 @@ def summarize_fold(report: dict) -> dict:
             f"Fold {fold_id} has duplicate SELL round_trip_ids: "
             f"{n_closed} closed trades but only {len(closed_rids)} unique IDs"
         )
+    if any(len(buys) != 1 for buys in buys_by_id.values()):
+        attribution_valid = False
 
     # Context quality via _quality_state (reuses entry_context_quality)
     if closed:
@@ -130,6 +144,7 @@ def summarize_fold(report: dict) -> dict:
     if n_closed == 0:
         return {
             "fold_id": fold_id, "complete": complete, "status": status,
+            "attribution_valid": attribution_valid,
             "n_closed": 0, "n_open": n_open, "n_censored": n_censored,
             "closed_round_trip_ids": [],
             "closed_returns": [],
@@ -198,6 +213,7 @@ def summarize_fold(report: dict) -> dict:
 
     result = {
         "fold_id": fold_id,
+        "attribution_valid": attribution_valid,
         "complete": complete,
         "status": status,
         "n_closed": n_closed,
@@ -259,7 +275,7 @@ def aggregate_stability(
     fold_expectancies: list[float] = []
     fold_pf_values: list[float] = []
     fold_drawdowns: list[float] = []
-    fold_total_returns: list[float] = []
+    fold_positive_returns: list[float] = []
 
     for s in summaries:
         total_closed += s["n_closed"]
@@ -269,8 +285,9 @@ def aggregate_stability(
             fold_expectancies.append(s["expectancy_pct"])
             if s["profit_factor"] is not None:
                 fold_pf_values.append(s["profit_factor"])
-            if s["fold_total_return_pct"] is not None:
-                fold_total_returns.append(s["fold_total_return_pct"])
+            if s.get("max_drawdown_pct") is not None:
+                fold_drawdowns.append(s["max_drawdown_pct"])
+            fold_positive_returns.append(sum(max(float(r), 0.0) for r in s.get("closed_returns", [])))
 
     pooled_median = median(all_pooled_returns) if all_pooled_returns else None
     fold_median_trade = median(fold_medians) if fold_medians else None
@@ -282,11 +299,10 @@ def aggregate_stability(
     )
     worst_fold_expectancy = min(fold_expectancies) if fold_expectancies else None
     max_fold_dd = min(fold_drawdowns) if fold_drawdowns else None
-    total_returns_sum = sum(fold_total_returns) if fold_total_returns else 0.0
+    total_positive = sum(fold_positive_returns)
     max_concentration = (
-        max(fold_total_returns) / total_returns_sum
-        if fold_total_returns and total_returns_sum > 0
-        else None
+        max(fold_positive_returns) / total_positive
+        if total_positive > 0 else None
     )
     # ---- Cross-fold duplicate round_trip_id detection ----
     all_rids: list[str] = []
@@ -300,6 +316,14 @@ def aggregate_stability(
 
     # ---- Gates ----
     sample_size_reason = None
+    integrity_reason = None
+    fold_ids = [str(s.get("fold_id", "")) for s in summaries]
+    if n_failed:
+        integrity_reason = "failed or incomplete folds"
+    elif len(set(fold_ids)) != len(fold_ids):
+        integrity_reason = "duplicate fold_id in summaries"
+    elif any(not s.get("attribution_valid", True) for s in summaries):
+        integrity_reason = "invalid trade attribution"
     if n_observed < t["min_observed_folds"]:
         sample_size_reason = f"observed_folds={n_observed} < {t['min_observed_folds']}"
     elif n_informative < t["min_informative_folds"]:
@@ -325,7 +349,7 @@ def aggregate_stability(
 
     dup_reason = None
     # Classification
-    if sample_size_reason or coverage_reason or missing_return_reason or pf_reason or dup_reason:
+    if integrity_reason or sample_size_reason or coverage_reason or missing_return_reason or pf_reason or dup_reason:
         classification = "INSUFFICIENT_DATA"
     else:
         economic_reasons = []
@@ -350,8 +374,14 @@ def aggregate_stability(
         else None
     )
     concentration_reason = (
+        "NO_POSITIVE_RETURNS" if total_positive == 0 else
         f"max_concentration={max_concentration:.6f} > {t['max_positive_concentration']}"
         if max_concentration is not None and max_concentration > t["max_positive_concentration"]
+        else None
+    )
+    worst_expectancy_reason = (
+        f"worst_fold_expectancy={worst_fold_expectancy:.6f} < {t['min_worst_expectancy']}"
+        if worst_fold_expectancy is not None and worst_fold_expectancy < t["min_worst_expectancy"]
         else None
     )
     expectancy_reason = (
@@ -376,6 +406,8 @@ def aggregate_stability(
         "worst_fold_expectancy_pct": worst_fold_expectancy,
         "max_fold_return_concentration": max_concentration,
         "sample_size_reason": sample_size_reason,
+        "integrity_reason": integrity_reason,
+        "worst_expectancy_reason": worst_expectancy_reason,
         "coverage_reason": coverage_reason,
         "missing_return_reason": missing_return_reason,
         "pf_reason": pf_reason,

@@ -14,17 +14,19 @@ from ..review.daily import DailyReviewer
 from ..strategy.signal_engine import DeterministicSignalEngine
 from .recovery import RecoveryManager
 from ..strategy.router import StrategyRouter
+from ..strategy.policy_loader import PolicyLoader
 from ..utils import as_trade_date, extract_symbols
 from .schema_validator import SchemaRegistry
 
 
 class AgentOrchestrator:
     def __init__(self, config: RuntimeConfig, mcp: MCPInvoker, audit: AuditEventWriter,
-                 replay: ReplayEngine, reviewer: DailyReviewer, manifest: DailyManifestBuilder, recovery: RecoveryManager | None = None):
+                 replay: ReplayEngine, reviewer: DailyReviewer, manifest: DailyManifestBuilder, recovery: RecoveryManager | None = None, *, policy_loader=None):
         self.config, self.mcp, self.audit = config, mcp, audit
         self.replay, self.reviewer, self.manifest = replay, reviewer, manifest
         self.market = MarketContextBuilder(config, mcp)
-        self.router = StrategyRouter(config.strategy_router)
+        self.policy_loader = policy_loader if policy_loader is not None else PolicyLoader.from_runtime_config(config)
+        self.router = StrategyRouter(config.strategy_router, policy_loader=self.policy_loader, audit=audit)
         self.signal_engine = DeterministicSignalEngine()
         self.recovery_manager = recovery
         self.schemas = SchemaRegistry(config.project_root / "skill" / "schemas")
@@ -171,10 +173,21 @@ class AgentOrchestrator:
             trace=self._trace()
             kline = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=260)
             bars = kline if isinstance(kline, list) else (kline.get("bars", []) if isinstance(kline, dict) else [])
+            signals = self.signal_engine.scan(bars)
+            policy_decisions = []
+            if self.policy_loader is not None:
+                # This descriptive scanner has no authenticated expanded Context yet.
+                # Unknown context cannot promote detections to entry authorization.
+                signals = self.policy_loader.filter_signals(signals, market_context={}, sector_context={}, decisions=policy_decisions)
+                for decision in policy_decisions:
+                    self.audit.write_event(event_type="POLICY_DECISION", phase=run.phase, run_id=run.run_id,
+                        trace_id=trace, producer={"type": "intel", "id": "deep-dive-engine"}, symbol=symbol,
+                        status="ok" if decision["allowed"] else "reject",
+                        payload={"boundary": "descriptive_scanner", "policy_decision": decision})
             report={
                 "symbol": symbol,
                 "kline": kline,
-                "deterministic_signals": self.signal_engine.scan(bars),
+                "deterministic_signals": signals,
                 "technical": self.mcp.invoke("mcp_intel_get_technical_indicators", symbol=symbol),
                 "chip": self.mcp.invoke("mcp_intel_get_chip_distribution", symbol=symbol),
                 "fund_flow": self.mcp.invoke("mcp_intel_get_fund_flow", symbol=symbol),
@@ -182,6 +195,8 @@ class AgentOrchestrator:
                 "financial": self.mcp.invoke("mcp_intel_get_financial_report", symbol=symbol, num=2),
                 "news": self.mcp.invoke("mcp_intel_tdx_news", symbol=symbol),
             }
+            if self.policy_loader is not None:
+                report["policy_decisions"] = policy_decisions
             snap=self.audit.snapshot_store.put(as_trade_date(), report)
             self.audit.write_event(event_type="DEEP_DIVE_REPORT", phase=run.phase, run_id=run.run_id, trace_id=trace,
                                    producer={"type":"intel","id":"deep-dive-engine"}, symbol=symbol, payload=report,

@@ -1,6 +1,15 @@
 version: 4.0.0
 # Experimental defaults. Backtest/walk-forward required before production changes.
 
+# Phase 2B integration is opt-in until real physical OOS evidence is verified
+# and explicitly approved; synthetic fixtures must never authorize deployment.
+# Enabled mode fails closed without external deployment trust and evidence.
+# Live EOD currently lacks exact four-key context: entries denied, exits allowed.
+policy:
+  enabled: false
+  integrity_key_env: BBB_POLICY_INTEGRITY_KEY
+  trusted_identity_env: BBB_POLICY_TRUSTED_IDENTITY
+
 strategy_families:
   trend_breakout:
     strategies: [triple_golden_cross, ma_convergence_breakout, high_volume_breakout]

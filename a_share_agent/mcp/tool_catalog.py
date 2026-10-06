@@ -39,4 +39,5 @@ OPTIONAL_INTEL_TOOLS = [
     "mcp_intel_get_historical_universe",
     "mcp_intel_get_historical_security",
     "mcp_intel_get_historical_sector_membership",
+    "mcp_intel_historical_bars",
 ]

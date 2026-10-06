@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import csv
 import json
+import hashlib
+import io
+import os
+import tempfile
+from functools import wraps
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,7 +14,7 @@ from typing import Any
 
 from ..mcp.base import MCPInvoker
 from ..utils import stable_hash
-from .corporate_actions import CorporateActionEngine
+from .corporate_actions import CorporateAction, CorporateActionEngine
 
 
 def _date_str(v: Any) -> str:
@@ -35,7 +40,7 @@ def _as_bool(v: Any, default: bool = False) -> bool:
 
 def normalize_bars(raw: Any) -> list[dict[str, Any]]:
     if isinstance(raw, dict):
-        for key in ("data", "bars", "klines", "items", "result", "list"):
+        for key in ("data", "bars", "klines", "items", "result", "list", "Rows", "rows"):
             if isinstance(raw.get(key), list):
                 raw = raw[key]
                 break
@@ -45,7 +50,7 @@ def normalize_bars(raw: Any) -> list[dict[str, Any]]:
     for x in raw:
         if not isinstance(x, dict):
             continue
-        d = _date_str(x.get("date") or x.get("trade_date") or x.get("time") or x.get("datetime"))
+        d = _date_str(x.get("date") or x.get("trade_date") or x.get("time") or x.get("datetime") or x.get("Data"))
         if not d:
             continue
 
@@ -60,13 +65,13 @@ def normalize_bars(raw: Any) -> list[dict[str, Any]]:
 
         row = {
             "date": d,
-            "open": f("open", "o"),
-            "high": f("high", "h"),
-            "low": f("low", "l"),
-            "close": f("close", "c"),
-            "volume": f("volume", "vol", "v"),
-            "amount": f("amount", "turnover", default=0.0),
-            "pct": f("pct", "pct_chg", "change_pct", default=0.0),
+            "open": f("open", "o", "Open"),
+            "high": f("high", "h", "High"),
+            "low": f("low", "l", "Low"),
+            "close": f("close", "c", "Close"),
+            "volume": f("volume", "vol", "v", "Volume", "RawVolume"),
+            "amount": f("amount", "turnover", "Amount", "RawAmount", default=0.0),
+            "pct": f("pct", "pct_chg", "change_pct", "ChangePct", default=0.0),
         }
         if row["open"] > 0 and row["close"] > 0:
             out.append(row)
@@ -118,6 +123,378 @@ class DailyUniverseSnapshot:
         return stable_hash(rows)
 
 
+class ConsumedInputLedger:
+    """Append-only commitments to the bytes parsed by one walk-forward run."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root).absolute()
+        self.fold_id = None
+        self.phase = "initialization"
+        self.requested_range = None
+        self.events: list[dict[str, Any]] = []
+
+    @staticmethod
+    def digest(value: Any) -> str:
+        return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+    def checked_path(self, path: Path) -> Path:
+        path = Path(path).absolute()
+        if (any(p.is_symlink() for p in (path, *path.parents))
+                or not path.resolve().is_relative_to(self.root.resolve())):
+            raise ValueError("consumed input path escape/symlink rejected")
+        return path
+
+    def append(self, **fields: Any) -> dict[str, Any]:
+        event = dict(sequence=len(self.events) + 1, fold_id=self.fold_id,
+            phase=self.phase, kind="unknown", logical_key=None, requested_range=None,
+            returned={"row_count": 0, "date_start": None, "date_end": None},
+            source_type="memory", path=None, sha256=None, response_json_sha256=None,
+            wire_sha256=None, wire_byte_count=None, wire_status_code=None,
+            wire_content_type=None, wire_transport=None, wire_artifact_path=None,
+            wire_artifact_root=str(self.root), dataset_version=None,
+            dataset_metadata={}, cache_status="not_applicable", status="ok",
+            origin_sequences=[], verifiable=False)
+        event.update(fields)
+        self.events.append(event)
+        return event
+
+    @staticmethod
+    def returned(value: Any) -> dict[str, Any]:
+        rows = value if isinstance(value, list) else (value.get("data", []) if isinstance(value, dict) else
+            [{"symbol": s} for s in value.symbols] if isinstance(value, UniverseInfo) else [])
+        if isinstance(value, dict) and isinstance(value.get('bars'), dict):
+            rows = [row for symbol_rows in value['bars'].values()
+                    if isinstance(symbol_rows, list) for row in symbol_rows]
+        dates = sorted(str(r.get("date") or r.get("ex_date") or r.get("effective_from") or "")
+            for r in rows if isinstance(r, dict))
+        dates = [d for d in dates if d]
+        return {"row_count": len(rows), "date_start": dates[0] if dates else None,
+                "date_end": dates[-1] if dates else None}
+
+    def read(self, path: Path, *, kind: str, parser: Any = None) -> Any:
+        path = Path(path).absolute()
+        cache = path.is_relative_to(self.root / "data/backtest/cache")
+        fields = dict(kind=kind, logical_key=str(path), path=str(path),
+            source_type="cache" if cache else "physical",
+            cache_status="hit" if cache else "not_applicable", requested_range=self.requested_range)
+        raw = None
+        try:
+            path = self.checked_path(path)
+            raw = path.read_bytes()
+            value = parser(raw) if parser else raw
+        except Exception as exc:
+            self.append(**fields, status="missing" if isinstance(exc, FileNotFoundError) else "error",
+                        sha256=hashlib.sha256(raw).hexdigest() if raw is not None else None,
+                        byte_count=len(raw) if raw is not None else None,
+                        error=f"{type(exc).__name__}: {exc}")
+            raise
+        metadata = {k: value[k] for k in ("dataset_version", "source", "source_type")
+                    if isinstance(value, dict) and k in value}
+        self.append(**fields, sha256=hashlib.sha256(raw).hexdigest(),
+            byte_count=len(raw), returned=self.returned(value), dataset_metadata=metadata,
+            dataset_version=metadata.get("dataset_version"), verifiable=not cache,
+            authenticity_reason="cache origin is not byte-bound" if cache else None,
+            status="empty" if not value else "ok")
+        return value
+
+    @staticmethod
+    def physical_inputs(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"sequence": e["sequence"], "fold_id": e["fold_id"], "kind": e["kind"], "path": e["path"], "sha256": e["sha256"]} for e in events if e["source_type"] in {"physical", "cache"} and e.get("sha256")]
+
+    def publish_wire(self, envelope: Any) -> dict[str, Any]:
+        from ..mcp.http import MCPResponseEnvelope
+        if not isinstance(envelope, MCPResponseEnvelope):
+            return {}
+        directory = self.checked_path(self.root / 'data/backtest/mcp_wire')
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        directory = self.checked_path(directory)
+        directory.chmod(0o700)
+        def publish(raw: bytes, suffix: str) -> Path:
+            fd, temporary = tempfile.mkstemp(dir=directory, prefix='.capture-')
+            artifact = directory / f'{Path(temporary).name[1:]}-{hashlib.sha256(raw).hexdigest()}.{suffix}'
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(raw)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                    os.fchmod(stream.fileno(), 0o400)
+                os.link(temporary, artifact, follow_symlinks=False)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
+            return artifact
+        artifact = publish(envelope.wire_bytes, 'bin')
+        capsule = dict(request_hex=envelope.request_bytes.hex(), wire_sha256=envelope.wire_sha256,
+                       wire_byte_count=envelope.wire_byte_count, status_code=envelope.status_code,
+                       content_type=envelope.content_type, transport=envelope.transport)
+        capsule_bytes = json.dumps(capsule, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        capsule_path = publish(capsule_bytes, 'json')
+        return dict(wire_sha256=envelope.wire_sha256, wire_byte_count=envelope.wire_byte_count,
+                    wire_status_code=envelope.status_code, wire_content_type=envelope.content_type,
+                    wire_transport=envelope.transport,
+                    wire_artifact_path=str(artifact.relative_to(self.root)),
+                    wire_capsule_path=str(capsule_path.relative_to(self.root)),
+                    wire_capsule_sha256=hashlib.sha256(capsule_bytes).hexdigest(),
+                    wire_request_json=envelope.request_bytes.decode('utf-8'))
+
+    def verify_mcp_event(self, event: dict[str, Any]) -> bool:
+        from ..mcp.http import _decode_sse, _unwrap_tool_result
+        try:
+            request = json.loads(event['request_json'])
+            capsule_path = Path(event['wire_capsule_path'])
+            capsule_path = self.checked_path(capsule_path if capsule_path.is_absolute() else self.root / capsule_path)
+            capsule_bytes = capsule_path.read_bytes()
+            if hashlib.sha256(capsule_bytes).hexdigest() != event.get('wire_capsule_sha256'):
+                return False
+            capsule = json.loads(capsule_bytes)
+            request_bytes = bytes.fromhex(capsule['request_hex'])
+            if request_bytes.decode('utf-8') != event['wire_request_json']:
+                return False
+            if any(capsule[key] != event[field] for key, field in (
+                    ('wire_sha256', 'wire_sha256'), ('wire_byte_count', 'wire_byte_count'),
+                    ('status_code', 'wire_status_code'), ('content_type', 'wire_content_type'),
+                    ('transport', 'wire_transport'))):
+                return False
+            rpc_request = json.loads(request_bytes)
+            response = json.loads(event['response_json'])
+            metadata = event['dataset_metadata']
+            quality = response.get('data_quality') or {}
+            expected = {k: response.get(k, quality.get(k)) for k in ('dataset_version', 'source', 'point_in_time', 'coverage', 'coverage_start', 'coverage_end')}
+            args = request['arguments']
+            start, end = metadata.get('coverage_start'), metadata.get('coverage_end')
+            requested_start = args.get('start_date') or args.get('date') or args.get('as_of')
+            requested_end = args.get('end_date') or requested_start
+            artifact = Path(event['wire_artifact_path'])
+            artifact = self.checked_path(artifact if artifact.is_absolute() else self.root / artifact)
+            wire = artifact.read_bytes()
+            content_type = str(event.get('wire_content_type') or '').lower()
+            if 'text/event-stream' in content_type:
+                items = _decode_sse(wire.decode('utf-8'))
+                rpc_response = next(item for item in reversed(items)
+                    if isinstance(item, dict) and ('result' in item or 'error' in item or 'id' in item))
+            elif 'application/json' in content_type:
+                rpc_response = json.loads(wire)
+            else:
+                return False
+            coverage = metadata.get('coverage')
+            complete = type(coverage) in (int, float) and coverage == 1.0
+            if isinstance(coverage, dict):
+                symbols = args.get('symbols')
+                symbol_coverage = coverage.get('symbols')
+                bars = response.get('bars')
+                returned_rows = response.get('returned_rows')
+                complete = (isinstance(symbols, list) and bool(symbols)
+                    and len(symbols) == len(set(symbols))
+                    and coverage.get('status') == 'complete' and coverage.get('complete') is True
+                    and coverage.get('requested_start') == requested_start
+                    and coverage.get('requested_end') == requested_end
+                    and isinstance(symbol_coverage, dict) and set(symbol_coverage) == set(symbols)
+                    and isinstance(bars, dict) and set(bars) == set(symbols)
+                    and isinstance(returned_rows, dict) and set(returned_rows) == set(symbols))
+                if complete:
+                    for symbol in symbols:
+                        rows = bars[symbol]
+                        detail = symbol_coverage[symbol]
+                        if not isinstance(rows, list) or not rows or not isinstance(detail, dict):
+                            complete = False
+                            break
+                        dates = sorted(_date_str(row.get('time') or row.get('date'))
+                                       for row in rows if isinstance(row, dict))
+                        if (len(dates) != len(rows) or not all(dates)
+                                or detail.get('complete') is not True
+                                or type(detail.get('rows')) is not int or detail['rows'] != len(rows)
+                                or type(returned_rows[symbol]) is not int or returned_rows[symbol] != len(rows)
+                                or detail.get('start') != dates[0] or detail.get('end') != dates[-1]
+                                or not requested_start or not requested_end
+                                or dates[0] < requested_start or dates[-1] > requested_end):
+                            complete = False
+                            break
+            target = rpc_request['params']['name']
+            return (
+                event['service'] == 'intel'
+                and request['tool'] == event['tool']
+                and event['status'] == 'ok'
+                and event['tool'].startswith('mcp_intel_')
+                and rpc_request.get('jsonrpc') == '2.0'
+                and rpc_request.get('method') == 'tools/call'
+                and target in {event['tool'], event['tool'][len('mcp_intel_'):]}
+                and self.digest(rpc_request['params']['arguments']) == self.digest(args)
+                and type(rpc_request.get('id')) in (int, str)
+                and rpc_response.get('jsonrpc') == '2.0'
+                and type(rpc_response.get('id')) is type(rpc_request['id'])
+                and rpc_response['id'] == rpc_request['id']
+                and 'result' in rpc_response
+                and self.digest(_unwrap_tool_result(rpc_response)) == self.digest(response)
+                and response.get('status', 'ok') in {'ok', 'success'}
+                and response.get('adjustment') != 'provider_declared'
+                and event.get('response_json_sha256') == self.digest(response)
+                and event['request_sha256'] == self.digest(request)
+                and event.get('wire_sha256') == hashlib.sha256(wire).hexdigest()
+                and event.get('wire_byte_count') == len(wire)
+                and type(event.get('wire_status_code')) is int
+                and 200 <= event['wire_status_code'] < 300
+                and event.get('wire_transport') == 'streamable_http'
+                and self.digest(metadata) == self.digest(expected)
+                and bool(metadata.get('source'))
+                and bool(metadata.get('dataset_version'))
+                and metadata.get('point_in_time') is True
+                and complete
+                and isinstance(start, str) and isinstance(end, str) and start <= end
+                and (not requested_start or start <= requested_start)
+                and (not requested_end or end >= requested_end)
+                and not event.get('redacted')
+            )
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration, RuntimeError):
+            return False
+    def snapshot(self, *, verify_files: bool = False) -> dict[str, Any]:
+        reasons = [f"event {e['sequence']} {e['kind']}: {e.get('authenticity_reason') or e['status']}"
+                   for e in self.events if not e["verifiable"]]
+        reasons.extend(f"event {e['sequence']}: MCP response commitment incomplete/mismatched"
+                       for e in self.events if e['source_type'] == 'mcp' and not self.verify_mcp_event(e))
+        if verify_files:
+            for entry in self.physical_inputs(self.events):
+                try:
+                    path = self.checked_path(Path(entry["path"]))
+                    if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+                        raise ValueError("consumed bytes changed")
+                except (OSError, ValueError) as exc:
+                    reasons.append(f"event {entry['sequence']}: {exc}")
+        events = json.loads(json.dumps(self.events))
+        return dict(events=events, sha256=self.digest(events),
+            status="VERIFIED" if events and not reasons else "UNVERIFIABLE",
+            reasons=reasons, physical_inputs=self.physical_inputs(events), root=str(self.root))
+
+
+def _record_request(method):
+    @wraps(method)
+    def recorded(self, *args, **kwargs):
+        ledger = self.ledger
+        start = len(ledger.events)
+        key = (method.__name__, repr(args)) if method.__name__ in {"bars", "raw_bars", "sector_bars"} else (method.__name__, repr(args), repr(sorted(kwargs.items())))
+        prior_request = ledger.requested_range
+        ledger.requested_range = {'args': list(args), 'kwargs': kwargs}
+        try:
+            result = method(self, *args, **kwargs)
+        except Exception as exc:
+            ledger.append(kind=method.__name__, logical_key=repr(args), requested_range=kwargs,
+                          status="error", error=f"{type(exc).__name__}: {exc}")
+            raise
+        finally:
+            ledger.requested_range = prior_request
+        origins = sorted({n for e in ledger.events[start:]
+            for n in ([e['sequence']] if e['source_type'] in {'physical', 'cache', 'mcp'}
+                      else e.get('origin_sequences', []))})
+        if not origins:
+            origins = self._request_origins.get(key, [])
+        if not origins and method.__name__ in {"active_records_on", "sector_info_on"}:
+            kinds = ({"security_master", "historical_status_intervals"} if method.__name__ == "active_records_on"
+                     else {"security_master"} if result.get('source') == 'historical_security_master'
+                     else {"historical_sector_intervals"} if result.get('source') == 'historical_sector_interval'
+                     else set())
+            origins = [e['sequence'] for e in ledger.events if e['fold_id'] == ledger.fold_id
+                and e['source_type'] in {'physical', 'cache'} and e['kind'] in kinds]
+        self._request_origins[key] = origins
+        empty = (result is None or result == [] or
+                 isinstance(result, UniverseInfo) and not result.symbols or
+                 isinstance(result, dict) and result.get("source") in {"unknown", "missing_historical_sector"})
+        good = bool(origins) and all(ledger.events[n - 1]["verifiable"] for n in origins)
+        ledger.append(kind=method.__name__, logical_key=repr(args), requested_range={'args': list(args), 'kwargs': kwargs},
+            returned=ledger.returned(result), source_type="memory", origin_sequences=origins,
+            cache_status="hit" if len(ledger.events) == start else "miss",
+            status="empty" if empty else "ok", verifiable=good and not empty)
+        return result
+    return recorded
+
+
+class _ProvenanceMCP:
+    """Record transport-independent JSON commitments, never endpoint/auth state."""
+
+    HISTORICAL_TOOLS = frozenset({'mcp_intel_get_historical_universe',
+        'mcp_intel_get_historical_security', 'mcp_intel_get_historical_sector_membership',
+        'mcp_intel_tdx_kline', 'mcp_intel_fetch_kline', 'mcp_intel_fetch_sector_history',
+        'mcp_intel_historical_bars'})
+
+    def __init__(self, invoker: MCPInvoker, ledger: ConsumedInputLedger, read_only: bool):
+        self.invoker, self.ledger, self.read_only = invoker, ledger, read_only
+
+    @staticmethod
+    def _safe_wire(envelope: Any) -> bool:
+        from ..mcp.http import MCPResponseEnvelope, _decode_sse
+        from ..utils import redact
+        if not isinstance(envelope, MCPResponseEnvelope):
+            return False
+        try:
+            content_type = envelope.content_type.lower()
+            if 'text/event-stream' in content_type:
+                objects = _decode_sse(envelope.wire_bytes.decode('utf-8'))
+                if not objects or any(not isinstance(obj, dict) for obj in objects):
+                    return False
+            elif 'application/json' in content_type:
+                objects = [json.loads(envelope.wire_bytes)]
+            else:
+                return False
+            objects.append(json.loads(envelope.request_bytes))
+            return all(ConsumedInputLedger.digest(obj) == ConsumedInputLedger.digest(
+                redact(obj, never_log={'username', 'token', 'credentials'})) for obj in objects)
+        except (ValueError, TypeError, AttributeError):
+            return False
+
+    def invoke(self, tool_name: str, **kwargs: Any) -> Any:
+        from ..utils import redact
+        request = redact({'tool': tool_name, 'arguments': kwargs}, never_log={'username', 'token', 'credentials'})
+        request_json = json.dumps(request, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+        fields = dict(kind='mcp_call', logical_key=tool_name, source_type='mcp',
+            tool=tool_name, service='intel' if tool_name.startswith('mcp_intel_') else 'unknown',
+            requested_range=request['arguments'], request_json=request_json,
+            request_sha256=ConsumedInputLedger.digest(request))
+        if self.read_only and tool_name not in self.HISTORICAL_TOOLS:
+            self.ledger.append(**fields, status='denied', error='non-historical tool denied')
+            raise RuntimeError('read-only historical MCP tool denied')
+        envelope = None
+        try:
+            evidence_call = getattr(self.invoker, 'invoke_with_evidence', None)
+            if callable(evidence_call):
+                response, envelope = evidence_call(tool_name, **kwargs)
+            else:
+                response = self.invoker.invoke(tool_name, **kwargs)
+            response_json = json.dumps(response, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+            safe_response = redact(response, never_log={'username', 'token', 'credentials'})
+            safe_response_json = json.dumps(safe_response, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+        except Exception as exc:
+            error_envelope = getattr(exc, 'response_envelope', None)
+            sensitive = request['arguments'] != kwargs or (error_envelope is not None and not self._safe_wire(error_envelope))
+            wire_fields = self.ledger.publish_wire(error_envelope) if not sensitive else {}
+            self.ledger.append(**fields, **wire_fields, redacted=sensitive, status='error', error=type(exc).__name__)
+            raise RuntimeError(f'historical MCP call failed: {type(exc).__name__}') from None
+        quality = (safe_response.get('data_quality') or {}) if isinstance(safe_response, dict) else {}
+        metadata = {k: safe_response.get(k, quality.get(k)) for k in
+                    ('dataset_version', 'source', 'point_in_time', 'coverage', 'coverage_start', 'coverage_end')} if isinstance(safe_response, dict) else {}
+        rows = response.get('data', response.get('memberships', response)) if isinstance(response, dict) else response
+        redacted = (safe_response_json != response_json or request['arguments'] != kwargs
+                    or envelope is not None and not self._safe_wire(envelope))
+        wire_fields = self.ledger.publish_wire(envelope) if not redacted else {}
+        event = self.ledger.append(**fields, response_json=safe_response_json,
+            redacted=redacted,
+            sha256=hashlib.sha256(response_json.encode()).hexdigest(),
+            response_json_sha256=ConsumedInputLedger.digest(safe_response),
+            byte_count=len(response_json.encode()), **wire_fields,
+            dataset_metadata=metadata, dataset_version=metadata.get('dataset_version'),
+            returned=self.ledger.returned(response), status='empty' if not rows else 'ok')
+        if tool_name == 'mcp_intel_historical_bars' and isinstance(safe_response, dict):
+            event['response_hash'] = safe_response.get('response_hash')
+            event['adjustment'] = safe_response.get('adjustment')
+            declared_status = safe_response.get('status')
+            event['status'] = 'ok' if declared_status in {'ok', 'success'} and rows else (declared_status or 'error')
+        event['verifiable'] = self.ledger.verify_mcp_event(event)
+        if not event['verifiable']:
+            event['authenticity_reason'] = 'historical MCP evidence incomplete or mismatched'
+        return response
+
+
+class HistoricalDataUnavailable(RuntimeError):
+    """An explicit historical acquisition prerequisite is unavailable."""
+
+
 class HistoricalDataProvider:
     """Point-in-time historical data provider for research/backtest.
 
@@ -130,9 +507,19 @@ class HistoricalDataProvider:
     silently promoted to research-grade data.
     """
 
-    def __init__(self, root: Path, mcp: MCPInvoker | None = None, *, use_cache: bool = True):
-        self.root = Path(root)
-        self.mcp = mcp
+    def __init__(self, root: Path, mcp: MCPInvoker | None = None, *, use_cache: bool = True,
+                 ledger: ConsumedInputLedger | None = None, read_only_mcp: bool = False,
+                 strict_paid_source: bool = False, historical_range: tuple[str, str] | None = None,
+                 historical_max_bars: int | None = None, historical_request_end: str | None = None):
+        self.root = Path(root).absolute()
+        self.ledger = ledger or ConsumedInputLedger(self.root)
+        self._request_origins: dict[Any, list[int]] = {}
+        self.strict_paid_source = bool(strict_paid_source)
+        self.historical_range = historical_range
+        self.historical_max_bars = historical_max_bars
+        self.historical_request_end = historical_request_end
+        self._historical_tool_available: bool | None = None
+        self.mcp = _ProvenanceMCP(mcp, self.ledger, read_only_mcp) if mcp is not None else None
         self.use_cache = use_cache
         self.cache_root = self.root / "data" / "backtest" / "cache"
         self.cache_root.mkdir(parents=True, exist_ok=True)
@@ -148,13 +535,24 @@ class HistoricalDataProvider:
         self._sector_intervals_map: dict[str, list[dict[str, Any]]] = {}
         self._sector_constituents_cache: dict[tuple[str, str], list[str]] = {}
         self._raw_bars_mem: dict[str, list[dict[str, Any]]] = {}
-        self.corporate_actions = CorporateActionEngine.load_from_file(self.root / "data" / "backtest" / "corporate_actions.csv")
+        self.corporate_actions = CorporateActionEngine()
+        ca_path = self.root / "data/backtest/corporate_actions.csv"
+        for row in self._read_csv(ca_path):
+            if row.get("symbol") and row.get("ex_date"):
+                self.corporate_actions.add_action(CorporateAction.from_dict(row))
         self._period_universe: UniverseInfo | None = None
         self._daily_point_in_time_enabled = False
         self._universe_mode = "prefer_point_in_time"
         self._max_universe = 0
         self._load_status_intervals()
         self._load_sector_intervals()
+
+    def _read_csv(self, path: Path) -> list[dict[str, Any]]:
+        try:
+            return self.ledger.read(path, kind=path.stem,
+                parser=lambda raw: list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))))
+        except FileNotFoundError:
+            return []
 
     @staticmethod
     def _safe(symbol: str) -> str:
@@ -167,8 +565,9 @@ class HistoricalDataProvider:
 
     def _load_json(self, path: Path) -> Any:
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+            return self.ledger.read(path, kind=path.parent.name,
+                parser=lambda raw: json.loads(raw.decode("utf-8")))
+        except (OSError, json.JSONDecodeError, UnicodeError):
             return None
 
     def _save_json(self, path: Path, data: Any) -> None:
@@ -178,13 +577,10 @@ class HistoricalDataProvider:
 
     def _load_status_intervals(self) -> None:
         path = self.root / "data" / "backtest" / "historical_status_intervals.csv"
-        if not path.exists():
-            return
-        with path.open("r", encoding="utf-8-sig", newline="") as fh:
-            for row in csv.DictReader(fh):
-                sym = str(row.get("symbol") or "")
-                if sym:
-                    self._status_intervals.setdefault(sym, []).append(row)
+        for row in self._read_csv(path):
+            sym = str(row.get("symbol") or "")
+            if sym:
+                self._status_intervals.setdefault(sym, []).append(row)
 
     def status_on(self, symbol: str, as_of: str) -> str:
         intervals = self._status_intervals.get(symbol, [])
@@ -200,13 +596,10 @@ class HistoricalDataProvider:
 
     def _load_sector_intervals(self) -> None:
         path = self.root / "data" / "backtest" / "historical_sector_intervals.csv"
-        if not path.exists():
-            return
-        with path.open("r", encoding="utf-8-sig", newline="") as fh:
-            for row in csv.DictReader(fh):
-                sym = str(row.get("symbol") or "")
-                if sym:
-                    self._sector_intervals_map.setdefault(sym, []).append(row)
+        for row in self._read_csv(path):
+            sym = str(row.get("symbol") or "")
+            if sym:
+                self._sector_intervals_map.setdefault(sym, []).append(row)
 
     def sector_constituents_on(self, sector_code: str, as_of: str) -> list[str]:
         cache_key = (str(sector_code), as_of)
@@ -335,8 +728,7 @@ class HistoricalDataProvider:
         path = self.root / "data" / "backtest" / "security_master.csv"
         if not path.exists():
             return None
-        with path.open("r", encoding="utf-8-sig", newline="") as fh:
-            items = self._normalize_membership_items(list(csv.DictReader(fh)))
+        items = self._normalize_membership_items(self._read_csv(path))
         if not items:
             return None
         self._register_memberships(items)
@@ -683,10 +1075,11 @@ class HistoricalDataProvider:
         return any(self._record_eligible(r, as_of) for r in records)
 
     def load_universe(self, universe_file: str, *, max_universe: int = 0) -> UniverseInfo:
-        path = (self.root / universe_file).resolve() if not Path(universe_file).is_absolute() else Path(universe_file)
+        path = self.root / universe_file if not Path(universe_file).is_absolute() else Path(universe_file)
         syms: list[str] = []
         if path.exists():
-            for line in path.read_text(encoding="utf-8-sig").splitlines():
+            text = self.ledger.read(path, kind="universe", parser=lambda raw: raw.decode("utf-8-sig"))
+            for line in text.splitlines():
                 s = line.strip().split(",")[0].strip()
                 if s and not s.startswith("#") and any(ch.isdigit() for ch in s):
                     syms.append(s)
@@ -724,6 +1117,77 @@ class HistoricalDataProvider:
             syms = syms[:max_universe]
         return UniverseInfo(syms, source, survivorship, notes, point_in_time=False, dynamic_daily=False)
 
+    def historical_bars(self, symbols: list[str], start_date: str, end_date: str, *,
+                        period: str = 'D', adjustment: str = 'none',
+                        max_bars_per_symbol: int = 1000) -> dict[str, list[dict[str, Any]]]:
+        """Fetch a date-bounded provider export without cache or live-data fallback."""
+        if self.mcp is None:
+            raise RuntimeError('historical bars require an explicit MCP invoker')
+        response = self.mcp.invoke('mcp_intel_historical_bars', symbols=symbols,
+            start_date=start_date, end_date=end_date, period=period,
+            adjustment=adjustment, max_bars_per_symbol=max_bars_per_symbol)
+        bars = response.get('bars') if isinstance(response, dict) else None
+        if not isinstance(bars, dict):
+            raise RuntimeError('historical bars response missing symbol map')
+        return {symbol: normalize_bars(bars.get(symbol, [])) for symbol in symbols}
+
+    def _historical_signal_rows(self, symbol: str, adjustment: str, count: int) -> list[dict[str, Any]]:
+        list_tools = getattr(self.mcp.invoker, "list_tools", None)
+        if self._historical_tool_available is None and callable(list_tools):
+            advertised = {tool.get("name") for tool in list_tools("intel")}
+            self._historical_tool_available = bool(
+                {"historical_bars", "mcp_intel_historical_bars"} & advertised)
+        if self._historical_tool_available is False:
+            reason = "HISTORICAL_TOOL_UNAVAILABLE:mcp_intel_historical_bars"
+            self.ledger.append(kind="historical_tool", logical_key="mcp_intel_historical_bars",
+                source_type="mcp", status="missing", error=reason)
+            raise HistoricalDataUnavailable(reason)
+        start_date, end_exclusive = self.historical_range
+        end_date = self.historical_request_end or (
+            datetime.fromisoformat(end_exclusive).date() - timedelta(days=1)).isoformat()
+        response = self.mcp.invoke("mcp_intel_historical_bars", symbols=[symbol],
+            start_date=start_date, end_date=end_date, period="D", adjustment=adjustment,
+            max_bars_per_symbol=self.historical_max_bars or count, provider="tdx",
+            strict_paid_source=self.strict_paid_source)
+        if not isinstance(response, dict) or response.get("source") != "tdx" or response.get("fallback_source"):
+            raise HistoricalDataUnavailable("historical bars source mismatch: expected tdx without fallback")
+        accepted = {"none", "raw"} if adjustment == "none" else {adjustment}
+        if response.get("adjustment") not in accepted:
+            raise HistoricalDataUnavailable("historical bars adjustment mismatch: expected explicit requested mode")
+        bars = response.get("bars")
+        if not isinstance(bars, dict) or not isinstance(bars.get(symbol), list):
+            raise HistoricalDataUnavailable("historical bars response missing symbol map")
+        rows = normalize_bars(bars[symbol])
+        if any(not start_date <= row["date"] <= end_date for row in rows):
+            raise HistoricalDataUnavailable("bars outside requested historical range")
+        if adjustment != "none" and self.strict_paid_source:
+            semantics = response.get("adjustment_semantics")
+            factors = response.get("adjustment_factors")
+            if not isinstance(semantics, dict) or not isinstance(factors, dict):
+                raise HistoricalDataUnavailable("historical bars adjustment evidence missing")
+            as_of = semantics.get("as_of")
+            if (semantics.get("mode") != adjustment or semantics.get("point_in_time") is not True
+                    or not isinstance(as_of, str) or not start_date <= as_of <= end_date):
+                raise HistoricalDataUnavailable("historical bars adjustment evidence has ambiguous or future semantics")
+            symbol_factors = factors.get(symbol)
+            if not isinstance(symbol_factors, dict):
+                raise HistoricalDataUnavailable("historical bars adjustment evidence missing symbol factors")
+            for row in rows:
+                try:
+                    evidence = symbol_factors[row["date"]]
+                    if (not isinstance(evidence, dict) or evidence.get("point_in_time") is not True
+                            or not isinstance(evidence.get("dataset_version"), str)
+                            or not evidence["dataset_version"].strip()
+                            or not isinstance(evidence.get("as_of"), str)
+                            or not start_date <= evidence["as_of"] <= row["date"]):
+                        raise ValueError
+                    factor = float(evidence["factor"])
+                    if not 0 < factor < float("inf"):
+                        raise ValueError
+                except (KeyError, TypeError, ValueError):
+                    raise HistoricalDataUnavailable("historical bars adjustment evidence missing valid date factor") from None
+        return rows
+
     def bars(self, symbol: str, *, count: int = 900) -> list[dict[str, Any]]:
         if symbol in self._bars_mem:
             return self._bars_mem[symbol]
@@ -748,37 +1212,65 @@ class HistoricalDataProvider:
                 raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
                 rows = normalize_bars(raw)
         else:
-            rows = []
+            path = self._cache_file("bars", symbol)
+            if self.use_cache and path.exists():
+                rows = normalize_bars(self._load_json(path))
+            else:
+                csv_path = self.root / "data" / "backtest" / "prices" / f"{self._safe(symbol)}.csv"
+                if csv_path.exists():
+                    rows = normalize_bars(self._read_csv(csv_path))
+                elif self.mcp is not None:
+                    raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=min(max(count, 1000), 1000))
+                    rows = normalize_bars(raw)
+                    if not self.strict_paid_source and len(rows) < count:
+                        raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=min(max(count, 1000), 1000))
+                        fetched = normalize_bars(raw)
+                        if len(fetched) > len(rows):
+                            rows = fetched
+                else:
+                    self.ledger.append(kind='adjusted_bars', logical_key=symbol, path=str(csv_path),
+                        requested_range=self.ledger.requested_range, source_type='physical', status='missing')
+                    rows = []
         self._bars_mem[symbol] = rows
         if rows and self.use_cache:
-            self._save_json(path, rows)
+            self._save_json(self._cache_file("bars", symbol), rows)
         if not rows:
             self.warnings.append(f"NO_BARS:{symbol}")
         return rows
 
     def raw_bars(self, symbol: str, *, count: int = 900) -> list[dict[str, Any]]:
-        """Return raw unadjusted historical OHLC bars for trade execution and portfolio mark-to-market."""
+        """Return raw unadjusted historical OHLC bars for execution accounting."""
         if symbol in self._raw_bars_mem:
             return self._raw_bars_mem[symbol]
+        if self.historical_range and self.mcp is not None:
+            rows = self._historical_signal_rows(symbol, "none", count)
+            self._raw_bars_mem[symbol] = rows
+            return rows
         raw_csv = self.root / "data" / "backtest" / "raw_prices" / f"{self._safe(symbol)}.csv"
         if raw_csv.exists():
-            with raw_csv.open("r", encoding="utf-8-sig", newline="") as fh:
-                rows = normalize_bars(list(csv.DictReader(fh)))
-                if rows:
-                    self._raw_bars_mem[symbol] = rows
-                    return rows
+            rows = normalize_bars(self._read_csv(raw_csv))
+            if rows:
+                self._raw_bars_mem[symbol] = rows
+                return rows
         raw_path = self._cache_file("raw_bars", symbol)
         if self.use_cache and raw_path.exists():
             rows = normalize_bars(self._load_json(raw_path))
             if rows:
                 self._raw_bars_mem[symbol] = rows
                 return rows
-        # STRICT: Never fallback to self.bars(symbol). If raw bars do not exist on disk,
-        # return empty list to signal DATA_MISSING_RAW.
-        self.warnings.append(f"DATA_MISSING_RAW:{symbol}")
-        self._raw_bars_mem[symbol] = []
+        if self.mcp is not None:
+            if self.strict_paid_source:
+                raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=count)
+                rows = normalize_bars(raw)
+            else:
+                raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
+                rows = normalize_bars(raw)
+                if not rows:
+                    raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=count)
+                    rows = normalize_bars(raw)
+            self._raw_bars_mem[symbol] = rows
+            return rows
         return []
-
     def adjustment_factor_on(self, symbol: str, as_of: str) -> float:
         """Return adjustment factor (adj_close / raw_close) on or before as_of date.
         Used to convert signal-space stop/target prices to raw execution space.
@@ -970,3 +1462,11 @@ class HistoricalDataProvider:
         if rows and self.use_cache:
             self._save_json(path, rows)
         return rows
+
+
+# Requests remain linked to their original bytes across preflight/execution memory hits.
+for _method in ("load_universe_for_period", "load_universe", "bars", "raw_bars", "historical_bars",
+                "active_records_on", "sector_info_on", "sector_info", "sector_bars",
+                "_fetch_daily_universe"):
+    setattr(HistoricalDataProvider, _method,
+            _record_request(getattr(HistoricalDataProvider, _method)))

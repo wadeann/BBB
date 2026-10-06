@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +20,20 @@ def _assert_finite_json(raw: str) -> None:
 
 
 def write_finite_json(path: Path, data: Any) -> None:
-    raw = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True, default=str)
+    raw = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True, default=str, allow_nan=False)
     _assert_finite_json(raw)
-    path.write_text(raw, encoding="utf-8")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".tmp-", delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:

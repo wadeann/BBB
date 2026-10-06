@@ -25,6 +25,7 @@ class _SyntheticPreflightProvider:
         self._bars: dict[str, list[dict[str, Any]]] = {}
         self._raw_bars: dict[str, list[dict[str, Any]]] = {}
         self._status: dict[str, str] = {}
+        self._status_dates: dict[tuple[str, str], str] = {}
         self._listing_dates: dict[str, str] = {}
         self._eligible: dict[tuple[str, str], bool] = {}
         self._symbols: list[str] = []
@@ -42,7 +43,7 @@ class _SyntheticPreflightProvider:
         return self._eligible.get((symbol, as_of), True)
 
     def status_on(self, symbol: str, as_of: str) -> str:
-        return self._status.get(symbol, "NORMAL")
+        return self._status_dates.get((symbol, as_of), self._status.get(symbol, "NORMAL"))
 
     def listing_date_on(self, symbol: str) -> str:
         return self._listing_dates.get(symbol, "2000-01-01")
@@ -228,6 +229,7 @@ def _setup_happy_path(root: Path) -> tuple[_SyntheticPreflightProvider, dict[str
     for bm in ("000300.SH", "000905.SH", "000016.SH"):
         provider._benchmark_symbols[bm] = _make_bars(bm, all_dates)
         provider._bars[bm] = provider._benchmark_symbols[bm]
+        provider._raw_bars[bm] = _make_bars(bm, all_dates, open_p=9.8, close_p=10.2)
 
     fold = _make_fold(universe=provider._symbols)
     settings = BacktestSettings(start_date="2025-04-01", end_date="2025-07-01", warmup_bars=260)
@@ -258,6 +260,155 @@ class TestHappyPath:
         assert "raw_files" in inputs_info
         assert "adj_files" in inputs_info
         assert "benchmark_files" in inputs_info
+
+
+class TestFoldCompleteness:
+    @pytest.mark.parametrize("window,missing_date", [
+        ("TRAIN", "2025-02-03"),
+        ("TEST", "2025-05-05"),
+        ("OBS", "2025-07-07"),
+    ])
+    @pytest.mark.parametrize("series", ["ADJ", "RAW"])
+    def test_missing_required_symbol_date_blocks(
+        self, tmp_path: Path, window: str, missing_date: str, series: str,
+    ):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        bars = provider._bars if series == "ADJ" else provider._raw_bars
+        bars["600000.SH"] = [b for b in bars["600000.SH"] if b["date"] != missing_date]
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == "DATA_BLOCKED"
+        assert complete is False
+        blockers = reasons["blocking"]["symbols"]
+        assert any(f"INCOMPLETE_{window}_{series}" in issue and missing_date in issue for issue in blockers)
+        files = inputs["adj_files" if series == "ADJ" else "raw_files"]["600000.SH"]
+        prefix = window.lower()
+        assert files[f"{prefix}_missing_dates"] == 1
+        assert files[f"{prefix}_bars"] == files[f"{prefix}_expected_dates"] - 1
+
+    @pytest.mark.parametrize("series", ["ADJ", "RAW"])
+    def test_missing_one_benchmark_date_blocks(self, tmp_path: Path, series: str):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        bars = provider._bars if series == "ADJ" else provider._raw_bars
+        bars["000300.SH"] = [b for b in bars["000300.SH"] if b["date"] != "2025-05-05"]
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == "DATA_BLOCKED"
+        assert complete is False
+        assert any(f"INCOMPLETE_COVERAGE_{series}" in issue and "2025-05-05" in issue
+                   for issue in reasons["blocking"]["benchmarks"])
+        assert inputs["benchmark_files"]["000300.SH"][f"missing_{series.lower()}_dates"] == 1
+
+    def test_missing_raw_benchmark_series_blocks(self, tmp_path: Path):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        provider._raw_bars.pop("000300.SH")
+
+        status, complete, reasons, _ = preflight_fold(provider, fold, settings)
+
+        assert status == "DATA_BLOCKED"
+        assert complete is False
+        assert "000300.SH:NO_RAW_BARS" in reasons["blocking"]["benchmarks"]
+
+    @pytest.mark.parametrize("historical_status", ["SUSPENDED", "DELISTED"])
+    @pytest.mark.parametrize("missing_date", ["2025-02-03", "2025-05-05", "2025-07-07"])
+    def test_documented_non_executable_date_needs_no_bar(
+        self, tmp_path: Path, historical_status: str, missing_date: str,
+    ):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        provider._status_dates[("600000.SH", missing_date)] = historical_status
+        provider._eligible[("600000.SH", missing_date)] = False
+        for bars in (provider._bars, provider._raw_bars):
+            bars["600000.SH"] = [b for b in bars["600000.SH"] if b["date"] != missing_date]
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == "READY", reasons
+        assert complete is True
+        prefix = "train" if missing_date < fold["test_start"] else "test" if missing_date < fold["test_end_exclusive"] else "obs"
+        for kind in ("adj_files", "raw_files"):
+            coverage = inputs[kind]["600000.SH"]
+            assert coverage[f"{prefix}_non_executable_dates"] == 1
+            assert coverage[f"{prefix}_missing_dates"] == 0
+        assert all(b["date"] != missing_date for b in provider._bars["600000.SH"])
+
+    @pytest.mark.parametrize("historical_status", ["UNKNOWN", "DATA_MISSING", "ST", "DELISTING"])
+    def test_non_executable_exemption_requires_documented_state(
+        self, tmp_path: Path, historical_status: str,
+    ):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        missing_date = "2025-05-05"
+        provider._status_dates[("600000.SH", missing_date)] = historical_status
+        provider._eligible[("600000.SH", missing_date)] = False
+        for bars in (provider._bars, provider._raw_bars):
+            bars["600000.SH"] = [b for b in bars["600000.SH"] if b["date"] != missing_date]
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == "DATA_BLOCKED"
+        assert complete is False
+        assert any("INCOMPLETE_TEST_RAW" in issue for issue in reasons["blocking"]["symbols"])
+        assert inputs["raw_files"]["600000.SH"]["test_non_executable_dates"] == 0
+
+    def test_complete_fold_reports_exact_coverage(self, tmp_path: Path):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == "READY", reasons
+        assert complete is True
+        for kind in ("adj_files", "raw_files"):
+            for coverage in inputs[kind].values():
+                for prefix in ("train", "test", "obs"):
+                    assert coverage[f"{prefix}_bars"] == coverage[f"{prefix}_expected_dates"]
+                    assert coverage[f"{prefix}_missing_dates"] == 0
+        for coverage in inputs["benchmark_files"].values():
+            assert coverage["coverage_adj"] == coverage["expected_dates"]
+            assert coverage["coverage_raw"] == coverage["expected_dates"]
+
+
+class TestCalendarCoverageBoundary:
+    @pytest.mark.parametrize("source_end,expected_status", [
+        ("2025-07-31", "READY"),
+        ("2025-07-30", "DATA_BLOCKED"),
+    ])
+    def test_inclusive_source_end_covers_half_open_observation(
+        self, tmp_path: Path, source_end: str, expected_status: str,
+    ):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        manifest_path = tmp_path / "data" / "backtest" / "trading_grade_calendar_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["coverage_end"] = source_end
+        for source in manifest["source_files"]:
+            source["coverage_end"] = source_end
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == expected_status, reasons
+        assert complete is (expected_status == "READY")
+        assert inputs["calendar"]["verified"] is (expected_status == "READY")
+        if expected_status == "DATA_BLOCKED":
+            assert "EXCHANGE_COVERAGE_GAP" in reasons["blocking"]["calendar"]
+
+
+class TestObservationTailRequirement:
+    @pytest.mark.parametrize("required,expected_status", [(23, "READY"), (24, "DATA_BLOCKED")])
+    def test_observation_tail_requires_actual_trading_dates(
+        self, tmp_path: Path, required: int, expected_status: str,
+    ):
+        provider, fold, settings = _setup_happy_path(tmp_path)
+        fold["observation_tail_bars_required"] = required
+
+        status, complete, reasons, inputs = preflight_fold(provider, fold, settings)
+
+        assert status == expected_status, reasons
+        assert complete is (expected_status == "READY")
+        assert inputs["calendar_coverage"]["observation_trading_days"] == 23
+        assert inputs["calendar_coverage"]["observation_tail_bars_required"] == required
+        if expected_status == "DATA_BLOCKED":
+            assert reasons["blocking"]["observation_calendar"] == "INSUFFICIENT_CALENDAR_OBSERVATION:23_lt_24"
 
 
 class TestCalendarBlocked:
@@ -358,6 +509,7 @@ class TestExchangeCoverage:
         for bm in ("000300.SH", "000905.SH", "000016.SH"):
             provider._benchmark_symbols[bm] = _make_bars(bm, all_bars)
             provider._bars[bm] = provider._benchmark_symbols[bm]
+            provider._raw_bars[bm] = _make_bars(bm, all_bars, open_p=9.8, close_p=10.2)
 
         fold = _make_fold(
             warmup_start="2023-10-01", warmup_end_exclusive="2024-10-01",
@@ -412,6 +564,7 @@ class TestExchangeCoverage:
         for bm in ("000300.SH", "000905.SH", "000016.SH"):
             provider._benchmark_symbols[bm] = _make_bars(bm, all_dates)
             provider._bars[bm] = provider._benchmark_symbols[bm]
+            provider._raw_bars[bm] = _make_bars(bm, all_dates, open_p=9.8, close_p=10.2)
 
         fold = _make_fold(
             warmup_start="2024-01-01", warmup_end_exclusive="2025-01-01",
