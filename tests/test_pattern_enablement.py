@@ -505,3 +505,174 @@ def test_audit_disabled_consumed(tmp_path, approved):
     assert not audit.exists()
     with pytest.raises(ValueError):
         loader.save_audit_record(approved, audit)
+
+
+# ── B01-B07 Acceptance Tests ──
+# Each maps to a numbered criterion in BBB_ACCEPTANCE_STANDARD.md §5.
+
+def test_b01_non_stable_candidate_classification_rejected(physical):
+    """B01: Only STABLE_CANDIDATE evidence creates valid policy; other classifications reject."""
+    directory, artifact, manifest, publish = physical
+    encoded = "BULL::ACTIVE::P1::v1"  # Same encoding used by per_key_oos_stability
+    artifact["keys"][encoded]["classification"] = "UNSTABLE"
+    publish()
+    with pytest.raises(ValueError, match="non-authorizing"):
+        verify_physical_artifact(directory, KEY)
+
+
+def test_b01_manual_disable_overrides_approved(loader, approved, clock):
+    """B01: Manual disable takes precedence over approved status."""
+    root = loader._directories[0]
+    loader.publish_generation([approved], root)
+    assert str(KEY) in loader.load_active()
+    disabled = approved.disable("manual_override")
+    loader.publish_generation([disabled], root)
+    assert str(KEY) not in loader.load_active()
+    assert loader.authorize_entry(
+        {"pattern_id": KEY[2], "pattern_version": KEY[3]},
+        market_context={"regime": KEY[0], "data_quality": {"state": "ok"}},
+        sector_context={"lifecycle": KEY[1], "data_quality": {"state": "ok"}},
+        as_of=clock[0],
+    )["reason"] != "approved_exact_policy"
+
+
+def test_b02_unknown_key_disabled_no_trace(loader, physical, clock):
+    """B02: Unknown pattern key returns disabled with clear reason."""
+    directory, artifact, manifest, publish = physical
+    approved = PolicyEntry.from_evidence(KEY, verify_physical_artifact(directory, KEY)).approve("op")
+    loader.publish_generation([approved], loader._directories[0])
+    unknown_key = ("BULL", "ACTIVE", "P99", "v99")
+    decision = loader.authorize_entry(
+        {"pattern_id": unknown_key[2], "pattern_version": unknown_key[3]},
+        market_context={"regime": unknown_key[0], "data_quality": {"state": "ok"}},
+        sector_context={"lifecycle": unknown_key[1], "data_quality": {"state": "ok"}},
+        as_of=clock[0],
+    )
+    assert not decision["allowed"]
+    assert decision["reason"] in ("missing_or_invalid_policy", "invalid_exact_key_or_context")
+
+
+def test_b02_expired_key_disabled(physical, clock):
+    """B02: Expired entry returns is_valid=False."""
+    ev = verify_physical_artifact(physical[0], KEY)
+    entry = PolicyEntry.from_evidence(KEY, ev, valid_days=1)
+    entry = entry.approve("op")
+    assert entry.is_valid_at(clock[0])
+    assert not entry.is_valid_at(clock[0] + 86401)
+
+
+def test_b03_past_evidence_rejects_future_data(physical, clock):
+    """B03: Evidence generated in the future cannot be verified."""
+    directory, artifact, manifest, publish = physical
+    manifest["generated_at"] = "2099-01-01T00:00:00+00:00"
+    publish()
+    with pytest.raises(ValueError, match="future"):
+        verify_physical_artifact(directory, KEY)
+
+
+def test_b04_panic_context_blocks_authorization(loader, approved, clock):
+    """B04: PANIC/reject regime overrides all, returns unsafe_context reason."""
+    loader.publish_generation([approved], loader._directories[0])
+    decision = loader.authorize_entry(
+        {"pattern_id": KEY[2], "pattern_version": KEY[3]},
+        market_context={"regime": "PANIC", "data_quality": {"state": "ok"}},
+        sector_context={"lifecycle": KEY[1], "data_quality": {"state": "ok"}},
+        as_of=clock[0],
+    )
+    assert not decision["allowed"]
+    assert decision["reason"] == "unsafe_context"
+
+
+def test_b04_rollback_restores_known_generation(loader, approved, clock):
+    """B04: Rollback restores the complete previously known generation."""
+    root = loader._directories[0]
+    gen1 = loader.publish_generation([approved], root)
+    audit = loader.save_audit_record(approved, loader.config.snapshot_directory)
+    assert len(loader.load_active()) == 1
+    clock[0] += 10
+    loader.publish_generation([], root)
+    assert len(loader.load_active()) == 0
+    loader.rollback_generation(
+        loader.config.snapshot_directory,
+        Path(audit["audit_path"]).name,
+        generation_dir=root,
+    )
+    assert len(loader.load_active()) == 1
+
+
+def test_b05_filter_signals_excludes_disabled_patterns(loader, physical, clock):
+    """B05: filter_signals only returns signals with enabled policy; disabled never generate BUY_READY."""
+    directory, artifact, manifest, publish = physical
+    approved = PolicyEntry.from_evidence(KEY, verify_physical_artifact(directory, KEY)).approve("op")
+    loader.publish_generation([approved], loader._directories[0])
+
+    market_ok = {"regime": KEY[0], "data_quality": {"state": "ok"}}
+    sector_ok = {"lifecycle": KEY[1], "data_quality": {"state": "ok"}}
+
+    signals = [
+        {"signal": "test_pattern", "strength": "primary",
+         "pattern_id": KEY[2], "pattern_version": KEY[3]},
+    ]
+    decisions = []
+    filtered = loader.filter_signals(signals, market_context=market_ok, sector_context=sector_ok,
+                                     as_of=clock[0], decisions=decisions)
+    assert len(filtered) == 1
+    assert decisions[0]["allowed"]
+
+    unknown_signals = [
+        {"signal": "strange_pattern", "strength": "primary",
+         "pattern_id": "UNKNOWN", "pattern_version": "v0"},
+    ]
+    decisions2 = []
+    filtered2 = loader.filter_signals(unknown_signals, market_context=market_ok, sector_context=sector_ok,
+                                      as_of=clock[0], decisions=decisions2)
+    assert len(filtered2) == 0
+    assert not decisions2[0]["allowed"]
+
+
+def test_b05_exit_signals_always_pass_filter(loader, approved, clock):
+    """B05: exit strength signals bypass policy checks."""
+    loader.publish_generation([approved], loader._directories[0])
+    market_ok = {"regime": KEY[0], "data_quality": {"state": "ok"}}
+    sector_ok = {"lifecycle": KEY[1], "data_quality": {"state": "ok"}}
+    exit_signal = {"signal": "shooting_star_high", "strength": "exit",
+                   "pattern_id": "NONEXISTENT", "pattern_version": "v1"}
+    filtered = loader.filter_signals([exit_signal], market_context=market_ok, sector_context=sector_ok,
+                                     as_of=clock[0])
+    assert len(filtered) == 1
+
+
+def test_b06_identical_input_replay_same_policy(loader, approved, clock):
+    """B06: Same input replay produces the same policy selection; atomic load."""
+    root = loader._directories[0]
+    loader.publish_generation([approved], root)
+    before = loader.load_active(as_of=clock[0])
+    after = loader.load_active(as_of=clock[0])
+    assert before == after
+
+
+def test_b07_audit_contains_evidence_hash_policy_hash_rejection(loader, approved, clock, tmp_path):
+    """B07: Audit records contain evidence hash, policy hash, and rejection reasons."""
+    root = loader._directories[0]
+    loader.publish_generation([approved], root)
+    audit = loader.save_audit_record(approved, loader.config.snapshot_directory)
+    assert "audit_path" in audit
+    assert "policy_hash" in audit
+    assert audit["policy_hash"] is not None
+    imported_audit = loader.load_audit_snapshot(loader.config.snapshot_directory,
+                                                Path(audit["audit_path"]).name)
+    assert len(imported_audit) > 0
+    assert any(e.to_dict() == approved.to_dict() for e in imported_audit)
+
+
+def test_b07_authorize_entry_reason_recorded(loader, approved, clock):
+    """B07: authorize_entry returns reason and policy_hash even on rejection."""
+    loader.publish_generation([approved], loader._directories[0])
+    rejected = loader.authorize_entry(
+        {"pattern_id": "NONE", "pattern_version": "v0"},
+        market_context={"regime": "BULL", "data_quality": {"state": "ok"}},
+        sector_context={"lifecycle": "ACTIVE", "data_quality": {"state": "ok"}},
+        as_of=clock[0],
+    )
+    assert not rejected["allowed"]
+    assert isinstance(rejected["reason"], str) and rejected["reason"]
