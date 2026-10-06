@@ -55,13 +55,13 @@ function kv(obj){return `<div class="kv-grid">${Object.entries(obj).map(([k,v])=
 
 function renderKPIs(d){
   const h=d.market?.market_health||{}, a=d.account||{}, b=a.balance||{}, p=a.pnl||{}, l=d.limitup||{}, ll=d.market?.limitup_ladder||{};
-  const ll=d.market?.limitup_ladder||{}, ls=ll.ladder_summary||{}; const tiers=Object.values(ls).reduce((a,b)=>a+b,0); const items=[['市场状态',d.market?.market_regime||'--',d.market?.market_trend||'--'],['情绪阶段',d.market?.sentiment_phase||'--',d.market?.sentiment_state||'--'],['涨停 / 跌停',`${(ll?.total_limitup??d.market?.limitup_ladder?.total_limitup||'--')} / --`,`健康分 ${h.score??'--'}`],['最高连板',`${l.max_streak??d.market?.limitup_ladder?.max_height??'--'} 板`,`梯队 ${tiers||(l.levels?.length||0)} 层`],['今日盈亏',p.pnl!==undefined?money(p.pnl):'--',p.pnl_pct!==undefined?pct(Number(p.pnl_pct)*100):'--']];
+  const ls=ll.ladder_summary||{}; const tiers=Object.values(ls).reduce((a,b)=>a+b,0); const items=[['市场状态',d.market?.market_regime||'--',d.market?.market_trend||'--'],['情绪阶段',d.market?.sentiment_phase||'--',d.market?.sentiment_state||'--'],['涨停 / 跌停',`${(ll?.total_limitup??d.market?.limitup_ladder?.total_limitup||'--')} / --`,`健康分 ${h.score??'--'}`],['最高连板',`${l.max_streak??d.market?.limitup_ladder?.max_height??'--'} 板`,`梯队 ${tiers||(l.levels?.length||0)} 层`],['今日盈亏',p.pnl!==undefined?money(p.pnl):'--',p.pnl_pct!==undefined?pct(Number(p.pnl_pct)*100):'--']];
   $('kpiGrid').innerHTML=items.map(x=>`<div class="kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
 }
 function renderSectors(sectors){
   if(!sectors?.length){sectors=(lastDashboard?.market?.mainline_lanes?.top_lanes||[]).map((x,i)=>({name:x.theme,score:x.score,strength:x.zt_count>=5?'strong':x.zt_count>=2?'neutral':'weak',rank:i+1,lifecycle:x.tier_status?.includes('🔥')?'accelerating':'emerging',code:''}));}
   if(!sectors?.length){$('sectorGrid').innerHTML='<div class="review-box">暂无主线板块数据。</div>';return;}
-  $('sectorGrid').innerHTML=sectors.map(s=>{const t=s.trend||{}, r=s.route||{}, leaders=(s.leaders||[]).map(x=>x.name||x.stock||x.symbol||x.code).filter(Boolean).slice(0,3).join(' / ')||'--';return `<article class="sector-card clickable" data-sector-code="${esc(s.code||'')}" data-sector-name="${esc(s.name)}"><div class="sector-top"><div><div class="sector-rank">#${s.rank}${s.code?` · ${esc(s.code)}`:''}</div><div class="sector-name">${esc(s.name)}</div></div><div class="sector-score">${fmt(s.score,0)}</div></div><div class="sector-meta"><span class="tag ${cls(s.strength)}">${esc(s.strength)}</span><span class="tag">${esc(s.lifecycle)}</span><span class="tag ${cls(t.state)}">trend:${esc(t.state)}</span></div>${sparkline(t.sparkline||[],t.state)}<div class="sector-stats"><div>5日<strong class="${(t.change_5d||0)>=0?'positive':'negative'}">${pct(t.change_5d)}</strong></div><div>20日<strong class="${(t.change_20d||0)>=0?'positive':'negative'}">${pct(t.change_20d)}</strong></div><div>仓位倍率<strong>${fmt(r.position_multiplier,2)}×</strong></div></div><div class="route-box"><div><b>${esc(r.route_id||'--')}</b> · 门槛 +${fmt(r.threshold_delta,0)}</div><div class="route-line">风向标：${esc(leaders)}</div><div class="route-line route-allow">允许：${esc((r.allowed||[]).join(' / ')||'--')}</div><div class="route-line route-block">限制：${esc((r.blocked||[]).join(' / ')||'--')}</div></div><div class="card-action">点击查看板块详情 →</div></article>`}).join('');
+  $('sectorGrid').innerHTML=sectors.map(s=>{const t=s.trend||{}, r=s.route||{}, leaders=(s.leaders||[]).map(x=>x.name||x.stock||x.symbol||x.code).filter(Boolean).slice(0,3).join(' / ')||'--';return `<article class="sector-card clickable" data-sector-code="${esc(s.code||'')}" data-sector-name="${esc(s.name)}"><div class="sector-top"><div><div class="sector-rank">#${s.rank}${s.code?` · ${esc(s.code)}`:''}</div><div class="sector-name">${esc(s.name)}</div></div><div class="sector-score">${fmt(s.score,0)}</div></div><div class="sector-meta"><span class="tag ${cls(s.strength)}">${esc(s.strength)}</span><span class="tag">${esc(s.lifecycle)}</span><span class="tag ${cls(t.state)}">trend:${esc(t.state)}</span></div>${sparkline(t.sparkline||[],t.state)}<div class="sector-stats"><span>${esc(leaders)}</span><span>仓位倍率 ${r.position_multiplier !== undefined && r.position_multiplier !== null ? fmt(r.position_multiplier,2)+'×' : '--'} · 门槛 ${r.threshold_delta !== null && r.threshold_delta !== undefined ? '+' + fmt(r.threshold_delta,0) : '--'}</span></div><div class="sector-tags">${(r.allowed||[]).map(x=>`<span class="tag good">${esc(x)}</span>`).join('')}${(r.conditional||[]).map(x=>`<span class="tag warn">${esc(x)}</span>`).join('')}${(r.blocked||[]).map(x=>`<span class="tag bad">${esc(x)}</span>`).join('')}</div></article>`;}).join('');
   document.querySelectorAll('[data-sector-name]').forEach(el=>el.addEventListener('click',()=>openSector(el.dataset.sectorCode,el.dataset.sectorName)));
 }
 function renderLadder(l){
@@ -136,8 +136,200 @@ function connectAuditStream(){
   auditEventSource.onerror=()=>{badge.textContent='LIVE 重连中';badge.className='badge warn';};
 }
 
-function switchView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`${name}View`));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));if(name==='replay'){loadReplayDates().then(()=>loadReplay()).catch(e=>{$('alertBox').textContent=`Replay加载失败：${e.message}`;$('alertBox').classList.remove('hidden')});}if(name==='backtest'){loadBacktests().catch(e=>{$('btDetail').textContent='回测列表加载失败：'+e.message;});}}
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));$('refreshBtn').addEventListener('click',()=>load(true));$('loadReplayBtn').addEventListener('click',()=>loadReplay().catch(e=>alert(e.message)));$('openTodayReplay').addEventListener('click',()=>switchView('replay'));if($('notifyBtn'))$('notifyBtn').addEventListener('click',requestDesktopNotifications);
+// ---- Phase 7 WebUI Deep Integration: New views ----
+
+async function loadCandidatesView(page=1, pattern='', regime='', sector=''){
+  const q=new URLSearchParams({page:String(page)});
+  if(pattern) q.set('pattern',pattern);
+  if(regime) q.set('regime',regime);
+  if(sector) q.set('sector',sector);
+  try{
+    const r=await fetch(`/api/v1/candidates?${q}`);
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    const items=d.items||[];
+    $('candTotal').textContent=`共 ${d.total} 只`;
+    $('candPageInfo').textContent=`第 ${d.page}/${d.total_pages} 页`;
+    $('candKPIs').innerHTML=[
+      ['候选总数',String(d.total),'筛选后'],
+      ['当前页',String(items.length),'只'],
+      ['交易日',d.trade_date||'--',''],
+    ].map(x=>`<div class="kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
+    if(!items.length){
+      $('candTable').innerHTML='<div class="review-box">暂无满足条件的候选股。</div>';
+      $('candPagination').innerHTML='';
+      return;
+    }
+    $('candTable').innerHTML=`<table class="data-table"><thead><tr><th>代码</th><th>名称</th><th>策略</th><th>评分</th><th>状态</th><th>理由</th></tr></thead><tbody>${items.map(r=>{const p=r.payload||{};return `<tr class="clickable" data-symbol="${esc(r.symbol||p.symbol||'')}"><td><b>${esc(r.symbol||p.symbol||'--')}</b></td><td>${esc(r.name||p.name||'--')}</td><td>${esc(r.strategy_id||p.strategy_id||'--')}</td><td class="score">${p.score??'--'}</td><td class="${cls(r.status||p.decision)}">${esc(r.status||p.decision||'--')}</td><td>${esc(p.reason||p.summary||p.reasons_for?.[0]||'--')}</td></tr>`}).join('')}</tbody></table>`;
+    const p=$('candPagination');
+    p.innerHTML='';
+    for(let i=1;i<=d.total_pages;i++){
+      const btn=document.createElement('button');
+      btn.textContent=i;
+      btn.className=i===d.page?'page-btn active':'page-btn';
+      btn.addEventListener('click',()=>{loadCandidatesView(i,$('candPattern').value,$('candRegime').value,$('candSector').value);});
+      p.appendChild(btn);
+    }
+    document.querySelectorAll('#candTable [data-symbol]').forEach(el=>el.addEventListener('click',()=>openStock(el.dataset.symbol)));
+  }catch(e){
+    $('candTable').innerHTML=`<div class="alert">候选股加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function loadPositionsView(){
+  try{
+    const r=await fetch('/api/v1/positions');
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    const pos=d.positions||[];
+    $('posKPIs').innerHTML=[
+      ['总持仓',String(d.total_positions),'只'],
+      ['总市值',money(d.total_market_value),''],
+      ['可用现金',money(d.available_cash),''],
+      ['总盈亏',d.gross_pnl>=0?money(d.gross_pnl):money(d.gross_pnl),d.gross_pnl>=0?'盈利':'亏损'],
+      ['盈亏(%)',pct(d.gross_pnl_pct),''],
+    ].map(x=>`<div class="kpi ${x[3] === '亏损' ? 'bad' : ''}"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
+    if(!pos.length){
+      $('posTable').innerHTML='<div class="review-box">当前无持仓。无持仓时返回空数组。</div>';
+      $('posSummary').innerHTML='<div class="review-box">空仓。</div>';
+      return;
+    }
+    $('posTable').innerHTML=`<table class="data-table"><thead><tr><th>代码</th><th>数量</th><th>成本价</th><th>现价</th><th>市值</th><th>盈亏</th><th>盈亏%</th></tr></thead><tbody>${pos.map(x=>`<tr class="clickable" data-symbol="${esc(x.symbol||'')}"><td><b>${esc(x.symbol||'--')}</b></td><td>${fmt(x.quantity,0)}</td><td>${fmt(x.cost_price)}</td><td>${fmt(x.current_price)}</td><td>${money(x.market_value)}</td><td class="${x.pnl>=0?'positive':'negative'}">${money(x.pnl)}</td><td class="${x.pnl>=0?'positive':'negative'}">${pct(x.pnl_percent)}</td></tr>`).join('')}</tbody></table>`;
+    const winners=pos.filter(x=>x.pnl>=0).length;
+    const losers=pos.filter(x=>x.pnl<0).length;
+    $('posSummary').innerHTML=section('持仓分布',kv({
+      '盈利数':String(winners),
+      '亏损数':String(losers),
+      '胜率':pct(winners*100/(pos.length||1)),
+      '止盈/止损':'—',
+    }))+section('时间戳',kv({'快照时间':d.as_of||'--'}));
+    document.querySelectorAll('#posTable [data-symbol]').forEach(el=>el.addEventListener('click',()=>openStock(el.dataset.symbol)));
+  }catch(e){
+    $('posTable').innerHTML=`<div class="alert">持仓加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function loadStrategyLabView(pattern='', regime=''){
+  const q=new URLSearchParams();
+  if(pattern) q.set('pattern',pattern);
+  if(regime) q.set('regime',regime);
+  try{
+    const r=await fetch(`/api/v1/strategy-lab?${q}`);
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    const cmp=d.comparison||[];
+    $('slKPIs').innerHTML=[
+      ['策略家族数',String(d.total_families),''],
+      ['总回测数',String(d.total_runs),''],
+      ['展示对比组',String(cmp.length),'不按收益排序'],
+    ].map(x=>`<div class="kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
+    if(!cmp.length){
+      $('slComparison').innerHTML='<div class="review-box">无策略对比数据。</div>';
+      return;
+    }
+    $('slComparison').innerHTML=`<table class="data-table"><thead><tr><th>策略</th><th>市场状态</th><th>回测数</th><th>平均收益</th><th>Sharpe</th><th>最大回撤</th><th>胜率</th></tr></thead><tbody>${cmp.map(x=>`<tr><td><b>${esc(x.family)}</b></td><td>${esc(x.regime)}</td><td>${x.run_count}</td><td class="${x.avg_total_return>=0?'positive':'negative'}">${pct(x.avg_total_return*100)}</td><td>${fmt(x.avg_sharpe)}</td><td class="negative">${pct(x.avg_max_drawdown*100)}</td><td>${pct(x.avg_win_rate*100)}</td></tr>`).join('')}</tbody></table>`;
+  }catch(e){
+    $('slComparison').innerHTML=`<div class="alert">策略实验室加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function loadTradeDetailView(tradeId){
+  if(!tradeId){
+    $('tdKPIs').innerHTML='';
+    $('tdTimeline').innerHTML='<div class="review-box">输入 Round Trip ID 后点击查看。</div>';
+    $('tdPnL').innerHTML='<div class="review-box">暂无数据。</div>';
+    return;
+  }
+  try{
+    const r=await fetch(`/api/v1/trades/${encodeURIComponent(tradeId)}`);
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    const trade=d.trade||{};
+    const events=d.events||[];
+    const m=d.metrics||{};
+    $('tdKPIs').innerHTML=[
+      ['Round Trip',tradeId,''],
+      ['事件数',String(events.length),''],
+    ].map(x=>`<div class="kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
+
+    // Timeline — snapshot → signal → entry → exit → P&L
+    if(events.length){
+      $('tdTimeline').innerHTML=events.map(e=>{
+        const t=((e.event_time||'').split('T')[1]||'').slice(0,8)||'--';
+        const payloadBlock=e.payload?jsonBlock(e.payload):'';
+        return `<div class="timeline-item"><div class="time">${t}</div><div class="node"></div><div><div class="event-title">${esc(e.event_type)}${e.symbol?` · ${esc(e.symbol)}`:''}</div><div class="event-meta">${esc(e.phase||'--')} · ${esc(e.status||'--')}${e.strategy_id?` · ${esc(e.strategy_id)}`:''}</div>${payloadBlock}</div></div>`;
+      }).join('');
+    } else {
+      $('tdTimeline').innerHTML='<div class="review-box">未找到该 Round Trip 的事件链。可能是回测生成的数据。</div>';
+    }
+
+    // P&L block
+    const pnlParts=[];
+    if(trade){
+      pnlParts.push(kv({
+        '股票':trade.symbol||'--',
+        '方向':trade.direction||'--',
+        '入场日期':trade.entry_date||trade.trade_date||'--',
+        '出场日期':trade.exit_date||'--',
+        '入场价':fmt(trade.entry_price),
+        '出场价':fmt(trade.exit_price),
+        '数量':String(trade.quantity||'--'),
+        '盈亏':trade.pnl!==undefined?money(trade.pnl):'--',
+        '盈亏%':trade.pnl_pct!==undefined?pct(trade.pnl_pct*100):'--',
+        '出场原因':trade.exit_reason||'--',
+      }));
+    }
+    if(m.total_return!==undefined){
+      pnlParts.push(section('回测指标',kv({
+        '总收益':pct(m.total_return*100),
+        'Sharpe':fmt(m.sharpe),
+        '最大回撤':pct(m.max_drawdown*100),
+        '胜率':pct(m.win_rate*100),
+        '平仓交易数':String(m.closed_trades||'--'),
+      })));
+    }
+    $('tdPnL').innerHTML=pnlParts.join('')||'<div class="review-box">无盈亏数据。</div>';
+  }catch(e){
+    $('tdTimeline').innerHTML=`<div class="alert">交易详情加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`${name}View`));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
+  if(name==='replay'){loadReplayDates().then(()=>loadReplay()).catch(e=>{$('alertBox').textContent=`Replay加载失败：${e.message}`;$('alertBox').classList.remove('hidden')});}
+  if(name==='backtest'){loadBacktests().catch(e=>{$('btDetail').textContent='回测列表加载失败：'+e.message;});}
+  if(name==='candidates'){loadCandidatesView(1,$('candPattern').value,$('candRegime').value,$('candSector').value).catch(e=>{$('candTable').innerHTML='<div class="alert">候选股页面加载失败：'+e.message+'</div>';});}
+  if(name==='positions'){loadPositionsView().catch(e=>{$('posTable').innerHTML='<div class="alert">持仓页面加载失败：'+e.message+'</div>';});}
+  if(name==='strategyLab'){loadStrategyLabView($('slPattern').value,$('slRegime').value).catch(e=>{$('slComparison').innerHTML='<div class="alert">策略实验室加载失败：'+e.message+'</div>';});}
+  if(name==='tradeDetail'){loadTradeDetailView($('tdTradeId').value).catch(e=>{$('tdTimeline').innerHTML='<div class="alert">交易明细加载失败：'+e.message+'</div>';});}
+}
+
+// Tab click handlers
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
+$('refreshBtn').addEventListener('click',()=>load(true));
+$('loadReplayBtn').addEventListener('click',()=>loadReplay().catch(e=>alert(e.message)));
+$('openTodayReplay').addEventListener('click',()=>switchView('replay'));
+if($('notifyBtn'))$('notifyBtn').addEventListener('click',requestDesktopNotifications);
+
+// Candidates search
+$('candSearchBtn').addEventListener('click',()=>loadCandidatesView(1,$('candPattern').value,$('candRegime').value,$('candSector').value));
+$('candPattern').addEventListener('keydown',e=>{if(e.key==='Enter')$('candSearchBtn').click();});
+$('candRegime').addEventListener('keydown',e=>{if(e.key==='Enter')$('candSearchBtn').click();});
+$('candSector').addEventListener('keydown',e=>{if(e.key==='Enter')$('candSearchBtn').click();});
+
+// Positions refresh
+$('refreshPositionsBtn').addEventListener('click',()=>loadPositionsView());
+
+// Strategy Lab search
+$('slSearchBtn').addEventListener('click',()=>loadStrategyLabView($('slPattern').value,$('slRegime').value));
+$('slPattern').addEventListener('keydown',e=>{if(e.key==='Enter')$('slSearchBtn').click();});
+$('slRegime').addEventListener('keydown',e=>{if(e.key==='Enter')$('slSearchBtn').click();});
+
+// Trade Detail search
+$('tdSearchBtn').addEventListener('click',()=>loadTradeDetailView($('tdTradeId').value));
+$('tdTradeId').addEventListener('keydown',e=>{if(e.key==='Enter')$('tdSearchBtn').click();});
+
 notificationPermissionLabel();load(false);loadWorkerStatus();connectAuditStream();setInterval(loadWorkerStatus,10000);setInterval(()=>{if($('dashboardView').classList.contains('active'))load(false)},30000);
 
 let btPollTimer=null;
@@ -152,7 +344,7 @@ async function loadBacktestDetail(runId){
   const r=await fetch(`/api/backtests/${encodeURIComponent(runId)}`); if(!r.ok) throw new Error(await r.text()); const d=await r.json(),m=d.metrics||{},c=d.coverage||{};
   $('btSummary').innerHTML=[['总收益',btPct(m.total_return),'基准 '+btPct(m.benchmark_return)],['最大回撤',btPct(m.max_drawdown),`持续 ${m.max_drawdown_days||0} 日`],['Sharpe',fmt(m.sharpe),`Calmar ${fmt(m.calmar)}`],['胜率',btPct(m.win_rate),`PF ${fmt(m.profit_factor)}`],['月收益≥30%',`${m.months_ge_target||0}/${m.months_total||0}`,btPct(m.months_ge_target_rate)]].map(x=>`<div class="kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="sub">${x[2]}</div></div>`).join('');
   const q=d.data_quality||{};
-  $('btDetail').innerHTML=`<b>${esc(runId)}</b><div class="bt-metric">股票覆盖 ${c.tested_symbols||0}/${c.requested_symbols||0} · 信号 ${c.signal_count||0} · 候选 ${c.candidate_count||0} · 平仓 ${m.closed_trades||0}</div><div class="bt-actions"><a class="bt-link" target="_blank" href="/api/backtests/${encodeURIComponent(runId)}/file/report.html">HTML报告</a><a class="bt-link" target="_blank" href="/api/backtests/${encodeURIComponent(runId)}/file/report.json">JSON报告</a><a class="bt-link" href="/api/backtests/${encodeURIComponent(runId)}/file/trades.csv">交易CSV</a><a class="bt-link" href="/api/backtests/${encodeURIComponent(runId)}/file/rejections.csv">拒绝记录</a></div><pre class="code-box">${esc(JSON.stringify({metrics:m,by_strategy:d.by_strategy,by_market_regime:d.by_market_regime,by_sector_strength:d.by_sector_strength,data_quality:q,universe:d.universe},null,2))}</pre>`;
+  $('btDetail').innerHTML=`<b>${esc(runId)}</b><div class="bt-metric">股票覆盖 ${c.tested_symbols||0}/${c.requested_symbols||0} · 信号 ${c.signal_count||0} · 候选 ${c.candidate_count||0} · 平仓 ${m.closed_trades||0}</div><div class="bt-actions"><a class="bt-link" target="_blank" href="/api/backtests/${encodeURIComponent(runId)}/file/report.html">HTML报告</a><a class="bt-link" target="_blank" href="/api/backtests/${encodeURIComponent(runId)}/file/report.json">JSON报告</a><a class="bt-link" href="/api/backtests/${encodeURIComponent(runId)}/file/trades.csv">交易CSV</a><a class="bt-link" href="/api/backtests/${encodeURIComponent(runId)}/file/rejections.csv">拒绝记录</a></div><pre class="code-box">${esc(JSON.stringify({metrics:m,by_strategy:d.by_strategy,by_market_regime:d.by_market_regime,by_family:d.by_family,by_route:d.by_route,by_sector:d.by_sector,data_quality:q,samples:d.samples},null,2))}</pre>`;
 }
 async function runBacktest(){
   const btn=$('runBacktestBtn'); btn.disabled=true; $('btJobStatus').textContent='正在提交…';
