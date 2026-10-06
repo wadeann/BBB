@@ -44,7 +44,7 @@ class AgentOrchestrator:
         self.candidate_engine = build_engine()
         self.last_candidates: dict[str, Any] = {"scanner_result": None, "decisions": []}
         # P5 Decision engines — one per symbol
-        self._decision_engines: dict[str, DecisionEngine] = {}
+        self._decision_pipeline = DecisionEngine()
         # P6 Paper engine — lazy init
         self._paper_engine: PaperEngine | None = None
 
@@ -199,66 +199,51 @@ class AgentOrchestrator:
                 except Exception:
                     logger.warning("Failed fetching bars for %s", sym, exc_info=True)
             if enabled_patterns and bars_by_symbol:
-                scanner_result = self.candidate_engine.scan(
+                # P4 + P5: Single pipeline codepath
+                decisions = self._decision_pipeline.pipeline(
                     bars_by_symbol=bars_by_symbol,
+                    context=market,
                     enabled_patterns=enabled_patterns,
-                    market_context=market,
-                    sector_map=market.get("sectors", {}),
+                    candidate_engine=self.candidate_engine,
+                    policy_loader=self.policy_loader,
+                    phase=run.phase,
                 )
-                scan_result_data = scanner_result.to_dict()
-                # ── P5: Decision engine evaluation on top-N ───────────────
-                for cand in scanner_result.top_n:
-                    eng = self._decision_engines.get(cand.symbol)
-                    if eng is None:
-                        eng = DecisionEngine(state=None)
-                        self._decision_engines[cand.symbol] = eng
-                    matched_policy = None
-                    if self.policy_loader is not None:
-                        try:
-                            active_policies = self.policy_loader.load_active()
-                            for entry in active_policies.values():
-                                if entry.key[2] == cand.pattern_id and entry.key[3] == cand.pattern_version:
-                                    matched_policy = entry.to_dict()
-                                    break
-                        except Exception:
-                            pass  # non-critical: policy check is advisory for decision engine
-                    signal_decision = eng.evaluate(
-                        candidate=cand.to_dict(),
-                        context=market,
-                        policy=matched_policy,
-                        phase=run.phase,
-                    )
-                    decision_dict = signal_decision.to_dict()
-                    decisions_data.append(decision_dict)
-                    # ── P6: Paper engine execution ────────────────────────
-                    if signal_decision.status in (DecisionStatus.BUY_TRIGGERED, DecisionStatus.SELL_TRIGGERED):
+                decisions_data = [d.to_dict() for d in decisions]
+                scan_result_data = self._decision_pipeline._last_scanner_result.to_dict() if self._decision_pipeline._last_scanner_result else None
+                # ── P6: Paper engine execution ────────────────────────
+                for sd in decisions:
+                    decision_dict = sd.to_dict()
+                    if sd.status in (DecisionStatus.BUY_TRIGGERED, DecisionStatus.SELL_TRIGGERED):
                         try:
                             paper = self._get_paper_engine()
                             paper_result = paper.process_signal(decision_dict)
-                            event_type = "PAPER_BUY_ORDER" if signal_decision.status == DecisionStatus.BUY_TRIGGERED else "PAPER_SELL_ORDER"
+                            event_type = "PAPER_BUY_ORDER" if sd.status == DecisionStatus.BUY_TRIGGERED else "PAPER_SELL_ORDER"
                             self.audit.write_event(
                                 event_type=event_type, phase=run.phase,
                                 run_id=run.run_id, trace_id=trace,
                                 producer={"type": "exec", "id": "paper-engine"},
-                                symbol=cand.symbol,
+                                symbol=sd.symbol,
                                 payload=paper_result,
                             )
                         except Exception:
-                            logger.exception("Paper engine execution failed for %s", cand.symbol)
-                self.audit.write_event(
-                    event_type="CANDIDATE_SCAN", phase=run.phase, run_id=run.run_id, trace_id=trace,
-                    producer={"type": "strategy", "id": "candidate-engine"},
-                    payload={
-                        "top_n_count": len(scanner_result.top_n),
-                        "total_scanned": scanner_result.total_scanned,
-                        "skipped_liquidity": scanner_result.skipped_liquidity,
-                        "skipped_rs": scanner_result.skipped_rs,
-                        "skipped_sector": scanner_result.skipped_sector,
-                        "llm_vetoed": scanner_result.llm_vetoed,
-                        "as_of": scanner_result.as_of,
-                        "decision_count": len(decisions_data),
-                    },
-                )
+                            logger.exception("Paper engine execution failed for %s", sd.symbol)
+                # ── Audit candidate scan ──────────────────────────────────
+                sr = self._decision_pipeline._last_scanner_result
+                if sr is not None:
+                    self.audit.write_event(
+                        event_type="CANDIDATE_SCAN", phase=run.phase, run_id=run.run_id, trace_id=trace,
+                        producer={"type": "strategy", "id": "candidate-engine"},
+                        payload={
+                            "top_n_count": len(sr.top_n),
+                            "total_scanned": sr.total_scanned,
+                            "skipped_liquidity": sr.skipped_liquidity,
+                            "skipped_rs": sr.skipped_rs,
+                            "skipped_sector": sr.skipped_sector,
+                            "llm_vetoed": sr.llm_vetoed,
+                            "as_of": sr.as_of,
+                            "decision_count": len(decisions_data),
+                        },
+                    )
         except Exception:
             logger.exception("Candidate scan/decision cycle failed during intraday monitor")
         self.last_candidates["scanner_result"] = scan_result_data

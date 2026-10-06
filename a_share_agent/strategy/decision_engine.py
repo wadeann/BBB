@@ -10,7 +10,10 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .candidates import CandidateEngine
 
 from .decision_state import (
     DecisionState,
@@ -47,6 +50,8 @@ class DecisionEngine:
 
     def __init__(self, state: DecisionState | None = None) -> None:
         self.state = state
+        self._pipeline_engines: dict[str, DecisionEngine] = {}
+        self._last_scanner_result: Any = None
 
     # ── High-level entry point ────────────────────────────────────────
 
@@ -229,6 +234,89 @@ class DecisionEngine:
             }
 
         return decision
+
+    # ── Single codepath: pipeline ─────────────────────────────────────
+
+    def pipeline(self, *,
+                 bars_by_symbol: dict[str, list[dict]],
+                 context: dict[str, Any],
+                 enabled_patterns: list[tuple[str, str]],
+                 candidate_engine: Any,
+                 policy_loader: Any = None,
+                 phase: str = "",
+                 ) -> list[SignalDecision]:
+        """Single codepath for live and historical decision-making.
+
+        Orchestrates full candidate scan → state machine evaluation
+        in one call.  Manages per-symbol DecisionEngine instances
+        internally for state persistence across cycles.
+
+        Parameters
+        ----------
+        bars_by_symbol : dict
+            Symbol → list of OHLCV bar dicts.
+        context : dict
+            Market context (regime, breadth, leaders, etc.).
+        enabled_patterns : list[tuple[str, str]]
+            (pattern_id, pattern_version) pairs from active policies.
+        candidate_engine : CandidateEngine
+            Scanner/scorer instance.
+        policy_loader : PolicyLoader | None
+            Optional policy loader for matching policies to candidates.
+        phase : str
+            Current trading phase label.
+
+        Returns
+        -------
+        list[SignalDecision]
+            One decision per top-N candidate.
+        """
+        decisions: list[SignalDecision] = []
+
+        if not bars_by_symbol or not enabled_patterns:
+            return decisions
+
+        # 1. Run candidate engine scan (builds candidate context from bars)
+        scanner_result = candidate_engine.scan(
+            bars_by_symbol=bars_by_symbol,
+            enabled_patterns=enabled_patterns,
+            market_context=context,
+            sector_map=context.get("sectors", {}),
+        )
+        self._last_scanner_result = scanner_result
+
+        # 2. For each top candidate, run state machine evaluation
+        for cand in scanner_result.top_n:
+            cand_dict = cand.to_dict()
+
+            # Match policy if loader available
+            matched_policy = None
+            if policy_loader is not None:
+                try:
+                    active_policies = policy_loader.load_active()
+                    for entry in active_policies.values():
+                        if len(entry.key) >= 4 and entry.key[2] == cand.pattern_id and entry.key[3] == cand.pattern_version:
+                            matched_policy = entry.to_dict()
+                            break
+                except Exception:
+                    pass  # non-critical: policy check is advisory for decision engine
+
+            # Get or create per-symbol DecisionEngine
+            eng = self._pipeline_engines.get(cand.symbol)
+            if eng is None:
+                eng = DecisionEngine(state=None)
+                self._pipeline_engines[cand.symbol] = eng
+
+            # Run stateful evaluation
+            decision = eng.evaluate(
+                candidate=cand_dict,
+                context=context,
+                policy=matched_policy,
+                phase=phase,
+            )
+            decisions.append(decision)
+
+        return decisions
 
     # ── Policy validation ─────────────────────────────────────────────
 
