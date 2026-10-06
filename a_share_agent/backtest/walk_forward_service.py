@@ -639,7 +639,7 @@ def run_stability(
         "run_id": resolved_run_id,
         "generation_id": generation_id,
         "completion": overall_status == "COMPLETED",
-        "artifact_path": "oos_per_key.json",
+        "artifact_path": "oos_stability.json",
         "consumed_universes": consumed_universes,
         "declared_keys": wf_cfg.get("declared_keys"),
         "preflight_input_commitments": preflight_commitments,
@@ -713,7 +713,7 @@ def run_stability(
         rule_hashes=_compute_rule_hashes(runtime_cfg),
         run_manifest=manifest,
     )
-    per_key_hash = write_oos_per_key(output_dir / "oos_per_key.json", per_key_artifact)
+    per_key_hash = write_oos_per_key(output_dir / "oos_stability.json", per_key_artifact)
 
     # Compute SHA256 for every output file for manifest binding
     # -------------------------------------------------------------------

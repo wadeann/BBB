@@ -1004,7 +1004,7 @@ def physical_artifact_fixture(tmp_path):
     directory = tmp_path / "published"
     directory.mkdir()
     manifest = {"run_id": "fixture", "source_sha": "fixture-source", "overall_status": "COMPLETED",
-                "completion": True, "generation_id": "fixture-generation", "artifact_path": "oos_per_key.json",
+                "completion": True, "generation_id": "fixture-generation", "artifact_path": "oos_stability.json",
                 "config_hash": "c", "wf_config_hash": "w", "rule_hashes": {}, "dirty": False,
                 "consumed_universes": {"0": {"symbols": ["FIXTURE"], "universe_sha256": hashlib.sha256(b'["FIXTURE"]').hexdigest()}},
                 "physical_provenance": {"status": "VERIFIED"},
@@ -1022,10 +1022,10 @@ def physical_artifact_fixture(tmp_path):
     write_finite_json(fold_path, dict(events=snapshot['events'], sha256=snapshot['sha256'], status='VERIFIED'))
     artifact = build_per_key_oos_artifact({"keys": {_key_to_artifact_key(key): {"classification": "STABLE_CANDIDATE"}}, "n_keys": 1},
                                          "fixture", "fixture-source", "c", "w", {}, manifest)
-    write_finite_json(directory / "oos_per_key.json", artifact)
-    manifest["artifact_sha256"] = hashlib.sha256((directory / "oos_per_key.json").read_bytes()).hexdigest()
+    write_finite_json(directory / "oos_stability.json", artifact)
+    manifest["artifact_sha256"] = hashlib.sha256((directory / "oos_stability.json").read_bytes()).hexdigest()
     manifest["oos_per_key_sha256"] = artifact["content_hash"]
-    manifest["output_files"] = {"oos_per_key.json": manifest["artifact_sha256"],
+    manifest["output_files"] = {"oos_stability.json": manifest["artifact_sha256"],
         'folds/0/consumed_inputs.json': hashlib.sha256(fold_path.read_bytes()).hexdigest()}
     def publish_manifest():
         write_finite_json(directory / "manifest.json", manifest)
@@ -1049,7 +1049,7 @@ def test_physical_binding_invalidations_fail_closed(physical_artifact_fixture, m
     elif mutation == "escape":
         manifest["output_files"]["../fixture_input.csv"] = manifest["physical_inputs"][0]["sha256"]
     elif mutation == "symlink":
-        path = directory / "oos_per_key.json"
+        path = directory / "oos_stability.json"
         outside = directory.parent / "external.json"
         outside.write_bytes(path.read_bytes())
         path.unlink()

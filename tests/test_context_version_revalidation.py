@@ -116,7 +116,7 @@ def _build_published_directory(
         generation_id="cv-test-generation",
         overall_status="COMPLETED",
         completion=True,
-        artifact_path="oos_per_key.json",
+        artifact_path="oos_stability.json",
         config_hash="ch",
         wf_config_hash="wch",
         rule_hashes=dict(rule_hashes),
@@ -165,8 +165,8 @@ def _publish(directory: Path, artifact: dict, manifest: dict) -> None:
         artifact, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )
     artifact["content_hash"] = hashlib.sha256(canonical.encode()).hexdigest()
-    _dump(directory / "oos_per_key.json", artifact)
-    manifest["artifact_sha256"] = _digest(directory / "oos_per_key.json")
+    _dump(directory / "oos_stability.json", artifact)
+    manifest["artifact_sha256"] = _digest(directory / "oos_stability.json")
     manifest["oos_per_key_sha256"] = artifact["content_hash"]
     manifest["output_files"] = {
         str(p.relative_to(directory)): _digest(p)

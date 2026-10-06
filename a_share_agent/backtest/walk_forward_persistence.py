@@ -85,7 +85,7 @@ def write_oos_per_key(path: Path, artifact: dict) -> str:
     """Write per-key OOS artifact to JSON and return its content_hash.
 
     Args:
-        path: output JSON path (e.g. ``output_dir / "oos_per_key.json"``).
+        path: output JSON path (e.g. ``output_dir / "oos_stability.json"``).
         artifact: artifact dict from build_per_key_oos_artifact().
 
     Returns:

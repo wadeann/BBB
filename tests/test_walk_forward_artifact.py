@@ -410,7 +410,7 @@ def producer_runner(monkeypatch, tmp_path):
         result = service.run_stability(
             SimpleNamespace(project_root=tmp_path, defaults={"benchmarks": {}}, config_hash="c"),
             {"start_date": "2020-01-01", "end_date": "2021-04-01", **overrides}, tmp_path / "run", "integrity")
-        return result, json.loads((tmp_path / "run" / "oos_per_key.json").read_text()), tmp_path / "run"
+        return result, json.loads((tmp_path / "run" / "oos_stability.json").read_text()), tmp_path / "run"
     return reports, plan, run
 
 
@@ -501,7 +501,7 @@ def test_interrupted_generation_is_never_published(producer_runner, monkeypatch)
     with pytest.raises(OSError, match="crash before completion"):
         run()
     assert (directory.parent / "latest.json").read_bytes() == latest
-    assert json.loads((directory / "oos_per_key.json").read_text()) == artifact
+    assert json.loads((directory / "oos_stability.json").read_text()) == artifact
 
 
 @pytest.mark.parametrize("mutation", ["missing_marker", "manifest", "artifact", "fold", "escape", "symlink"])
@@ -515,7 +515,7 @@ def test_published_generation_tampering_fails_closed(producer_runner, mutation):
     elif mutation == "manifest":
         manifest_path.write_text('{}')
     elif mutation == "artifact":
-        (directory / "oos_per_key.json").write_text('{}')
+        (directory / "oos_stability.json").write_text('{}')
     elif mutation == "fold":
         (directory / "folds/0/report.json").write_text('{}')
     elif mutation == "escape":

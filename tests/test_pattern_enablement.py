@@ -45,7 +45,7 @@ def physical(tmp_path, clock):
         report = dict(fold_id=i, complete=True, status="COMPLETED", coverage=1.0, trades=trades)
         reports.append(report)
         dump(directory / f"fold_{i}" / "report.json", report)
-    manifest = dict(run_id="synthetic", source_sha="fixture-source", generation_id="fixture-generation", overall_status="COMPLETED", completion=True, artifact_path="oos_per_key.json", config_hash="c", wf_config_hash="w", rule_hashes=dict(RULE_HASHES), dirty=False, generated_at=datetime.fromtimestamp(clock[0]-100, timezone.utc).isoformat(), consumed_universes={"0": {"symbols": ["FIXTURE"], "universe_sha256": hashlib.sha256(b'["FIXTURE"]').hexdigest()}}, physical_provenance={"status": "VERIFIED"}, physical_inputs=[{"path": str(inp), "sha256": digest(inp)}], fold_plan={"folds": [{"fold_id": i} for i in range(4)]}, settings={"stability_thresholds": {}}, declared_keys=[list(KEY)])
+    manifest = dict(run_id="synthetic", source_sha="fixture-source", generation_id="fixture-generation", overall_status="COMPLETED", completion=True, artifact_path="oos_stability.json", config_hash="c", wf_config_hash="w", rule_hashes=dict(RULE_HASHES), dirty=False, generated_at=datetime.fromtimestamp(clock[0]-100, timezone.utc).isoformat(), consumed_universes={"0": {"symbols": ["FIXTURE"], "universe_sha256": hashlib.sha256(b'["FIXTURE"]').hexdigest()}}, physical_provenance={"status": "VERIFIED"}, physical_inputs=[{"path": str(inp), "sha256": digest(inp)}], fold_plan={"folds": [{"fold_id": i} for i in range(4)]}, settings={"stability_thresholds": {}}, declared_keys=[list(KEY)])
     from a_share_agent.backtest.data import ConsumedInputLedger
     ledger = ConsumedInputLedger(tmp_path)
     for i in range(4):
@@ -65,8 +65,8 @@ def physical(tmp_path, clock):
         artifact.pop("content_hash", None)
         canonical = json.dumps(artifact, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         artifact["content_hash"] = hashlib.sha256(canonical.encode()).hexdigest()
-        dump(directory / "oos_per_key.json", artifact)
-        manifest["artifact_sha256"] = digest(directory / "oos_per_key.json")
+        dump(directory / "oos_stability.json", artifact)
+        manifest["artifact_sha256"] = digest(directory / "oos_stability.json")
         manifest["oos_per_key_sha256"] = artifact["content_hash"]
         manifest["output_files"] = {str(p.relative_to(directory)): digest(p) for p in directory.rglob("*.json") if p.name not in ("manifest.json", "completion.json")}
         dump(directory / "manifest.json", manifest)
@@ -299,9 +299,9 @@ def test_physical_invalidations(physical, mutation, clock):
     elif mutation == "marker":
         (directory / "completion.json").unlink()
     elif mutation == "artifact":
-        (directory / "oos_per_key.json").write_text("{}")
+        (directory / "oos_stability.json").write_text("{}")
     elif mutation == "symlink":
-        p = directory / "oos_per_key.json"; dest = directory.parent / "outside.json"; dest.write_bytes(p.read_bytes()); p.unlink(); p.symlink_to(dest)
+        p = directory / "oos_stability.json"; dest = directory.parent / "outside.json"; dest.write_bytes(p.read_bytes()); p.unlink(); p.symlink_to(dest)
     elif mutation == "label":
         report = json.loads((directory / "fold_0/report.json").read_text()); report["trades"] = []; dump(directory / "fold_0/report.json", report); publish()
     elif mutation == "key_tuple":
@@ -315,7 +315,7 @@ def test_physical_invalidations(physical, mutation, clock):
 
 def test_changed_artifact_after_ingestion_rejected(physical):
     ev = verify_physical_artifact(physical[0], KEY)
-    (physical[0] / "oos_per_key.json").write_text("{}")
+    (physical[0] / "oos_stability.json").write_text("{}")
     with pytest.raises(ValueError):
         PolicyEntry.from_evidence(KEY, ev)
 
