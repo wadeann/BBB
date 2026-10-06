@@ -76,6 +76,9 @@ review:
 
 safety:
   allow_real_execution: false
+  kill_switch: false
+  daily_loss_limit: 0.0
+  max_orders_per_minute: 20
   require_audit_write_before_side_effect: true
   reject_on_audit_failure: true
   reject_on_schema_failure: true
