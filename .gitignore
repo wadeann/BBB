@@ -15,6 +15,7 @@ data/backtest/jobs/
 data/research/runs/
 data/research/*.zip
 data/research/handoff_*/
+.worktrees/
 
 
 # Exception for trading grade smoke artifact (committed for CI review)
