@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..market.dashboard import DashboardService
@@ -34,6 +35,15 @@ def create_app(runtime: AgentRuntime) -> FastAPI:
     )
 
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next: Any) -> Any:
+        web_api_key = os.environ.get("WEB_API_KEY")
+        if web_api_key and request.method == "POST":
+            header_key = request.headers.get("X-API-Key")
+            if header_key != web_api_key:
+                return JSONResponse(status_code=403, content={"detail": "invalid or missing API key"})
+        return await call_next(request)
 
     @app.get("/")
     async def index() -> FileResponse:

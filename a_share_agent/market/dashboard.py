@@ -344,8 +344,18 @@ class DashboardService:
             "code_version": self.config.runtime.get("code_version"),
             "mcp_health": health,
             "real_execution_allowed": bool(self.config.runtime.get("safety", {}).get("allow_real_execution", False)),
+            "source_verification": self._read_source_verification(),
         }
 
+    def _read_source_verification(self) -> str | None:
+        """Read UNVERIFIED_CACHE / PROVENANCE_VERIFIED from the latest trading-grade smoke diagnostic."""
+        diag_path = self.config.project_root / "data" / "diagnostics" / "trading_grade_smoke_latest.json"
+        try:
+            import json  # noqa: F811
+            raw = json.loads(diag_path.read_text(encoding="utf-8"))
+            return raw.get("source_verification")
+        except Exception:
+            return None
 
     def snapshot(self, *, force: bool = False) -> dict[str, Any]:
         market = self.market_context(force=force)
