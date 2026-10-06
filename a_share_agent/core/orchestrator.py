@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from ..audit.event_writer import AuditEventWriter
 from ..audit.manifest import DailyManifestBuilder
@@ -17,6 +20,12 @@ from ..strategy.router import StrategyRouter
 from ..strategy.policy_loader import PolicyLoader
 from ..utils import as_trade_date, extract_symbols
 from .schema_validator import SchemaRegistry
+from ..strategy.candidates import build_engine
+from ..strategy.decision_engine import DecisionEngine
+from ..strategy.decision_state import DecisionStatus
+from ..execution.paper_engine import PaperEngine
+from ..execution.paper_ledger import PaperLedger
+from ..risk.paper_risk import PaperRiskEngine
 
 
 class AgentOrchestrator:
@@ -30,6 +39,14 @@ class AgentOrchestrator:
         self.signal_engine = DeterministicSignalEngine()
         self.recovery_manager = recovery
         self.schemas = SchemaRegistry(config.project_root / "skill" / "schemas")
+
+        # P4 Candidate scanning engine
+        self.candidate_engine = build_engine()
+        self.last_candidates: dict[str, Any] = {"scanner_result": None, "decisions": []}
+        # P5 Decision engines — one per symbol
+        self._decision_engines: dict[str, DecisionEngine] = {}
+        # P6 Paper engine — lazy init
+        self._paper_engine: PaperEngine | None = None
 
     def run_phase(self, run: RunContext, **kwargs: Any) -> dict[str, Any]:
         handlers = {
@@ -62,6 +79,25 @@ class AgentOrchestrator:
         return handler(run, **kwargs)
 
     def _trace(self) -> str: return str(uuid.uuid4())
+
+    
+    def view_candidates(self) -> dict[str, Any]:
+        """Expose the latest candidate scan results."""
+        return dict(self.last_candidates)
+
+    def _get_paper_engine(self) -> PaperEngine:
+        if self._paper_engine is None:
+            ledger_path = self.config.project_root / "data" / "audit" / "paper_ledger.json"
+            ledger_path.parent.mkdir(parents=True, exist_ok=True)
+            ledger = PaperLedger(persist_path=ledger_path)
+            risk = PaperRiskEngine(initial_cash=1_000_000.0)
+            self._paper_engine = PaperEngine(
+                ledger=ledger,
+                risk=risk,
+                initial_cash=1_000_000.0,
+                allow_real_execution=False,
+            )
+        return self._paper_engine
 
     def precheck(self, run: RunContext, **_: Any) -> dict[str, Any]:
         trace = self._trace()
@@ -128,7 +164,106 @@ class AgentOrchestrator:
             event_type="ACCOUNT_SNAPSHOT", phase=run.phase, run_id=run.run_id, trace_id=trace,
             producer={"type":"risk","id":"intraday-account-monitor"}, payload=account,
         )
-        return {"market": market, "account": account}
+        # ── P4: Candidate scan ────────────────────────────────────────────
+        scan_result_data: dict[str, Any] | None = None
+        decisions_data: list[dict[str, Any]] = []
+        try:
+            enabled_patterns: list[tuple[str, str]] = []
+            if self.policy_loader is not None:
+                try:
+                    active_policies = self.policy_loader.load_active()
+                    for entry in active_policies.values():
+                        status = str(entry.status.value).lower() if hasattr(entry.status, 'value') else str(entry.status).lower()
+                        if status in ("approved", "pending") and entry.is_valid:
+                            enabled_patterns.append((entry.key[2], entry.key[3]))
+                except Exception:
+                    logger.exception("Failed to load active policies for candidate scan")
+            # Fetch bars for monitored symbols (positions + market symbols)
+            scan_symbols: list[str] = []
+            positions_raw = account.get("positions", [])
+            if isinstance(positions_raw, list):
+                for p in positions_raw:
+                    sym = p.get("symbol", "") if isinstance(p, dict) else ""
+                    if sym:
+                        scan_symbols.append(sym)
+            market_syms = market.get("symbols", market.get("universe", []))
+            if isinstance(market_syms, list):
+                scan_symbols = list(dict.fromkeys(scan_symbols + market_syms))
+            bars_by_symbol: dict[str, list[dict]] = {}
+            for sym in scan_symbols:
+                try:
+                    kline = self.mcp.invoke("mcp_intel_tdx_kline", symbol=sym, period="D", count=120)
+                    bars = kline if isinstance(kline, list) else (kline.get("bars", []) if isinstance(kline, dict) else [])
+                    if bars:
+                        bars_by_symbol[sym] = bars
+                except Exception:
+                    logger.warning("Failed fetching bars for %s", sym, exc_info=True)
+            if enabled_patterns and bars_by_symbol:
+                scanner_result = self.candidate_engine.scan(
+                    bars_by_symbol=bars_by_symbol,
+                    enabled_patterns=enabled_patterns,
+                    market_context=market,
+                    sector_map=market.get("sectors", {}),
+                )
+                scan_result_data = scanner_result.to_dict()
+                # ── P5: Decision engine evaluation on top-N ───────────────
+                for cand in scanner_result.top_n:
+                    eng = self._decision_engines.get(cand.symbol)
+                    if eng is None:
+                        eng = DecisionEngine(state=None)
+                        self._decision_engines[cand.symbol] = eng
+                    matched_policy = None
+                    if self.policy_loader is not None:
+                        try:
+                            active_policies = self.policy_loader.load_active()
+                            for entry in active_policies.values():
+                                if entry.key[2] == cand.pattern_id and entry.key[3] == cand.pattern_version:
+                                    matched_policy = entry.to_dict()
+                                    break
+                        except Exception:
+                            pass  # non-critical: policy check is advisory for decision engine
+                    signal_decision = eng.evaluate(
+                        candidate=cand.to_dict(),
+                        context=market,
+                        policy=matched_policy,
+                        phase=run.phase,
+                    )
+                    decision_dict = signal_decision.to_dict()
+                    decisions_data.append(decision_dict)
+                    # ── P6: Paper engine execution ────────────────────────
+                    if signal_decision.status in (DecisionStatus.BUY_TRIGGERED, DecisionStatus.SELL_TRIGGERED):
+                        try:
+                            paper = self._get_paper_engine()
+                            paper_result = paper.process_signal(decision_dict)
+                            event_type = "PAPER_BUY_ORDER" if signal_decision.status == DecisionStatus.BUY_TRIGGERED else "PAPER_SELL_ORDER"
+                            self.audit.write_event(
+                                event_type=event_type, phase=run.phase,
+                                run_id=run.run_id, trace_id=trace,
+                                producer={"type": "exec", "id": "paper-engine"},
+                                symbol=cand.symbol,
+                                payload=paper_result,
+                            )
+                        except Exception:
+                            logger.exception("Paper engine execution failed for %s", cand.symbol)
+                self.audit.write_event(
+                    event_type="CANDIDATE_SCAN", phase=run.phase, run_id=run.run_id, trace_id=trace,
+                    producer={"type": "strategy", "id": "candidate-engine"},
+                    payload={
+                        "top_n_count": len(scanner_result.top_n),
+                        "total_scanned": scanner_result.total_scanned,
+                        "skipped_liquidity": scanner_result.skipped_liquidity,
+                        "skipped_rs": scanner_result.skipped_rs,
+                        "skipped_sector": scanner_result.skipped_sector,
+                        "llm_vetoed": scanner_result.llm_vetoed,
+                        "as_of": scanner_result.as_of,
+                        "decision_count": len(decisions_data),
+                    },
+                )
+        except Exception:
+            logger.exception("Candidate scan/decision cycle failed during intraday monitor")
+        self.last_candidates["scanner_result"] = scan_result_data
+        self.last_candidates["decisions"] = decisions_data
+        return {"market": market, "account": account, "candidates": scan_result_data, "decisions": decisions_data}
 
     def night_event_check(self, run: RunContext, **_: Any) -> dict[str, Any]:
         trace = self._trace()
