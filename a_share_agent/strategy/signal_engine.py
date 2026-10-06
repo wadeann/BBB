@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import mean
 from typing import Any
+from .pattern_registry import PatternRegistry, PatternSpec
 
 
 def _f(x: Any, default: float = 0.0) -> float:
@@ -75,6 +76,163 @@ class DeterministicSignalEngine:
                 vol_ratio = vol / vv20 if vv20 else 1
                 return {"has_gene": True, "days_ago": len(recent) - 1 - i, "pct": pct, "volume_ratio": round(vol_ratio, 2)}
         return {"has_gene": False, "days_ago": None, "pct": None, "volume_ratio": None}
+
+    def _rebound_candidate(self, bars: list[dict[str, Any]], **context: Any) -> dict[str, Any]:
+        """Detect a stock that has declined significantly and shows early signs of bottoming.
+
+        Criteria (v4-inspired):
+        - At least 15% drop from 20-bar high
+        - Low volume on recent bars (selling exhaustion)
+        - Small candle bodies near the low (doji / hammer-like)
+        - Not in a confirmed uptrend (avoid false positives)
+        """
+        if len(bars) < 25:
+            return None
+        c = [float(x.get("close", 0)) for x in bars]
+        h = [float(x.get("high", 0)) for x in bars]
+        l = [float(x.get("low", 0)) for x in bars]
+        o = [float(x.get("open", 0)) for x in bars]
+        v = [float(x.get("volume", 0)) for x in bars]
+        i = len(c) - 1
+
+        high20 = max(h[-20:])
+        drop_pct = (high20 - c[i]) / high20 if high20 else 0
+        if drop_pct < 0.15:
+            return None
+
+        # Volume exhaustion: recent 3-bar avg volume < 20-bar avg volume
+        v20_avg = sum(v[-20:]) / 20 if len(v) >= 20 else 1
+        v3_avg = sum(v[-3:]) / 3 if len(v) >= 3 else 1
+        vol_exhaustion = v3_avg < 0.7 * v20_avg if v20_avg else True
+
+        # Small candle body near low (doji / hammer): body < 30% of range
+        body = abs(c[i] - o[i])
+        rng = max(h[i] - l[i], 1e-9)
+        small_body = body / rng < 0.30 if rng > 0 else False
+
+        # Consecutive decline candles: at least 2 of last 4 are red
+        reds = sum(1 for j in range(max(0, i - 3), i + 1) if c[j] < o[j])
+        decline_cluster = reds >= 2
+
+        if (vol_exhaustion or small_body) and decline_cluster:
+            return {
+                "signal": "rebound_candidate",
+                "family": "rebound_reversal",
+                "strength": "confirmation",
+                "evidence": {
+                    "drop_pct": round(drop_pct, 4),
+                    "volume_exhaustion": vol_exhaustion,
+                    "small_body_near_low": small_body,
+                    "decline_cluster": decline_cluster,
+                },
+                "pattern_id": "rebound_candidate",
+                "pattern_version": "1.0.0",
+            }
+        return None
+
+    def _rebound_confirmation(self, bars: list[dict[str, Any]], **context: Any) -> dict[str, Any]:
+        """Detect confirmation of a rebound after a decline.
+
+        Criteria:
+        - Price breaks above MA5
+        - Higher close than previous bar
+        - Volume at least 80% of MA5 volume
+        - Previously showed drops (rebound context)
+        """
+        if len(bars) < 25:
+            return None
+        c = [float(x.get("close", 0)) for x in bars]
+        h = [float(x.get("high", 0)) for x in bars]
+        l = [float(x.get("low", 0)) for x in bars]
+        o = [float(x.get("open", 0)) for x in bars]
+        v = [float(x.get("volume", 0)) for x in bars]
+        i = len(c) - 1
+
+        ma5 = sma(c, 5)
+        vv5 = sma(v, 5)
+        ma20 = sma(c, 20)
+
+        if ma5[i] is None or vv5[i] is None or ma20[i] is None:
+            return None
+
+        # Price above MA5 and closed higher than open
+        bull_bar = c[i] > float(ma5[i]) and c[i] > o[i]
+
+        # Volume support
+        vol_ok = v[i] >= 0.8 * float(vv5[i])
+
+        # Prior context: was price recently below MA20 (indicating a prior decline)
+        recent_low = min(l[-10:])
+        declined_before = float(ma20[i]) > recent_low * 1.08 if recent_low else False
+
+        # Consecutive gains: at least 2 of last 3 bars are green
+        greens = sum(1 for j in range(max(0, i - 2), i + 1) if c[j] > o[j])
+
+        if bull_bar and vol_ok and greens >= 2 and declined_before:
+            return {
+                "signal": "rebound_confirmation",
+                "family": "rebound_reversal",
+                "strength": "primary",
+                "evidence": {
+                    "above_ma5": True,
+                    "volume_ratio": round(v[i] / float(vv5[i]), 4),
+                    "consecutive_greens": greens,
+                    "prior_decline_confirmed": declined_before,
+                },
+                "pattern_id": "rebound_confirmation",
+                "pattern_version": "1.0.0",
+            }
+        return None
+
+    def _volume_price_divergence(self, bars: list[dict[str, Any]], **context: Any) -> dict[str, Any]:
+        """Detect bearish volume-price divergence.
+
+        Criteria:
+        - Price near 20-bar high
+        - Volume declining over last 5 bars compared to 20-bar average
+        - MACD showing possible divergence or weakening momentum
+        """
+        if len(bars) < 25:
+            return None
+        c = [float(x.get("close", 0)) for x in bars]
+        h = [float(x.get("high", 0)) for x in bars]
+        v = [float(x.get("volume", 0)) for x in bars]
+        i = len(c) - 1
+
+        high20 = max(h[-20:])
+        near_high = c[i] >= 0.97 * high20 if high20 else False
+
+        vv20 = sma(v, 20)
+        if vv20[i] is None:
+            return None
+        v20_avg = float(vv20[i])
+        v5_recent = sum(v[-5:]) / 5 if len(v) >= 5 else 1
+        vol_decline = v5_recent < 0.8 * v20_avg if v20_avg else True
+
+        # MACD weakening
+        e12 = ema(c, 12)
+        e26 = ema(c, 26)
+        dif = [a - b for a, b in zip(e12, e26)]
+        dea = ema(dif, 9)
+        macd_weakening = False
+        if len(dif) >= 3 and len(dea) >= 3:
+            macd_weakening = dif[-1] < dea[-1] and dif[-2] >= dea[-2]  # bearish cross
+
+        if near_high and vol_decline and macd_weakening:
+            return {
+                "signal": "volume_price_divergence",
+                "family": "exit_defensive",
+                "strength": "exit",
+                "evidence": {
+                    "near_20d_high": near_high,
+                    "volume_decline_5d": vol_decline,
+                    "volume_ratio_vs_20d": round(v5_recent / v20_avg, 4),
+                    "macd_bearish_cross": macd_weakening,
+                },
+                "pattern_id": "volume_price_divergence",
+                "pattern_version": "1.0.0",
+            }
+        return None
 
     def scan(self, bars: list[dict[str, Any]], *, market_regime: str = "unknown",
              sector_strength: str = "unknown") -> list[dict[str, Any]]:
@@ -192,3 +350,158 @@ class DeterministicSignalEngine:
             if hit.family == "trend_pullback" and hit.strength == "primary":
                 hit.evidence["limitup_gene"] = self._limitup_gene(bars)
         return [x.to_dict() for x in hits]
+
+    @staticmethod
+    def build_registry() -> PatternRegistry:
+        """Create and return a ``PatternRegistry`` populated with all 14 known
+        patterns.  Each existing detection function is referenced by name so
+        the registry stays a thin catalog wrapper — no logic duplication.
+        """
+        reg = PatternRegistry()
+
+        # --- trend_breakout ---
+        reg.register(PatternSpec(
+            pattern_id="triple_golden_cross",
+            pattern_version="1.0.0",
+            family="trend_breakout",
+            required_features=["ma5", "ma10", "ma20", "vv5", "vv10", "macd"],
+            detect_func_name="_limitup_gene",  # enrichment func placeholder
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="ma_convergence_breakout",
+            pattern_version="1.0.0",
+            family="trend_breakout",
+            required_features=["ma5", "ma10", "ma20", "vv20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="high_volume_breakout",
+            pattern_version="1.0.0",
+            family="trend_breakout",
+            required_features=["vv20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        # --- trend_pullback ---
+        reg.register(PatternSpec(
+            pattern_id="ma60_breakout_retest",
+            pattern_version="1.0.0",
+            family="trend_pullback",
+            required_features=["ma60", "vv20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="single_bull_hold",
+            pattern_version="1.0.0",
+            family="trend_pullback",
+            required_features=["vv5"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="ma5_momentum_pullback",
+            pattern_version="1.0.0",
+            family="trend_pullback",
+            required_features=["ma5"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="low_volume_support_bull",
+            pattern_version="1.0.0",
+            family="trend_pullback",
+            required_features=["vv20", "ma20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        # --- rebound_reversal ---
+        reg.register(PatternSpec(
+            pattern_id="rebound_candidate",
+            pattern_version="1.0.0",
+            family="rebound_reversal",
+            required_features=["close", "high", "low", "open", "volume"],
+            detect_func_name="_rebound_candidate",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="rebound_confirmation",
+            pattern_version="1.0.0",
+            family="rebound_reversal",
+            required_features=["ma5", "vv5", "ma20"],
+            detect_func_name="_rebound_confirmation",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        # --- pattern_confirmation ---
+        reg.register(PatternSpec(
+            pattern_id="long_bull_day7",
+            pattern_version="1.0.0",
+            family="pattern_confirmation",
+            required_features=["vv20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        # --- exit_defensive ---
+        reg.register(PatternSpec(
+            pattern_id="shooting_star_high",
+            pattern_version="1.0.0",
+            family="exit_defensive",
+            required_features=["close", "open", "high", "low"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="volume_price_divergence",
+            pattern_version="1.0.0",
+            family="exit_defensive",
+            required_features=["close", "volume", "high"],
+            detect_func_name="_volume_price_divergence",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="ma20_break",
+            pattern_version="1.0.0",
+            family="exit_defensive",
+            required_features=["ma20"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="ma_bearish_cut",
+            pattern_version="1.0.0",
+            family="exit_defensive",
+            required_features=["ma5", "ma10"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        return reg

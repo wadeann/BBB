@@ -15,3 +15,87 @@ defaults:
 audit:
   enable_snapshots: true
   snapshot_directory: "data/policy/audit"
+  # Maximum number of snapshots to keep per policy (0 = keep all)
+  max_snapshots_per_policy: 100
+  # Whether to include full policy content in snapshots
+  include_full_content: true
+
+# ── Pattern Registry Metadata ──────────────────────────────────────────
+# Canonical pattern catalog.  The authoritative source is
+# ``PatternRegistry`` in ``a_share_agent/strategy/pattern_registry.py``;
+# this section mirrors it for external tooling and policy key generation.
+patterns:
+  # --- trend_breakout ---
+  - pattern_id: triple_golden_cross
+    pattern_version: "1.0.0"
+    family: trend_breakout
+    required_features: [ma5, ma10, ma20, vv5, vv10, macd]
+
+  - pattern_id: ma_convergence_breakout
+    pattern_version: "1.0.0"
+    family: trend_breakout
+    required_features: [ma5, ma10, ma20, vv20]
+
+  - pattern_id: high_volume_breakout
+    pattern_version: "1.0.0"
+    family: trend_breakout
+    required_features: [vv20]
+
+  # --- trend_pullback ---
+  - pattern_id: ma60_breakout_retest
+    pattern_version: "1.0.0"
+    family: trend_pullback
+    required_features: [ma60, vv20]
+
+  - pattern_id: single_bull_hold
+    pattern_version: "1.0.0"
+    family: trend_pullback
+    required_features: [vv5]
+
+  - pattern_id: ma5_momentum_pullback
+    pattern_version: "1.0.0"
+    family: trend_pullback
+    required_features: [ma5]
+
+  - pattern_id: low_volume_support_bull
+    pattern_version: "1.0.0"
+    family: trend_pullback
+    required_features: [vv20, ma20]
+
+  # --- rebound_reversal ---
+  - pattern_id: rebound_candidate
+    pattern_version: "1.0.0"
+    family: rebound_reversal
+    required_features: [close, high, low, open, volume]
+
+  - pattern_id: rebound_confirmation
+    pattern_version: "1.0.0"
+    family: rebound_reversal
+    required_features: [ma5, vv5, ma20]
+
+  # --- pattern_confirmation ---
+  - pattern_id: long_bull_day7
+    pattern_version: "1.0.0"
+    family: pattern_confirmation
+    required_features: [vv20]
+
+  # --- exit_defensive ---
+  - pattern_id: shooting_star_high
+    pattern_version: "1.0.0"
+    family: exit_defensive
+    required_features: [close, open, high, low]
+
+  - pattern_id: volume_price_divergence
+    pattern_version: "1.0.0"
+    family: exit_defensive
+    required_features: [close, volume, high]
+
+  - pattern_id: ma20_break
+    pattern_version: "1.0.0"
+    family: exit_defensive
+    required_features: [ma20]
+
+  - pattern_id: ma_bearish_cut
+    pattern_version: "1.0.0"
+    family: exit_defensive
+    required_features: [ma5, ma10]
