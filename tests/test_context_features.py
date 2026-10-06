@@ -90,6 +90,11 @@ class TestBreadth:
         assert result["declining"] == 2
         assert result["total"] == 5
         assert result["ratio"] == pytest.approx(0.5)
+        assert result["eligible_count"] == 5
+        assert result["audit_trail"]["total_universe"] == 5
+        assert result["audit_trail"]["filtered_out_ipo"] == 0
+        assert result["audit_trail"]["filtered_out_delisted"] == 0
+        assert result["audit_trail"]["filtered_out_suspended"] == 0
 
     def test_breadth_ratio_none_on_zero_denom(self):
         stocks = [{"change_pct": 0.0}, {"change_pct": 0.0}]
@@ -115,6 +120,21 @@ class TestBreadth:
         assert result["advancing"] == 3
         assert result["declining"] == 0
         assert result["ratio"] == 1.0
+
+    def test_breadth_audit_trail_custom_filters(self):
+        stocks = [{"change_pct": 0.5}, {"change_pct": 1.2}]
+        result = compute_breadth(
+            stocks,
+            total_universe=100,
+            filtered_out_ipo=5,
+            filtered_out_delisted=3,
+            filtered_out_suspended=2,
+        )
+        assert result["eligible_count"] == 2
+        assert result["audit_trail"]["total_universe"] == 100
+        assert result["audit_trail"]["filtered_out_ipo"] == 5
+        assert result["audit_trail"]["filtered_out_delisted"] == 3
+        assert result["audit_trail"]["filtered_out_suspended"] == 2
 
 
 # ════════════════════════════════════════════════════════════════════════

@@ -22,6 +22,10 @@ def compute_breadth(
     *,
     advance_threshold: float = 0.0,
     decline_threshold: float = 0.0,
+    total_universe: int | None = None,
+    filtered_out_ipo: int = 0,
+    filtered_out_delisted: int = 0,
+    filtered_out_suspended: int = 0,
 ) -> dict[str, Any]:
     """Advancing / declining counts and ratio.
 
@@ -31,10 +35,14 @@ def compute_breadth(
     advance_threshold, decline_threshold : change_pct must exceed (or be
         strictly below) these thresholds to count.  Default 0.0 means
         any positive → advancing, any negative → declining.
+    total_universe : total universe before filtering (optional, for audit trail).
+    filtered_out_ipo : count of symbols filtered for IPO not yet listed.
+    filtered_out_delisted : count of symbols filtered for delisted.
+    filtered_out_suspended : count of symbols filtered for suspended.
 
     Returns
     -------
-    {"advancing": int, "declining": int, "total": int, "ratio": float | None}
+    dict with advancing, declining, total, ratio, audit_trail
     ratio = advancing / (advancing + declining) when denominator > 0, else None.
     """
     advancing = 0
@@ -56,6 +64,13 @@ def compute_breadth(
         "declining": declining,
         "total": total,
         "ratio": ratio,
+        "eligible_count": total,
+        "audit_trail": {
+            "total_universe": total_universe if total_universe is not None else total,
+            "filtered_out_ipo": filtered_out_ipo,
+            "filtered_out_delisted": filtered_out_delisted,
+            "filtered_out_suspended": filtered_out_suspended,
+        },
     }
 
 
