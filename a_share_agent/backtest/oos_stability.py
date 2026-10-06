@@ -341,13 +341,11 @@ def aggregate_stability(
     pf_reason = None
     if len(fold_pf_values) < t["min_finite_pf_folds"]:
         pf_reason = f"finite_pf_folds={len(fold_pf_values)} < {t['min_finite_pf_folds']}"
-    if cross_fold_dup:
-        raise ValueError(
-            f"duplicate round_trip_ids across folds: "
-            f"{sorted(cross_fold_dup)[:5]}"
-        )
 
-    dup_reason = None
+    if cross_fold_dup:
+        dup_reason = f"duplicate round_trip_ids across folds: {sorted(cross_fold_dup)[:5]}"
+    else:
+        dup_reason = None
     # Classification
     if integrity_reason or sample_size_reason or coverage_reason or missing_return_reason or pf_reason or dup_reason:
         classification = "INSUFFICIENT_DATA"
