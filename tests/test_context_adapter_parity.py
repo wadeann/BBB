@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+from statistics import mean
 import pytest
 
 from a_share_agent.backtest.regime import (
@@ -344,3 +345,98 @@ class TestAdapterEdgeCases:
         assert "reasons" in dq
         assert "coverage" in dq
         assert isinstance(dq["coverage"], float)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Test: build() delegates to compute_features_historical()
+# ════════════════════════════════════════════════════════════════════════
+
+class TestBuildVsHistoricalParity:
+    """build() must call compute_features_historical() for identical feature output."""
+
+    BAR_CLOSES = [5100.0 + i * 5.0 for i in range(40)]
+
+    class _ParityMCP:
+        def invoke(self, name, **kwargs):
+            closes = TestBuildVsHistoricalParity.BAR_CLOSES
+            if "kline" in name:
+                return [{"close": c} for c in closes]
+            if "market_health" in name:
+                return {"blowup_rate": 0.18, "limit_up": 50, "limit_down": 10, "total": 5000, "zdt": 0}
+            if "limitup_ladder" in name:
+                return {"total": 1, "stocks": []}
+            if "mainline_lanes" in name:
+                return {"total": 0, "lanes": []}
+            if "sector_strength" in name:
+                return {"sectors": copy.deepcopy(GOOD_SECTORS), "total_turnover": 310_000_000}
+            if "market_breadth" in name:
+                return {"stocks": copy.deepcopy(GOOD_STOCKS)}
+            raise RuntimeError(f"Unexpected MCP call: {name}")
+
+    def test_build_vs_historical_parity(self, tmp_path):
+        """Feed same sectors/stocks to both paths; assert identical feature output."""
+        from a_share_agent.config import load_config
+        from a_share_agent.market.context import MarketContextBuilder
+
+        # Config with 3 benchmarks so up >= 2 → index_trend = "up"
+        cfg = tmp_path / "config"
+        cfg.mkdir()
+        (cfg / "defaults.yaml").write_text("""
+version: 4.0.0
+mode: paper
+benchmarks:
+  large_cap: "000300.SH"
+  small_cap: "399005.SZ"
+  growth: "399006.SZ"
+features:
+  leaders_top_n: 5
+  turnover_top_n: 3
+  expansion_threshold: 60.0
+  concentration_value_key: turnover
+  expected_stock_count: 5000
+""")
+        (cfg / "runtime.yaml").write_text("version: 0.7.0\nmode: paper\n")
+        for f in ("schedule.yaml", "phase_permissions.yaml", "strategy_router.yaml",
+                  "logging.yaml", "improvement.yaml", "backtest.yaml", "research.yaml"):
+            (cfg / f).write_text("{}\n")
+
+        config = load_config(tmp_path)
+        builder = MarketContextBuilder(config, self._ParityMCP())
+        live = builder.build()
+
+        # Compute params from the same benchmark bars build() used
+        closes = self.BAR_CLOSES
+        ma20 = mean(closes[-20:])
+        prev = mean(closes[-25:-5])
+        slope = ma20 - prev
+        index_close = closes[-1]
+        close_vs_ma = index_close / ma20 - 1
+
+        # Call compute_features_historical with equivalent data
+        expected = MarketContextBuilder(config, None).compute_features_historical(
+            sectors_list=copy.deepcopy(GOOD_SECTORS),
+            stocks_list=copy.deepcopy(GOOD_STOCKS),
+            index_trend=live["market_trend"],
+            index_ma_slope=slope,
+            close_vs_ma=close_vs_ma,
+            ret5=0.0,
+            ret20=0.0,
+            drawdown20=0.0,
+            breadth_ratio=live["breadth"]["ratio"],
+            adv_decline_ratio=(live["breadth"]["advancing"] / live["breadth"]["declining"])
+            if live["breadth"].get("declining", 0) > 0 else None,
+            new_high_count=50,
+            new_low_count=10,
+            vol_estimate=0.18,
+            previous_regime=None,
+            previous_top_sectors=None,
+        )
+
+        # Feature keys must be identical between live and historical paths
+        feature_keys = [
+            "regime", "regime_confidence", "theme_lifecycle", "theme_lifecycle_confidence",
+            "breadth", "leaders", "turnover_share", "persistence", "expansion", "concentration",
+            "feature_version",
+        ]
+        for key in feature_keys:
+            assert live[key] == expected[key], f"Mismatch for feature {key!r}: {live[key]} != {expected[key]}"
