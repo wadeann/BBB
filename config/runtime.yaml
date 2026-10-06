@@ -90,6 +90,17 @@ web:
     poll_seconds: 0.75
     heartbeat_seconds: 15
 
+# ── P3: Feature computation ───────────────────────────────────────────
+features:
+  leaders_top_n: 5
+  turnover_top_n: 3
+  expansion_threshold: 60.0
+  concentration_value_key: turnover
+  expected_stock_count: 5000
+  persistence_max_lookback: 20
+  breadth_advance_threshold: 0.0
+  breadth_decline_threshold: 0.0
+
 worker:
   state_db: data/audit/worker_state.sqlite
   poll_seconds: 2.0
