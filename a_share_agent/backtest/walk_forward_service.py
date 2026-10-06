@@ -491,6 +491,13 @@ def run_stability(
                 ),
             }
             report = engine.run(symbols, evaluation_window=eval_window)
+            # Validate fold_id in the engine report matches the expected plan
+            report_fold_id = report.get("fold_id")
+            if report_fold_id is None or str(report_fold_id) != str(fold_id):
+                raise ValueError(
+                    f"fold_id mismatch: engine returned {report_fold_id}, "
+                    f"expected {fold_id}"
+                )
             report["fold_id"] = fold_id
             fold_reports.append(report)
 
@@ -690,7 +697,13 @@ def run_stability(
     # -------------------------------------------------------------------
     # Per-four-key OOS stability (Phase 2B enablement gating)
     # -------------------------------------------------------------------
-    per_key_result = per_key_oos_stability(fold_reports, thresholds=wf_config.stability_thresholds)
+    expected_fold_ids = [str(f["fold_id"]) for f in folds]
+    per_key_result = per_key_oos_stability(
+        fold_reports,
+        thresholds=wf_config.stability_thresholds,
+        expected_fold_ids=expected_fold_ids,
+        declared_keys=wf_cfg.get("declared_keys"),
+    )
     per_key_artifact = build_per_key_oos_artifact(
         per_key_result,
         run_id=resolved_run_id,
@@ -701,6 +714,16 @@ def run_stability(
         run_manifest=manifest,
     )
     per_key_hash = write_oos_per_key(output_dir / "oos_per_key.json", per_key_artifact)
+
+    # Compute SHA256 for every output file for manifest binding
+    # -------------------------------------------------------------------
+    output_files: dict[str, str] = {}
+    for p in sorted(output_dir.rglob("*")):
+        if p.is_file() and p.name != "manifest.json":
+            rel = str(p.relative_to(output_dir))
+            output_files[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
+    manifest["output_files"] = output_files
+    manifest["artifact_sha256"] = output_files.get(manifest["artifact_path"], "")
 
     # -------------------------------------------------------------------
     # Update manifest with per-key artifact hash
@@ -732,7 +755,14 @@ def run_stability(
                 if state.get("status") != "COMPLETED"],
             "generated_at": datetime.now(timezone.utc).isoformat(),
         })
-    # The directory is installed only after every file and marker is ready.
+    if overall_status == "COMPLETED":
+        # Write the completion marker that binds manifest to published generation
+        marker_manifest_path = output_dir / "manifest.json"
+        _write_finite_json(output_dir / "completion.json", {
+            "generation_id": generation_id,
+            "run_id": resolved_run_id,
+            "manifest_sha256": hashlib.sha256(marker_manifest_path.read_bytes()).hexdigest(),
+        })
     os.replace(output_dir, final_output)
     output_dir = final_output
     manifest_path = output_dir / "manifest.json"
