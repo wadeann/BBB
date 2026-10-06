@@ -198,4 +198,52 @@ def create_app(runtime: AgentRuntime) -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # ---- Phase 7 WebUI Deep Integration ----
+
+    @app.get("/api/v1/dashboard")
+    async def v1_dashboard(force: bool = Query(False)) -> dict[str, Any]:
+        return await asyncio.to_thread(service.get_full_dashboard, force=force)
+
+    @app.get("/api/v1/candidates")
+    async def v1_candidates(
+        page: int = Query(1, ge=1),
+        pattern: str | None = Query(None),
+        regime: str | None = Query(None),
+        sector: str | None = Query(None),
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            service.get_candidates, page=page, pattern_family=pattern,
+            regime=regime, sector=sector,
+        )
+
+    @app.get("/api/v1/positions")
+    async def v1_positions() -> dict[str, Any]:
+        return await asyncio.to_thread(service.get_positions)
+
+    @app.get("/api/v1/backtest")
+    async def v1_backtest(
+        pattern: str | None = Query(None),
+        regime: str | None = Query(None),
+        lifecycle: str | None = Query(None),
+        from_date: str | None = Query(None),
+        to_date: str | None = Query(None),
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            service.get_backtest_results, pattern=pattern, regime=regime,
+            lifecycle=lifecycle, from_date=from_date, to_date=to_date,
+        )
+
+    @app.get("/api/v1/trades/{round_trip_id}")
+    async def v1_trade_detail(round_trip_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(service.get_trade_detail, round_trip_id)
+
+    @app.get("/api/v1/strategy-lab")
+    async def v1_strategy_lab(
+        pattern: str | None = Query(None),
+        regime: str | None = Query(None),
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            service.get_strategy_lab, pattern=pattern, regime=regime,
+        )
+
     return app

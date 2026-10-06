@@ -335,6 +335,7 @@ class DashboardService:
             "real_execution_allowed": bool(self.config.runtime.get("safety", {}).get("allow_real_execution", False)),
         }
 
+
     def snapshot(self, *, force: bool = False) -> dict[str, Any]:
         market = self.market_context(force=force)
         return {
@@ -348,4 +349,310 @@ class DashboardService:
             "candidates": self.candidates(),
             "audit_timeline": self.audit_timeline(),
             "daily_review": self.latest_review(),
+        }
+
+    def get_full_dashboard(self, *, force: bool = False) -> dict[str, Any]:
+        """Aggregate dashboard view with regime, risk, themes, patterns, positions, P&L, alerts."""
+        snap = self.snapshot(force=force)
+        market = snap.get("market", {})
+        account = snap.get("account", {})
+        candidates_data = snap.get("candidates", {})
+        batch = candidates_data.get("batch", {})
+        batch_items = batch.get("batch", batch if isinstance(batch, list) else [])
+        signals = candidates_data.get("signal_decisions", [])
+        all_candidates = batch_items + signals
+        positions = (account.get("positions") or
+                     self.mcp.invoke("mcp_exec_get_positions"))
+        pnl = account.get("pnl") or self.mcp.invoke("mcp_exec_get_pnl", period="today")
+        risk_pnl = account.get("risk_pnl") or self.mcp.invoke("mcp_risk_daily_pnl")
+        themes = [s.get("name") for s in (snap.get("hot_sectors") or []) if s.get("name")]
+        enabled = list((self.config.strategy_router or {}).get("enabled_families", []))
+        alerts = (snap.get("audit_timeline") or [])[-10:]
+        return {
+            "as_of": snap.get("as_of"),
+            "market_regime": market.get("market_regime"),
+            "regime_confidence": market.get("data_quality", {}).get("state", "unknown"),
+            "risk_appetite": market.get("market_gate", "reduce"),
+            "themes": themes[:8],
+            "enabled_patterns": enabled,
+            "candidates_count": len(all_candidates),
+            "positions_summary": {
+                "total_positions": len(positions or []),
+                "total_market_value": account.get("balance", {}).get("market_value", 0),
+                "available_cash": account.get("balance", {}).get("cash", 0),
+            },
+            "daily_pnl": {
+                "pnl": pnl.get("pnl", 0) if isinstance(pnl, dict) else 0,
+                "pnl_pct": pnl.get("pnl_pct", 0) if isinstance(pnl, dict) else 0,
+                "risk_pnl": risk_pnl.get("pnl", 0) if isinstance(risk_pnl, dict) else 0,
+            },
+            "alerts": [
+                {
+                    "event_time": a.get("event_time"),
+                    "event_type": a.get("event_type"),
+                    "symbol": a.get("symbol"),
+                    "status": a.get("status"),
+                }
+                for a in alerts
+            ],
+        }
+
+    def get_candidates(
+        self,
+        page: int = 1,
+        pattern_family: str | None = None,
+        regime: str | None = None,
+        sector: str | None = None,
+    ) -> dict[str, Any]:
+        """Paginated candidate query with optional filters."""
+        raw = self.candidates()
+        batch = raw.get("batch", {})
+        batch_items = batch.get("batch", batch if isinstance(batch, list) else [])
+        signals = raw.get("signal_decisions", [])
+        all_items = []
+        seen = set()
+        for s in signals:
+            sym = s.get("symbol") or ""
+            if sym and sym not in seen:
+                seen.add(sym)
+                all_items.append(s)
+        for b in batch_items:
+            sym = b.get("symbol") or ""
+            if sym and sym not in seen:
+                seen.add(sym)
+                all_items.append(b)
+        # Apply filters
+        filtered = []
+        for item in all_items:
+            sym = item.get("symbol") or ""
+            p = item.get("payload") or {}
+            fam = item.get("strategy_id") or p.get("strategy_id") or ""
+            r_item = p.get("regime", p.get("market_regime", ""))
+            sec = p.get("sector", "")
+            if pattern_family and pattern_family not in fam:
+                continue
+            if regime and regime != r_item:
+                continue
+            if sector and sector.lower() not in sec.lower():
+                continue
+            filtered.append(item)
+        per_page = 40
+        total = len(filtered)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = filtered[start:end]
+        return {
+            "trade_date": raw.get("trade_date"),
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "items": page_items,
+            "filters_applied": {
+                "pattern_family": pattern_family,
+                "regime": regime,
+                "sector": sector,
+            },
+        }
+
+    def get_positions(self) -> dict[str, Any]:
+        """Current positions with enriched P&L and summary."""
+        raw_positions = self.mcp.invoke("mcp_exec_get_positions")
+        balance = self.mcp.invoke("mcp_exec_get_balance")
+        pnl_data = self.mcp.invoke("mcp_exec_get_pnl", period="today")
+        positions = []
+        total_pnl = 0.0
+        for p in (raw_positions or []):
+            pnl_val = float(p.get("pnl", p.get("unrealized_pnl", 0)) or 0)
+            total_pnl += pnl_val
+            cost = float(p.get("cost_price", p.get("cost", 0)) or 0)
+            qty = float(p.get("quantity", p.get("volume", 0)) or 0)
+            price = float(p.get("price", p.get("last_price", p.get("market_price", 0))) or 0)
+            positions.append({
+                "symbol": p.get("symbol", ""),
+                "name": p.get("name", ""),
+                "quantity": qty,
+                "cost_price": round(cost, 3) if cost else 0,
+                "current_price": round(price, 3) if price else 0,
+                "market_value": round(qty * price, 2),
+                "cost_value": round(qty * cost, 2),
+                "pnl": round(pnl_val, 2),
+                "pnl_pct": round((pnl_val / (qty * cost) * 100) if qty * cost else 0, 2),
+                "pnl_percent": round((pnl_val / (qty * cost) * 100) if qty * cost else 0, 2),
+            })
+        return {
+            "as_of": now_shanghai().isoformat(),
+            "total_positions": len(positions),
+            "total_market_value": float(balance.get("market_value", balance.get("total_asset", 0))),
+            "available_cash": float(balance.get("cash", 0)),
+            "gross_pnl": round(total_pnl, 2),
+            "gross_pnl_pct": round(pnl_data.get("pnl_pct", 0) * 100, 2) if isinstance(pnl_data, dict) else 0,
+            "positions": positions,
+        }
+
+    def get_backtest_results(
+        self,
+        pattern: str | None = None,
+        regime: str | None = None,
+        lifecycle: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Backtest results filtered by pattern, regime, lifecycle, date range."""
+        from ..backtest.service import BacktestService
+        bt = BacktestService(self.config, self.mcp)
+        runs = bt.list_runs(limit=200)
+        filtered = []
+        for r in runs:
+            settings = r.get("settings") or {}
+            metrics = r.get("metrics") or {}
+            if pattern and pattern not in str(settings):
+                continue
+            if regime:
+                by_regime = metrics.get("by_market_regime") or {}
+                if regime not in by_regime:
+                    continue
+            if lifecycle and lifecycle not in str(settings):
+                continue
+            if from_date:
+                sd = str(settings.get("start_date", ""))
+                if sd and sd < from_date:
+                    continue
+            if to_date:
+                ed = str(settings.get("end_date", ""))
+                if ed and ed > to_date:
+                    continue
+            filtered.append(r)
+        return {
+            "total": len(filtered),
+            "results": filtered,
+        }
+
+    def get_trade_detail(self, round_trip_id: str) -> dict[str, Any]:
+        """Full trade timeline: snapshot → signal → entry → exit → P&L."""
+        try:
+            from ..backtest.service import BacktestService
+            bt = BacktestService(self.config, self.mcp)
+            report = bt.load_run(round_trip_id)
+        except Exception:
+            report = None
+        # Also search audit for trace/round-trip events
+        events = []
+        rows = self.runtime.audit.index.query(limit=500)
+        for r in rows:
+            payload = json.loads(r.get("payload_json", "{}")) if r.get("payload_json") else {}
+            pid = payload.get("intent_id", payload.get("round_trip_id", ""))
+            if pid and round_trip_id in pid:
+                events.append({
+                    "event_time": r.get("event_time"),
+                    "event_type": r.get("event_type"),
+                    "phase": r.get("phase"),
+                    "symbol": r.get("symbol"),
+                    "strategy_id": r.get("strategy_id"),
+                    "status": r.get("status"),
+                    "payload": payload,
+                })
+            if r.get("trace_id") and r["trace_id"] == round_trip_id:
+                events.append({
+                    "event_time": r.get("event_time"),
+                    "event_type": r.get("event_type"),
+                    "phase": r.get("phase"),
+                    "symbol": r.get("symbol"),
+                    "strategy_id": r.get("strategy_id"),
+                    "status": r.get("status"),
+                    "payload": payload,
+                })
+        events.sort(key=lambda e: e.get("event_time", ""))
+        trade = None
+        if report:
+            trades = report.get("trades", [])
+            for t in trades:
+                if t.get("round_trip_id") == round_trip_id or t.get("symbol", "").startswith(round_trip_id[:4] if len(round_trip_id) >= 4 else ""):
+                    trade = t
+                    break
+            if not trade and trades:
+                trade = trades[0]
+        metrics = report.get("metrics", {}) if report else {}
+        return {
+            "round_trip_id": round_trip_id,
+            "trade": trade,
+            "events": events,
+            "event_count": len(events),
+            "metrics": {
+                "total_return": metrics.get("total_return"),
+                "sharpe": metrics.get("sharpe"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "closed_trades": metrics.get("closed_trades"),
+            } if metrics else None,
+        }
+
+    def get_strategy_lab(
+        self,
+        pattern: str | None = None,
+        regime: str | None = None,
+    ) -> dict[str, Any]:
+        """Strategy comparison data grouped by strategy family and regime."""
+        from ..backtest.service import BacktestService
+        bt = BacktestService(self.config, self.mcp)
+        runs = bt.list_runs(limit=200)
+        # Group strategies
+        strategies = {}
+        for r in runs:
+            settings = r.get("settings") or {}
+            metrics = r.get("metrics") or {}
+            fam = settings.get("strategy_family", settings.get("family", "default"))
+            if pattern and pattern not in fam:
+                continue
+            reg = metrics.get("market_regime", metrics.get("by_market_regime", {}))
+            if isinstance(reg, dict):
+                reg_key = " | ".join(reg.keys()) if not regime else regime
+            else:
+                reg_key = str(reg) or "mixed"
+            if regime and regime != reg_key:
+                continue
+            key = f"{fam}::{reg_key}"
+            if key not in strategies:
+                strategies[key] = {
+                    "family": fam,
+                    "regime": reg_key,
+                    "metrics": [],
+                    "run_count": 0,
+                }
+            strategies[key]["metrics"].append({
+                "run_id": r.get("run_id"),
+                "total_return": metrics.get("total_return"),
+                "sharpe": metrics.get("sharpe"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "cagr": metrics.get("cagr"),
+                "profit_factor": metrics.get("profit_factor"),
+                "calmar": metrics.get("calmar"),
+                "closed_trades": metrics.get("closed_trades"),
+            })
+            strategies[key]["run_count"] += 1
+        # Build comparison table (not sorted by total return per G05)
+        comparison = []
+        for key, s in strategies.items():
+            m = s["metrics"]
+            avg_return = sum((x.get("total_return") or 0) for x in m) / len(m) if m else 0
+            avg_sharpe = sum((x.get("sharpe") or 0) for x in m) / len(m) if m else 0
+            avg_dd = sum((x.get("max_drawdown") or 0) for x in m) / len(m) if m else 0
+            avg_win = sum((x.get("win_rate") or 0) for x in m) / len(m) if m else 0
+            comparison.append({
+                "family": s["family"],
+                "regime": s["regime"],
+                "run_count": s["run_count"],
+                "avg_total_return": round(avg_return, 4),
+                "avg_sharpe": round(avg_sharpe, 4),
+                "avg_max_drawdown": round(avg_dd, 4),
+                "avg_win_rate": round(avg_win, 4),
+                "runs": s["metrics"],
+            })
+        return {
+            "comparison": comparison,
+            "total_families": len(strategies),
+            "total_runs": sum(s["run_count"] for s in strategies.values()),
         }

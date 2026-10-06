@@ -19,6 +19,10 @@
           <button class="tab active" data-view="dashboard">总览</button>
           <button class="tab" data-view="replay">Replay</button>
           <button class="tab" data-view="backtest">回测</button>
+          <button class="tab" data-view="candidates">候选股</button>
+          <button class="tab" data-view="positions">持仓</button>
+          <button class="tab" data-view="strategyLab">策略实验室</button>
+          <button class="tab" data-view="tradeDetail">交易明细</button>
         </nav>
         <span id="modeBadge" class="badge">PAPER</span>
         <span id="phaseBadge" class="badge badge-soft">--</span>
@@ -31,6 +35,7 @@
 
     <section id="alertBox" class="alert hidden"></section>
 
+    <!-- Dashboard View (Existing) -->
     <section id="dashboardView" class="view active">
       <section class="kpis" id="kpiGrid"></section>
       <main class="grid-main">
@@ -71,6 +76,7 @@
       </main>
     </section>
 
+    <!-- Replay View (Existing) -->
     <section id="replayView" class="view">
       <section class="panel replay-toolbar">
         <div><div class="eyebrow">EXACT REPLAY</div><h2>交易日回放</h2><p class="muted">只读取历史 Audit Log / Snapshot，不调用执行接口。</p></div>
@@ -84,6 +90,7 @@
       </main>
     </section>
 
+    <!-- Backtest View (Existing) -->
     <section id="backtestView" class="view">
       <section class="panel replay-toolbar">
         <div><div class="eyebrow">BACKTEST LAB</div><h2>历史回测实验室</h2><p class="muted">收盘信号 → 下一交易日开盘成交；T+1、涨跌停、费用、滑点、Risk/Router 均纳入。回测不调用交易执行接口。</p></div>
@@ -104,6 +111,85 @@
       <main class="grid-main">
         <section class="panel span-5"><div class="panel-head"><div><div class="eyebrow">RUN HISTORY</div><h2>历史回测</h2></div></div><div id="btRuns" class="trace-list"></div></section>
         <section class="panel span-7"><div class="panel-head"><div><div class="eyebrow">RESULT</div><h2>报告摘要</h2></div></div><div id="btDetail" class="review-box">请选择或运行一个回测。</div></section>
+      </main>
+    </section>
+
+    <!-- Candidates View (NEW) -->
+    <section id="candidatesView" class="view">
+      <section class="panel replay-toolbar">
+        <div><div class="eyebrow">CANDIDATE BROWSER</div><h2>候选股浏览</h2><p class="muted">候选股列表，支持按策略、市场状态、板块筛选</p></div>
+        <div class="replay-controls">
+          <input id="candPattern" class="filter-input" placeholder="策略家族" />
+          <input id="candRegime" class="filter-input" placeholder="市场状态" />
+          <input id="candSector" class="filter-input" placeholder="板块" />
+          <button id="candSearchBtn">搜索</button>
+        </div>
+      </section>
+      <section class="kpis" id="candKPIs"></section>
+      <section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">FILTERED LIST</div><h2>候选股</h2></div><div><span id="candPageInfo" class="badge badge-soft"></span><span id="candTotal" class="badge badge-soft"></span></div></div>
+        <div id="candTable" class="table-wrap"></div>
+        <div class="pagination" id="candPagination"></div>
+      </section>
+    </section>
+
+    <!-- Positions View (NEW) -->
+    <section id="positionsView" class="view">
+      <section class="panel replay-toolbar">
+        <div><div class="eyebrow">PORTFOLIO</div><h2>持仓分析</h2><p class="muted">当前持仓详情、盈亏分析、市值分布</p></div>
+        <button id="refreshPositionsBtn" class="btn-ghost">刷新持仓</button>
+      </section>
+      <section class="kpis" id="posKPIs"></section>
+      <main class="grid-main">
+        <section class="panel span-7">
+          <div class="panel-head"><div><div class="eyebrow">HOLDINGS</div><h2>持仓明细</h2></div></div>
+          <div id="posTable" class="table-wrap"></div>
+        </section>
+        <section class="panel span-5">
+          <div class="panel-head"><div><div class="eyebrow">SUMMARY</div><h2>持仓摘要</h2></div></div>
+          <div id="posSummary" class="review-box"></div>
+        </section>
+      </main>
+    </section>
+
+    <!-- Strategy Lab View (NEW) -->
+    <section id="strategyLabView" class="view">
+      <section class="panel replay-toolbar">
+        <div><div class="eyebrow">STRATEGY LAB</div><h2>策略实验室</h2><p class="muted">策略家族对比分析，不做总收益排序</p></div>
+        <div class="replay-controls">
+          <input id="slPattern" class="filter-input" placeholder="策略家族" />
+          <input id="slRegime" class="filter-input" placeholder="市场状态" />
+          <button id="slSearchBtn">分析</button>
+        </div>
+      </section>
+      <section class="kpis" id="slKPIs"></section>
+      <main class="grid-main">
+        <section class="panel span-12">
+          <div class="panel-head"><div><div class="eyebrow">COMPARISON</div><h2>策略对比</h2></div></div>
+          <div id="slComparison" class="table-wrap"></div>
+        </section>
+      </main>
+    </section>
+
+    <!-- Trade Detail View (NEW) -->
+    <section id="tradeDetailView" class="view">
+      <section class="panel replay-toolbar">
+        <div><div class="eyebrow">TRADE DETAIL</div><h2>交易明细</h2><p class="muted">完整交易时间线：快照 → 信号 → 入场 → 出场 → 盈亏</p></div>
+        <div class="replay-controls">
+          <input id="tdTradeId" class="filter-input" placeholder="Round Trip ID" value="" />
+          <button id="tdSearchBtn">查看</button>
+        </div>
+      </section>
+      <section class="kpis" id="tdKPIs"></section>
+      <main class="grid-main">
+        <section class="panel span-8">
+          <div class="panel-head"><div><div class="eyebrow">TRADE TIMELINE</div><h2>交易时间线</h2></div></div>
+          <div id="tdTimeline" class="timeline"></div>
+        </section>
+        <section class="panel span-4">
+          <div class="panel-head"><div><div class="eyebrow">P&L</div><h2>盈亏详情</h2></div></div>
+          <div id="tdPnL" class="review-box"></div>
+        </section>
       </main>
     </section>
 
