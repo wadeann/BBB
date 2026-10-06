@@ -1191,6 +1191,14 @@ class HistoricalDataProvider:
     def bars(self, symbol: str, *, count: int = 900) -> list[dict[str, Any]]:
         if symbol in self._bars_mem:
             return self._bars_mem[symbol]
+        if self.historical_range and self.mcp is not None:
+            rows = self._historical_signal_rows(symbol, "qfq", count)
+            self._bars_mem[symbol] = rows
+            if rows and self.use_cache:
+                self._save_json(self._cache_file("bars", symbol), rows)
+            if not rows:
+                self.warnings.append(f"NO_BARS:{symbol}")
+            return rows
         path = self._cache_file("bars", symbol)
         if self.use_cache and path.exists():
             rows = normalize_bars(self._load_json(path))
@@ -1199,18 +1207,21 @@ class HistoricalDataProvider:
                 return rows
         csv_path = self.root / "data" / "backtest" / "prices" / f"{self._safe(symbol)}.csv"
         if csv_path.exists():
-            with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
-                rows = normalize_bars(list(csv.DictReader(fh)))
+            rows = normalize_bars(self._read_csv(csv_path))
         elif self.mcp is not None:
+            effective_count = min(max(count, 1000), 1000)
             try:
-                raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=count)
+                raw = self.mcp.invoke("mcp_intel_tdx_kline", symbol=symbol, period="D", count=effective_count)
                 rows = normalize_bars(raw)
-                if not rows:
-                    raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
+                if not self.strict_paid_source and len(rows) < count:
+                    raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=effective_count)
                     rows = normalize_bars(raw)
             except Exception:
-                raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=count)
-                rows = normalize_bars(raw)
+                if not self.strict_paid_source:
+                    raw = self.mcp.invoke("mcp_intel_fetch_kline", symbol=symbol, period="D", count=effective_count)
+                    rows = normalize_bars(raw)
+                else:
+                    rows = []
         else:
             path = self._cache_file("bars", symbol)
             if self.use_cache and path.exists():

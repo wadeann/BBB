@@ -162,6 +162,17 @@ def _normalize_limitup(ladder: Any) -> dict[str, Any]:
             "blowups": int(_num(s, "break_count") or 0),
         })
     all_stocks = [s for s in all_stocks if s["symbol"]]
+    if not all_stocks:
+        raw_stocks = ladder.get("stocks", [])
+        if isinstance(raw_stocks, list):
+            all_stocks = [{
+                "symbol": _text(s, "symbol", "code"),
+                "name": _text(s, "name", "stock"),
+                "streak": int(_num(s, "streak") or 0),
+                "sector": _text(s, "sector", "theme"),
+                "limit_time": _text(s, "limit_time", "first_limit_time", "seal_time"),
+                "blowups": int(_num(s, "break_count", "blowups") or 0),
+            } for s in raw_stocks if isinstance(s, dict) and s.get("symbol")]
     return {"max_streak": int(ladder.get("max_height", ladder.get("max_streak", 0)) or 0),
             "levels": levels, "stocks": all_stocks}
 
