@@ -15,6 +15,7 @@ INTEL_TOOLS = [
 EXEC_TOOLS = [
     "mcp_exec_get_balance", "mcp_exec_get_positions", "mcp_exec_get_orders", "mcp_exec_get_today_trades",
     "mcp_exec_place_order", "mcp_exec_cancel_order", "mcp_exec_get_pnl", "mcp_exec_register_approved_intent",
+    "mcp_exec_reconcile",
 ]
 RISK_TOOLS = ["mcp_risk_check_intent", "mcp_risk_batch_check", "mcp_risk_daily_pnl", "mcp_risk_get_blacklist"]
 JIN10_TOOLS = [
@@ -23,7 +24,7 @@ JIN10_TOOLS = [
     "mcp_jin10_list_resources", "mcp_jin10_read_resource",
 ]
 ALL_TOOLS = INTEL_TOOLS + EXEC_TOOLS + RISK_TOOLS + JIN10_TOOLS
-assert len(ALL_TOOLS) == 53
+assert len(ALL_TOOLS) == 54
 
 CRITICAL_PAPER_TOOLS = {
     "mcp_intel_is_trading_day", "mcp_intel_trading_sessions", "mcp_intel_tdx_health",
@@ -31,6 +32,7 @@ CRITICAL_PAPER_TOOLS = {
     "mcp_exec_get_orders", "mcp_exec_get_today_trades", "mcp_exec_get_pnl",
     "mcp_exec_register_approved_intent", "mcp_exec_place_order", "mcp_risk_check_intent",
     "mcp_risk_daily_pnl", "mcp_risk_get_blacklist",
+    "mcp_exec_reconcile",
 }
 
 # Optional research-grade historical tools. They are NOT part of the user's original
