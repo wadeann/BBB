@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from a_share_agent.mcp.fake import FakeMCPInvoker
 from a_share_agent.runtime import AgentRuntime
+from a_share_agent.utils import now_shanghai
 from a_share_agent.web.app import create_app
 
 

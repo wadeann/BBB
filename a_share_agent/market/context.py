@@ -3,6 +3,7 @@ from __future__ import annotations
 from statistics import mean
 from typing import Any
 
+from ..utils import now_shanghai
 from .features import (
     FEATURE_VERSION,
     compute_breadth,

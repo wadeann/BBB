@@ -3,6 +3,15 @@ from __future__ import annotations
 from statistics import mean
 # ── v0.8+: deterministic 7-state regime from multi-factor inputs ──────
 
+
+def _sma(vals: list[float], n: int) -> float | None:
+    """Simple moving average of last n values."""
+    if not vals or n <= 0:
+        return None
+    recent = vals[-n:]
+    return mean(recent) if len(recent) >= n else None
+
+
 REGIME_7STATE = frozenset({
     "BULL_TREND", "BULL_VOLATILE", "ROTATION", "SIDEWAYS",
     "BEAR", "PANIC", "RECOVERY",
@@ -360,13 +369,63 @@ def market_context_from_history(bars: list[dict[str, Any]], as_of: str) -> dict[
         "regime_metrics": expanded["input_metrics"],
         "evidence": {"close": closes[-1], "ma20": ma20, "ma20_slope_proxy": slope,
                      "ret5":ret5,"ret20":ret20,"drawdown20":dd20},
+
         "data_quality": {"state":"ok","historical_price_derived":True},
     }
 
 
+def _expand_regime(legacy_regime: str, trend: str, sentiment: str,
+                   ret5: float, ret20: float, dd20: float, ma20: float,
+                   close: float) -> dict[str, Any]:
+    """Map legacy risk_on/risk_off/neutral to expanded regime taxonomy."""
+    metrics = {
+        "close": close, "ma20": ma20, "ret5": ret5, "ret20": ret20,
+        "drawdown20": dd20, "legacy_regime": legacy_regime,
+        "legacy_trend": trend, "legacy_sentiment": sentiment,
+    }
+    reasons: list[str] = []
+
+    if legacy_regime == "risk_on":
+        if ret5 > 0.08 and dd20 > -0.03:
+            regime = "BULL_TREND"; confidence = 0.90; reasons.append("strong_momentum_low_drawdown")
+        elif ret20 > 0.08 and dd20 > -0.08:
+            regime = "BULL_TREND"; confidence = 0.80; reasons.append("uptrend_moderate_drawdown")
+        elif dd20 < -0.04:
+            regime = "BULL_VOLATILE"; confidence = 0.75; reasons.append("uptrend_with_volatility")
+        else:
+            regime = "BULL_TREND"; confidence = 0.70; reasons.append("risk_on_default")
+    elif legacy_regime == "risk_off":
+        if ret5 < -0.06 and dd20 < -0.10:
+            regime = "PANIC"; confidence = 0.90; reasons.append("sharp_decline_deep_drawdown")
+        elif ret20 < -0.05 and dd20 < -0.08:
+            regime = "BEAR"; confidence = 0.85; reasons.append("sustained_decline")
+        elif sentiment == "panic" or (ret5 < -0.04 and dd20 < -0.06):
+            regime = "PANIC"; confidence = 0.80; reasons.append("sentiment_panic")
+        else:
+            regime = "BEAR"; confidence = 0.70; reasons.append("risk_off_default")
+    else:
+        if sentiment == "rebound":
+            regime = "RECOVERY"; confidence = 0.75; reasons.append("rebound_sentiment")
+        elif abs(ret5) < 0.015 and abs(ret20) < 0.03:
+            regime = "SIDEWAYS"; confidence = 0.85; reasons.append("low_momentum")
+        elif abs(ret20) < 0.05 and (ret5 * ret20) < 0:
+            regime = "ROTATION"; confidence = 0.70; reasons.append("direction_changes")
+        else:
+            regime = "SIDEWAYS"; confidence = 0.60; reasons.append("neutral_default")
+
+    return {
+        "regime": regime,
+        "confidence": round(confidence, 2),
+        "input_metrics": metrics,
+        "reason_codes": reasons,
+        "trend": trend,
+        "sentiment": sentiment,
+    }
+
+
+
 def _expand_lifecycle(legacy_lifecycle: str, ret5: float, ret20: float,
                       score: float, strength: str) -> dict[str, Any]:
-    """Map legacy lifecycle to expanded 6-stage model."""
     metrics = {"ret5": ret5, "ret20": ret20, "score": score,
                "legacy_lifecycle": legacy_lifecycle, "strength": strength}
     reasons: list[str] = []

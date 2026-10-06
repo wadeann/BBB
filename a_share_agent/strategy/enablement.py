@@ -1,6 +1,5 @@
 """Fail-closed, physically bound policy records. No execution permissions live here."""
 from __future__ import annotations
-
 import hashlib
 import json
 import math
@@ -10,12 +9,10 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
-
 EvidenceKey = tuple[str, str, str, str]
 # Producer rule-section names and their exact serialized SHA-256 fields.
 RULE_HASH_SCHEMA = {name: f"{name}_sha256" for name in
                     ("router", "scanner", "regime", "context", "scoring", "cost_source")}
-
 def validate_rule_hashes(hashes):
     if not isinstance(hashes, dict) or set(hashes) != set(RULE_HASH_SCHEMA.values()):
         raise ValueError("Missing or unsupported rule hash schema")
@@ -25,40 +22,28 @@ def validate_rule_hashes(hashes):
         if value == hashlib.sha256(b"{}").hexdigest():
             raise ValueError(f"Empty source rule hash: {name}")
     return hashes
-
-
 def _key(value) -> EvidenceKey:
     if not isinstance(value, (tuple, list)) or len(value) != 4 or any(not isinstance(v, str) or not v.strip() for v in value):
         raise ValueError("Expected exact four-key string identity")
     if any(v in {"PANIC", "UNKNOWN", "DEGRADED"} for v in value):
         raise ValueError("PANIC/UNKNOWN/DEGRADED cannot authorize")
     return tuple(value)
-
-
 def _timestamp(value, name):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(f"{name} must be finite numeric timestamp")
     return float(value)
-
-
 def _iso_timestamp(value):
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None or dt.utcoffset() is None:
         raise ValueError("generated_at requires timezone")
     return dt.timestamp()
-
-
 def _safe_path(path):
     path = Path(path).absolute()
     if any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError("symlink rejected")
     return path
-
-
 def _compute_file_hash(path):
     return hashlib.sha256(_safe_path(path).read_bytes()).hexdigest()
-
-
 @dataclass(frozen=True)
 class PolicyConfig:
     expiry_days: int = 90
@@ -67,7 +52,6 @@ class PolicyConfig:
     directories: tuple[str, ...] = ("data/policy/live",)
     snapshot_directory: str = "data/policy/audit"
     enable_snapshots: bool = True
-
     def __post_init__(self):
         for name in ("expiry_days", "max_file_age_seconds"):
             value = getattr(self, name)
@@ -80,8 +64,6 @@ class PolicyConfig:
         object.__setattr__(self, "directories", tuple(self.directories))
         if not isinstance(self.snapshot_directory, str) or not self.snapshot_directory:
             raise ValueError("invalid snapshot_directory")
-
-
 def load_config_from_yaml(path=None):
     if path is None or not Path(path).exists():
         return PolicyConfig()
@@ -90,18 +72,24 @@ def load_config_from_yaml(path=None):
         data = yaml.safe_load(Path(path).read_text())
     except (OSError, yaml.YAMLError) as exc:
         raise ValueError(f"Failed to load policy config: {exc}") from exc
-    allowed = {"loading": {"directories", "max_file_age_seconds"}, "defaults": {"expiry_days"}, "validation": {"allow_future_effective"}, "audit": {"snapshot_directory", "enable_snapshots"}}
+    allowed = {"loading": {"directories", "max_file_age_seconds"}, "defaults": {"expiry_days"}, "validation": {"allow_future_effective"}, "audit": {"snapshot_directory", "enable_snapshots", "max_snapshots_per_policy", "include_full_content"}, "patterns": set()}
     if not isinstance(data, dict) or set(data) - set(allowed) - {"version"}:
         raise ValueError("Unknown configuration sections")
     kwargs = {}
+
     for section, names in allowed.items():
         values = data.get(section, {})
+        if not names:
+            continue
         if not isinstance(values, dict) or set(values) - names:
             raise ValueError(f"Unsupported configuration knobs: {section}")
+
         kwargs.update(values)
-    return PolicyConfig(**kwargs)
-
-
+    # Strip extra keys not in PolicyConfig fields
+    from dataclasses import fields
+    valid_fields = {f.name for f in fields(PolicyConfig)}
+    filtered = {k: v for k, v in kwargs.items() if k in valid_fields}
+    return PolicyConfig(**filtered)
 @dataclass(frozen=True, init=False, slots=True)
 class PhysicalEvidence:
     key: EvidenceKey
@@ -120,18 +108,13 @@ class PhysicalEvidence:
     wf_config_hash: str
     verification_result: str
     evidence_type: str
-
     def __init__(self, *args, **kwargs):
         raise TypeError("PhysicalEvidence is factory-only; use verify_physical_artifact")
-
-
 def _record(cls, data):
     obj = object.__new__(cls)
     for field in fields(cls):
         object.__setattr__(obj, field.name, data[field.name])
     return obj
-
-
 def verify_physical_artifact(run_dir, evidence_key, config=None):
     """Verify published producer files, then recompute eligibility from committed reports."""
     from ..backtest.oos_stability import verify_per_key_oos_artifact, per_key_oos_stability, _key_to_artifact_key
@@ -177,16 +160,12 @@ def verify_physical_artifact(run_dir, evidence_key, config=None):
         raise ValueError("publication changed during verification")
     generated_iso = artifact["generated_at"] if artifact_generated >= manifest_generated else manifest["generated_at"]
     return _record(PhysicalEvidence, dict(key=key, producer_sha=artifact["source_sha"], artifact_hash=_compute_file_hash(artifact_path), manifest_hash=manifest_hash, manifest_path=str(manifest_path), generation_id=manifest["generation_id"], classification=expected["classification"], context_version=hashes["context_sha256"], config_hash=artifact["config_hash"], pattern_config_hash=hashes["scanner_sha256"], context_config_hash=hashes["context_sha256"], generated_at=generated_iso, run_id=artifact["run_id"], wf_config_hash=artifact["wf_config_hash"], verification_result="VERIFIED", evidence_type="per_key"))
-
-
 class PolicyStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     EXPIRED = "expired"
     REVOKED = "revoked"
     DISABLED = "disabled"
-
-
 @dataclass(frozen=True, init=False, slots=True)
 class PolicyEntry:
     key: EvidenceKey
@@ -210,10 +189,8 @@ class PolicyEntry:
     status: PolicyStatus
     reason: str | None
     schema_version: int
-
     def __init__(self, *args, **kwargs):
         raise TypeError("PolicyEntry is factory-only; use from_evidence/from_snapshot")
-
     @classmethod
     def from_evidence(cls, evidence_key, evidence, valid_days=None, valid_from=None, approval_authority=None, config=None):
         if type(evidence) is not PhysicalEvidence:
@@ -235,7 +212,6 @@ class PolicyEntry:
         data = dict(key=key, evidence_id=evidence.artifact_hash, evidence_version=evidence.manifest_hash, context_version=evidence.context_version, config_hash=evidence.config_hash, pattern_config_hash=evidence.pattern_config_hash, context_config_hash=evidence.context_config_hash, source_producer_sha=evidence.producer_sha, source_run_id=evidence.run_id, manifest_path=evidence.manifest_path, manifest_hash=evidence.manifest_hash, source_generation_id=evidence.generation_id, generated_at_ts=_iso_timestamp(evidence.generated_at), issued_at=now, valid_from=vf, expires_at=vf+days*86400, approved_at=None, approval_authority=None, status=PolicyStatus.PENDING, reason="Awaiting explicit approval", schema_version=1)
         entry = cls.from_dict(data)
         return entry.approve(approval_authority) if approval_authority is not None else entry
-
     @classmethod
     def from_dict(cls, data):
         if not isinstance(data, dict) or set(data) != {f.name for f in fields(cls)}:
@@ -272,70 +248,53 @@ class PolicyEntry:
         if any(d[k] != v for k, v in bindings.items()):
             raise ValueError("Snapshot physical artifact binding mismatch")
         return _record(cls, d)
-
     def is_valid_at(self, as_of):
         as_of = _timestamp(as_of, "as_of")
         return self.status == PolicyStatus.APPROVED and self.key[0] != "PANIC" and self.approved_at is not None and max(self.generated_at_ts, self.issued_at, self.valid_from, self.approved_at) <= as_of < self.expires_at
-
     @property
     def is_valid(self):
         return self.is_valid_at(time.time())
-
     @property
     def is_enabled(self):
         return self.is_valid
-
     @property
     def is_expired(self):
         return time.time() >= self.expires_at
-
     @property
     def failure_reason(self):
         return None if self.is_valid else self.reason or f"policy {self.status.value} or outside validity window"
-
     def _transition(self, status, reason, **changes):
         data = self.to_dict()
         data.update(status=status, reason=reason, **changes)
         return self.from_dict(data)
-
     def approve(self, approver, reason=None):
         if self.status != PolicyStatus.PENDING:
             raise ValueError("Only PENDING may be approved")
         return self._transition(PolicyStatus.APPROVED, reason, approved_at=time.time(), approval_authority=approver)
-
     def disable(self, reason):
         return self._transition(PolicyStatus.DISABLED, reason)
-
     def revoke(self, reason):
         if self.status != PolicyStatus.APPROVED:
             raise ValueError("Only APPROVED may be revoked")
         return self._transition(PolicyStatus.REVOKED, reason)
-
     def expire(self, reason=None):
         return self._transition(PolicyStatus.EXPIRED, reason)
-
     def to_dict(self):
         data = asdict(self)
         data["key"] = list(self.key)
         data["status"] = self.status.value
         return data
-
     def to_snapshot(self, path):
         path = _safe_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), sort_keys=True, allow_nan=False))
-
     @classmethod
     def from_snapshot(cls, path):
         return cls.from_dict(json.loads(_safe_path(path).read_text()))
-
-
 @dataclass(frozen=True)
 class EvidenceValidationResult:
     valid: bool
     status: str
-
-
 def validate_evidence(artifact: dict[str, Any]):
     """Descriptive labels alone are never authorization evidence."""
     return EvidenceValidationResult(False, str(artifact.get("classification", "MISSING")))

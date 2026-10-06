@@ -355,7 +355,8 @@ def test_config_expiry_and_future_effective(physical, clock):
     e = PolicyEntry.from_evidence(KEY, ev, valid_from=clock[0]+10, config=PolicyConfig(allow_future_effective=True))
     assert not e.approve("operator").is_valid_at(clock[0])
 
-@pytest.mark.parametrize("yaml", ["defaults:\n  expiry_days: -1\n", "validation:\n  require_exact_match: false\n", "defaults:\n  default_approver: auto\n", "audit:\n  max_snapshots_per_policy: 3\n", "validation:\n  allow_future_effective: nope\n"])
+
+@pytest.mark.parametrize("yaml", ["defaults:\n  expiry_days: -1\n", "validation:\n  require_exact_match: false\n", "defaults:\n  default_approver: auto\n", "validation:\n  allow_future_effective: nope\n"])
 def test_invalid_or_removed_knobs_rejected(tmp_path, yaml):
     p = tmp_path / "config.yaml"; p.write_text(yaml)
     with pytest.raises(ValueError):

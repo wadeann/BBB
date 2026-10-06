@@ -334,6 +334,8 @@ def run_stability(
     fold_registry: dict[str, dict[str, Any]] = {}
     fold_reports: list[dict[str, Any]] = []
     fold_errors: list[dict[str, Any]] = []
+    fold_summaries: list[dict[str, Any]] = []
+    fold_registry: dict[str, Any] = {}
     consumed_universes: dict[str, dict[str, Any]] = {}
     preflight_commitments: dict[str, Any] = {}
     benchmark_symbols = list(dict.fromkeys([
