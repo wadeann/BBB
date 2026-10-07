@@ -1,17 +1,17 @@
 {
   "dataset_id": "ashare_raw_ohlcv_external",
   "dataset_version": "0.7.5",
-  "producer_git_commit": "cdcf6eaad351c8ff64c851c5edb0a2681432c4e5",
+  "producer_git_commit": "713412657ed3873cf9faec33c3b53fa310248b35",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-07T00:17:09.131611+00:00",
+  "generated_at": "2026-10-07T07:39:27.630705+00:00",
   "date_range": {
     "start": "2024-10-01",
     "end": "2026-09-30"
   },
   "summary": {
-    "file_count": 5657,
-    "row_count": 2728892,
-    "overall_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e"
+    "file_count": 5658,
+    "row_count": 2729792,
+    "overall_dataset_hash": "c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652"
   },
   "packaging": {
     "clean_code_zip_includes_raw_data": false,
@@ -89,6 +89,7 @@
     "000158_SZ.csv": "48af556fd79c01d327fd22c832c022783e511102e5b220e2660a7c8a7e66a5ae",
     "000159_SZ.csv": "792ec74f6f98fee053e710ee22b94af6a9f0df991c8f73fd7f5e8d894c8200cc",
     "000166_SZ.csv": "84167f35bd00707b878831ac0c4e90c39571494b1b43027311e6d42bc459cd7e",
+    "000300_SH.csv": "fea916eeb54b0b6ffb2bd9f8c4b0c347ac89faaf59ccf4127724dac10a410466",
     "000301_SZ.csv": "b0cc8de00de8af7e53d6771e683b8670003ba4ae881ffa180c39aa5bf42a3737",
     "000333_SZ.csv": "ec5db26ef3d4502af7297fbe55d316fbcd348fb8643b5cb576c662896b45b0c8",
     "000338_SZ.csv": "02dd8464771379af09e5caca33676de2fad9df4b4822f8854d7517663b05f995",

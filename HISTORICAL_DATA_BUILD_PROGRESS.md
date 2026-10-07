@@ -1,6 +1,6 @@
 # Historical Data Build Progress
 
-Generated: 2026-10-07T07:10:26.708562+00:00
+Generated: 2026-10-07T07:40:02.432449+00:00
 
 ## Universe
 - Snapshots audited: 5
@@ -13,11 +13,11 @@ Generated: 2026-10-07T07:10:26.708562+00:00
 
 ## Raw OHLCV
 - Mounted: True
-- Hash match: False
+- Hash match: True
 - Actual files: 5658
 - Actual rows: 2729792
 - Dataset hash: `c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652`
-- Daily coverage fresh: False
+- Daily coverage fresh: True
 
 ## Corporate Actions
 - Official register valid: True
@@ -41,8 +41,7 @@ Generated: 2026-10-07T07:10:26.708562+00:00
 - Dataset complete: True
 
 ## Remaining blockers
-- Raw dataset fingerprint mismatch or dataset unmounted
-- Daily Raw coverage artifact is stale/unbound
+- None from provenance audit (Preflight still determines formal readiness).
 
 ## Safety rule
 This audit never makes `formal_full_market_ready` true by itself. Formal readiness must be produced by the normal Preflight after all real datasets and provenance gates pass.

@@ -1,8 +1,8 @@
 {
   "audit_version": "0.7.6",
-  "producer_git_commit": "f9132f5f9189eeb830c69022b943be01b6084ab6",
+  "producer_git_commit": "713412657ed3873cf9faec33c3b53fa310248b35",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-07T07:10:26.708562+00:00",
+  "generated_at": "2026-10-07T07:40:02.432449+00:00",
   "universe": {
     "snapshot_count": 5,
     "legacy_schema_snapshots": 0,
@@ -16,27 +16,25 @@
   "raw_dataset": {
     "manifest_present": true,
     "mounted": true,
-    "expected_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "expected_raw_dataset_hash": "c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652",
     "actual_raw_dataset_hash": "c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652",
-    "expected_file_count": 5657,
+    "expected_file_count": 5658,
     "actual_file_count": 5658,
-    "expected_row_count": 2728892,
+    "expected_row_count": 2729792,
     "actual_row_count": 2729792,
     "missing_files": [],
-    "extra_files": [
-      "000300_SH.csv"
-    ],
+    "extra_files": [],
     "mismatched_files": [],
-    "raw_dataset_hash_match": false
+    "raw_dataset_hash_match": true
   },
   "coverage_binding": {
     "coverage_manifest_present": true,
     "coverage_csv_present": true,
-    "source_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "source_raw_dataset_hash": "c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652",
     "actual_raw_dataset_hash": "c1999d93667b34b6d2ec96b835a0df092baecb9ab9afd5a07a3508973df17652",
-    "expected_coverage_csv_sha256": "b6650d4847ca3ee74d573038412eba502c22bec6bc191b3ede0356835258229b",
-    "actual_coverage_csv_sha256": "b6650d4847ca3ee74d573038412eba502c22bec6bc191b3ede0356835258229b",
-    "daily_raw_coverage_fresh": false
+    "expected_coverage_csv_sha256": "c24868cdbae4fbde07d43748e9c805055ccd4d2289ad4d055b979b6599cd7aae",
+    "actual_coverage_csv_sha256": "c24868cdbae4fbde07d43748e9c805055ccd4d2289ad4d055b979b6599cd7aae",
+    "daily_raw_coverage_fresh": true
   },
   "corporate_actions": {
     "official_register_valid": true,

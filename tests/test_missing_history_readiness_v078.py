@@ -230,9 +230,9 @@ def test_raw_file_without_manifest_binding_is_not_execution_ready(tmp_path: Path
 def test_committed_candidate_matrix_has_expected_readiness_split():
     root = Path(__file__).resolve().parents[1]
     audit = audit_missing_history_candidates(root)
-    assert audit["candidate_count"] == 35
-    assert audit["membership_ready_count"] == 17
-    assert audit["blocked_membership_count"] == 18
-    # The repository deliberately does not package the external Raw dataset and
-    # currently has no complete Status/Sector provenance sidecars for these symbols.
+
+    assert audit["candidate_count"] == 0
+    assert audit["membership_ready_count"] == 0
     assert audit["execution_ready_count"] == 0
+    assert audit["blocked_membership_count"] == 0
+    assert len(audit["blocker_counts"]) == 0

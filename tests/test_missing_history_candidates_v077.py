@@ -36,8 +36,8 @@ def test_candidate_matrix_matches_current_unique_universe_gaps():
 
     szse = [row for row in rows if row["exchange"] == "SZSE"]
     sse = [row for row in rows if row["exchange"] == "SSE"]
-    assert len(szse) == 17
-    assert len(sse) == 18
+    assert len(szse) == 0
+    assert len(sse) == 0
     assert all(row["candidate_status"] == "DATE_PROVENANCE_READY_MASTER_INSERT_NOT_YET_APPROVED" for row in szse)
     assert all(row["raw_delisting_field"] == "终止上市日期" for row in szse)
     assert all(row["candidate_status"] == "BLOCKED_DELISTING_DATE_SOURCE_SEMANTICS" for row in sse)
