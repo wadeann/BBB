@@ -1,0 +1,23 @@
+{
+  "coverage_version": "0.7.5",
+  "producer_git_commit": "e6345506a529a15685b1d96db2a92a1df8d87e60",
+  "producer_code_version": "0.7.7",
+  "generated_at": "2026-10-07T00:15:00.693459+00:00",
+  "source_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+  "source_raw_file_count": 5657,
+  "source_raw_row_count": 2728892,
+  "coverage_csv": "daily_raw_coverage.csv",
+  "coverage_csv_sha256": "2145bab87873a57ebd10fcaee911fd2a55c03496af8cc9d5fca99b280c9fce85",
+  "denominator_semantics": {
+    "strict_gate": "active listed A-share common-equity securities",
+    "diagnostic": "market-tradable securities after PIT status/data-availability semantics"
+  },
+  "summary": {
+    "trading_days": 485,
+    "min_daily_active_raw_coverage": 0.9914514368861405,
+    "median_daily_active_raw_coverage": 0.9981491763834907,
+    "p05_daily_active_raw_coverage": 0.9970071081182192,
+    "days_below_98pct": 0,
+    "meets_formal_threshold": true
+  }
+}
