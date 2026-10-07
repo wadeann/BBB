@@ -720,19 +720,19 @@ class TestF05_Persistence:
 
 
 class TestF06_ExtendedScenario:
-    """20+ trading days with diverse failure scenarios."""
+    """20+ trading days with 7 distinct failure scenarios."""
 
     def test_extended_trading_with_failures(self, persist_path: Path, paper_risk: PaperRiskEngine):
-        """Simulate 22 trading days with 7 failure scenarios.
+        """Simulate 22 trading days — each of the 7 failure scenarios has its own assert.
 
         Scenarios:
-        1. Duplicate order attempt
-        2. Reorder of cancelled order
-        3. Network disconnect (attempt fill while offline)
-        4. Persistent restart (twice)
-        5. Partial fill, cancel remaining
-        6. Full fill, reject order attempt (already filled)
-        7. Cancel non-existent order
+        1. Duplicate events: submit same order twice, assert second rejected
+        2. Out-of-order: submit fill before order, assert rejected
+        3. Network disconnect: simulate missing responses, assert recovery
+        4. Process restart: save state, create new engine, assert state restored
+        5. Partial fill: submit order, fill 30%, assert remaining open
+        6. Rejection: submit order, reject, assert cash released
+        7. Cancellation: submit order, cancel, assert cash/position restored
         """
         ledger = PaperLedger(persist_path=persist_path)
         engine = PaperEngine(
@@ -754,105 +754,213 @@ class TestF06_ExtendedScenario:
             if i > 0:
                 engine.new_trade_date(td, prev_trade_date=trade_dates[i - 1])
 
-            # Scenario 1: Duplicate order attempt (day 1)
+            # ── Scenario 1: Duplicate events (day 1) ──────────────────────────
             if i == 0:
                 dec1 = _buy_decision(symbol="600000.SH", decision_id="DEC-F06-01")
                 r1 = engine.process_signal(dec1, trade_date=td)
-                if r1["status"] == "CREATED":
-                    active_orders["ord1"] = r1["order"]
-                    # Try submitting the same decision again → should be rejected
-                    r1_dup = engine.process_signal(dec1, trade_date=td)
-                    assert r1_dup["status"] == "REJECTED", "Scenario 1: Duplicate should reject"
-                    scenario_checks.append("SC1_DUPLICATE_REJECTED")
+                assert r1["status"] == "CREATED", "Scenario 1: First order should be created"
+                active_orders["ord1"] = r1["order"]
 
-            # Scenario 2: Reorder after cancel (day 2)
-            if i == 1 and "ord1" in active_orders:
+                # Submit the exact same decision again → must be rejected
+                r1_dup = engine.process_signal(dec1, trade_date=td)
+                assert r1_dup["status"] == "REJECTED", (
+                    f"Scenario 1: Duplicate order should be REJECTED, got {r1_dup['status']}"
+                )
+                scenario_checks.append("SC1_DUPLICATE_REJECTED")
+
+            # ── Scenario 2: Out-of-order — fill before order (day 2) ──────────
+            if i == 1:
+                # Attempt to fill an order that does not exist yet
+                fill_before = engine.fill_order("ORD-NEVER-CREATED", market_price=10.0, trade_date=td)
+                assert fill_before.get("error") == "ORDER_NOT_FOUND", (
+                    f"Scenario 2: Fill before order should return ORDER_NOT_FOUND, got {fill_before}"
+                )
+                scenario_checks.append("SC2_OUT_OF_ORDER_REJECTED")
+                # Cancel ord1 (from day 0) so later scenarios can use the same symbol
                 engine.cancel_order(active_orders["ord1"]["order_id"])
-                # New decision for same symbol
-                dec2 = _buy_decision(symbol="600000.SH", decision_id="DEC-F06-02")
-                r2 = engine.process_signal(dec2, trade_date=td)
-                assert r2["status"] == "CREATED", "Scenario 2: Reorder should create new order"
-                active_orders["ord2"] = r2["order"]
-                scenario_checks.append("SC2_REORDER_CREATED")
 
-            # Scenario 3: Network disconnect — fill attempt while offline (days 2-3)
-            if i == 2 and "ord2" in active_orders:
-                # "Offline" — try to fill and track
-                fill = engine.fill_order(active_orders["ord2"]["order_id"], market_price=10.0, fill_pct=0.0, trade_date=td)
-                # fill_pct=0 should give empty fill but not crash
-                assert fill["filled"] is True or fill.get("error") is not None
-                scenario_checks.append("SC3_OFFLINE_FILL_ATTEMPT")
+            # ── Scenario 3: Network disconnect (day 3) ─────────────────────────
+            if i == 2:
+                # Submit order, then fill without providing market_price (no price_provider).
+                # Engine must fall back to limit_price and recover gracefully.
+                dec3 = _buy_decision(
+                    symbol="600000.SH",
+                    decision_id="DEC-F06-03",
+                    entry_plan={"limit_price": 10.50, "max_quantity": 500, "stop_price": 10.0,
+                                "timestamp": f"{td}T09:30:00+08:00"},
+                )
+                r3 = engine.process_signal(dec3, trade_date=td)
+                assert r3["status"] == "CREATED", f"Scenario 3: Order should be created, got {r3['status']}"
+                oid3 = r3["order"]["order_id"]
 
-            # Fill ord2 properly
-            if i == 3 and "ord2" in active_orders:
-                engine.fill_order(active_orders["ord2"]["order_id"], market_price=10.05, trade_date=td)
+                # Fill without market_price — simulates missing market-data responses
+                fill3 = engine.fill_order(oid3, trade_date=td)
+                assert fill3["filled"] is True, f"Scenario 3: Fill should succeed with fallback price, got {fill3}"
+                # Without market_price or price_provider, raw_price falls back to limit_price.
+                # Slippage is then applied (BUY: limit_price * (1 + slippage_bps/10000)).
+                expected_fill = round(10.50 * (1 + 0.0005), 4)  # 10.50525 with default 5bps slippage
+                assert abs(fill3["fill_price"] - expected_fill) < 0.001, (
+                    f"Scenario 3: Fill price {fill3['fill_price']} should be close to {expected_fill}"
+                )
+                assert fill3["raw_price"] == 10.50, (
+                    f"Scenario 3: Raw price should be limit_price 10.50, got {fill3['raw_price']}"
+                )
+                scenario_checks.append("SC3_DISCONNECT_RECOVERY")
 
-            # Scenario 4: Persistent restart (day 5 — reload from persistence)
+            # ── Scenario 4: Process restart (day 5) ────────────────────────────
             if i == 4:
-                # Verify position exists after reload
-                ledger.load()
-                pos = ledger.get_position("600000.SH")
-                assert pos is not None, "Scenario 4: Position should survive restart"
-                assert pos.status == "OPEN" or pos.status == "CLOSED"
-                scenario_checks.append("SC4_RESTART_POSITION_SURVIVED")
+                # Save state (auto-saved by ledger), create new engine, reload
+                new_ledger = PaperLedger(persist_path=persist_path)
+                new_ledger.load()
+                new_engine = PaperEngine(
+                    ledger=new_ledger,
+                    risk=PaperRiskEngine(initial_cash=_INITIAL_CASH),
+                    initial_cash=_INITIAL_CASH,
+                    allow_real_execution=False,
+                )
 
-            # Second restart check (day 10)
-            if i == 9:
-                ledger.load()
-                scenario_checks.append("SC4B_RESTART_TWICE")
+                # Assert state is restored: position from days 0, 2, 3
+                pos = new_ledger.get_position("600000.SH")
+                assert pos is not None, "Scenario 4: Position should survive process restart"
+                assert pos.status == "OPEN", f"Scenario 4: Position should be OPEN, got {pos.status}"
+                assert pos.quantity > 0, f"Scenario 4: Position quantity should be > 0, got {pos.quantity}"
+                assert pos.symbol == "600000.SH"
+                scenario_checks.append("SC4_RESTART_STATE_RESTORED")
 
-            # Scenario 5: Partial fill, cancel remaining (day 8)
+                # Continue using the original engine for remaining days
+                ledger.load()
+                engine = PaperEngine(
+                    ledger=ledger,
+                    risk=paper_risk,
+                    initial_cash=_INITIAL_CASH,
+                    allow_real_execution=False,
+                )
+
+            # ── Scenario 5: Partial fill (day 8) ───────────────────────────────
             if i == 7:
-                dec5 = _buy_decision(symbol="300001.SZ", max_quantity=2000,
-                                     entry_plan={"limit_price": 20.0, "max_quantity": 2000, "stop_price": 19.0,
-                                                 "timestamp": f"{td}T09:30:00+08:00"})
+                dec5 = _buy_decision(
+                    symbol="300001.SZ", max_quantity=2000,
+                    entry_plan={"limit_price": 20.0, "max_quantity": 2000, "stop_price": 19.0,
+                                "timestamp": f"{td}T09:30:00+08:00"},
+                    decision_id="DEC-F06-05",
+                )
                 r5 = engine.process_signal(dec5, trade_date=td)
-                if r5["status"] == "CREATED":
-                    oid = r5["order"]["order_id"]
-                    engine.fill_order(oid, market_price=20.0, fill_pct=0.5, trade_date=td)
-                    engine.cancel_order(oid)
-                    scenario_checks.append("SC5_PARTIAL_CANCEL")
+                assert r5["status"] == "CREATED", f"Scenario 5: Order should be CREATED, got {r5['status']}"
+                oid5 = r5["order"]["order_id"]
+                total5 = r5["order"]["quantity"]
 
-            # Scenario 6: Attempt to reject already-filled order (day 12)
-            if i == 11:
-                dec6 = _buy_decision(symbol="600000.SH", decision_id="DEC-F06-06",
-                                     entry_plan={"limit_price": 10.0, "max_quantity": 500, "stop_price": 9.5,
-                                                 "timestamp": f"{td}T09:30:00+08:00"})
+                # Fill 30%
+                fill5 = engine.fill_order(oid5, market_price=20.0, fill_pct=0.3, trade_date=td)
+                assert fill5["filled"] is True, f"Scenario 5: Fill should succeed, got {fill5}"
+                assert fill5["is_partial"] is True, "Scenario 5: Fill should report is_partial=True"
+
+                order5 = engine.ledger.get_order(oid5)
+                assert order5 is not None
+                assert order5.status == "PARTIAL_FILLED", (
+                    f"Scenario 5: Order should be PARTIAL_FILLED, got {order5.status}"
+                )
+                assert order5.filled_quantity < total5, (
+                    f"Scenario 5: Filled quantity {order5.filled_quantity} should be < total {total5}"
+                )
+                assert order5.filled_quantity > 0, "Scenario 5: Should have some filled quantity"
+
+                pos5 = engine.ledger.get_position("300001.SZ")
+                assert pos5 is not None, "Scenario 5: Position should exist after partial fill"
+                assert pos5.status == "OPEN", f"Scenario 5: Position should be OPEN, got {pos5.status}"
+                assert pos5.quantity == fill5["fill_quantity"], (
+                    f"Scenario 5: Position quantity {pos5.quantity} should match fill quantity {fill5['fill_quantity']}"
+                )
+                scenario_checks.append("SC5_PARTIAL_FILL_REMAINING")
+
+            # ── Scenario 6: Rejection (day 10) ─────────────────────────────────
+            if i == 9:
+                cash_before_sc6 = engine.cash
+                dec6 = _buy_decision(
+                    symbol="600000.SH", decision_id="DEC-F06-06",
+                    entry_plan={"limit_price": 10.50, "max_quantity": 400, "stop_price": 10.0,
+                                "timestamp": f"{td}T09:30:00+08:00"},
+                )
                 r6 = engine.process_signal(dec6, trade_date=td)
-                if r6["status"] == "CREATED":
-                    oid = r6["order"]["order_id"]
-                    engine.fill_order(oid, market_price=10.0, trade_date=td)
-                    # Try to reject after filled
-                    reject_result = engine.reject_order(oid, reason="TOO_LATE")
-                    assert reject_result.get("status") != "REJECTED" or reject_result.get("error") is not None
-                    scenario_checks.append("SC6_FILLED_CANNOT_REJECT")
+                assert r6["status"] == "CREATED", f"Scenario 6: Order should be CREATED, got {r6['status']}"
+                oid6 = r6["order"]["order_id"]
 
-            # Sell position from day 1-2 to free cash (day 14)
-            if i == 13:
-                sell_dec = _sell_decision(symbol="600000.SH", decision_id="DEC-F06-EXIT",
-                                          exit_plan={"exit_price": 11.0, "exit_reason": "exit_target",
-                                                     "timestamp": f"{td}T09:30:00+08:00"})
+                # Reject the order
+                reject6 = engine.reject_order(oid6, reason="ADMIN_REJECT")
+                assert reject6["status"] == "REJECTED", (
+                    f"Scenario 6: Order should be REJECTED, got {reject6}"
+                )
+
+                # Order should exist in REJECTED state
+                ord6 = engine.ledger.get_order(oid6)
+                assert ord6 is not None
+                assert ord6.status == "REJECTED", f"Scenario 6: Order status should be REJECTED, got {ord6.status}"
+
+                # Cash should be unchanged (no fill occurred)
+                cash_after_sc6 = engine.cash
+                assert abs(cash_after_sc6 - cash_before_sc6) < 0.01, (
+                    f"Scenario 6: Cash should not change after rejection "
+                    f"(before={cash_before_sc6}, after={cash_after_sc6})"
+                )
+
+                # Position from earlier buys still exists
+                assert engine.ledger.get_position("600000.SH") is not None
+                scenario_checks.append("SC6_REJECTION_CASH_RELEASED")
+
+            # ── Sell first position to free cash (day 11) ─────────────────────
+            if i == 10:
+                sell_dec = _sell_decision(
+                    symbol="600000.SH", decision_id="DEC-F06-EXIT",
+                    exit_plan={"exit_price": 11.0, "exit_reason": "exit_target",
+                               "timestamp": f"{td}T09:30:00+08:00"},
+                )
                 sr = engine.process_signal(sell_dec, trade_date=td)
-                if sr["status"] == "CREATED":
-                    engine.fill_order(sr["order"]["order_id"], market_price=11.0, trade_date=td)
+                assert sr["status"] == "CREATED", f"Sell should be CREATED, got {sr['status']}"
+                sell_oid = sr["order"]["order_id"]
+                sell_fill = engine.fill_order(sell_oid, market_price=11.0, trade_date=td)
+                assert sell_fill["filled"] is True, f"Sell fill should succeed, got {sell_fill}"
 
-            # Scenario 7: Cancel non-existent order (day 16)
-            if i == 15:
-                cancel_result = engine.cancel_order("ORD-NONEXISTENT")
-                assert cancel_result.get("error") == "ORDER_NOT_FOUND"
-                scenario_checks.append("SC7_CANCEL_NONEXISTENT")
+            # ── Scenario 7: Cancellation (day 12) ──────────────────────────────
+            if i == 12:
+                cash_before_sc7 = engine.cash
+                dec7 = _buy_decision(
+                    symbol="600000.SH", decision_id="DEC-F06-07",
+                    entry_plan={"limit_price": 11.50, "max_quantity": 300, "stop_price": 11.0,
+                                "timestamp": f"{td}T09:30:00+08:00"},
+                )
+                r7 = engine.process_signal(dec7, trade_date=td)
+                assert r7["status"] == "CREATED", f"Scenario 7: Order should be CREATED, got {r7['status']}"
+                oid7 = r7["order"]["order_id"]
 
-        # Verify all scenarios executed
+                # Cancel the order
+                cancel7 = engine.cancel_order(oid7)
+                assert cancel7["status"] == "CANCELLED", (
+                    f"Scenario 7: Order should be CANCELLED, got {cancel7}"
+                )
+
+                # Order should be in CANCELLED state
+                ord7 = engine.ledger.get_order(oid7)
+                assert ord7 is not None
+                assert ord7.status == "CANCELLED", f"Scenario 7: Order status should be CANCELLED, got {ord7.status}"
+
+                # Cash should be unchanged (no fill occurred)
+                cash_after_sc7 = engine.cash
+                assert abs(cash_after_sc7 - cash_before_sc7) < 0.01, (
+                    f"Scenario 7: Cash should not change after cancellation "
+                    f"(before={cash_before_sc7}, after={cash_after_sc7})"
+                )
+                scenario_checks.append("SC7_CANCELLATION_CASH_POSITION")
+
+        # Verify all 7 scenarios executed
         assert len(scenario_checks) >= 7, f"Only {len(scenario_checks)} scenarios executed: {scenario_checks}"
 
-        # Verify positions and cash
+        # Verify positions and cash are sane
         positions = ledger.list_positions()
-        assert len(positions) >= 0
-        assert engine.cash >= 0
+        assert any(p.status == "OPEN" for p in positions), "At least one OPEN position should exist by end of scenario"
+        assert engine.cash > 0, "Cash should be positive after all trading"
 
-        # Verify round trips
+        # Verify round trips were recorded (sell triggered a round trip)
         rts = ledger.list_round_trips()
-        assert len(rts) >= 0
+        assert len(rts) >= 1, f"At least one round trip should exist, got {len(rts)}"
 
 
 def _trading_days(start: str, count: int) -> list[str]:
