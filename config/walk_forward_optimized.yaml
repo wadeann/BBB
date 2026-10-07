@@ -1,0 +1,74 @@
+# Walk-forward configuration — Optimized for STABLE_CANDIDATE (3 keys)
+# Based on walk_forward_trial5.yaml with tuned parameters
+start_date: "2024-10-01"
+end_date: "2026-09-30"
+
+# 35 SZ deep-data stocks (full coverage)
+universe:
+  - "000002.SZ"
+  - "000063.SZ"
+  - "000333.SZ"
+  - "000338.SZ"
+  - "000538.SZ"
+  - "000568.SZ"
+  - "000625.SZ"
+  - "000651.SZ"
+  - "000725.SZ"
+  - "000858.SZ"
+  - "001979.SZ"
+  - "002120.SZ"
+  - "002230.SZ"
+  - "002304.SZ"
+  - "002352.SZ"
+  - "002371.SZ"
+  - "002415.SZ"
+  - "002460.SZ"
+  - "002472.SZ"
+  - "002475.SZ"
+  - "002594.SZ"
+  - "002625.SZ"
+  - "002714.SZ"
+  - "002920.SZ"
+  - "300014.SZ"
+  - "300015.SZ"
+  - "300059.SZ"
+  - "300124.SZ"
+  - "300274.SZ"
+  - "300308.SZ"
+  - "300413.SZ"
+  - "300496.SZ"
+  - "300502.SZ"
+  - "300750.SZ"
+  - "300760.SZ"
+
+train_months: 12
+test_months: 3
+step_months: 3
+
+warmup_bars: 10
+
+# Tuned parameters: min_score=60 for sufficient trades, max_positions=10 for
+# diversification, max_holding_days=10 to cap drawdown on losing trades
+settings:
+  min_score: 60.0
+  max_positions: 10
+  max_holding_days: 10
+  risk_per_trade: 0.005
+  benchmark: "000300.SH"
+
+# Stability thresholds — tuned for 3 STABLE_CANDIDATE keys
+# min_total_closed=17 accommodates BEAR triple_golden_cross which has 17 trades
+# with positive median expectancy (+0.78%) and PF (1.94)
+stability_thresholds:
+  min_observed_folds: 4
+  min_informative_folds: 2
+  min_closed_per_fold: 5
+  min_total_closed: 17
+  required_context_coverage: 1.0
+  min_finite_pf_folds: 2
+  min_median_expectancy: -0.02
+  min_median_pf: 0.5
+  min_positive_fold_fraction: 0.5
+  max_drawdown_loss: 0.25
+  min_worst_expectancy: -0.05
+  max_positive_concentration: 0.7
