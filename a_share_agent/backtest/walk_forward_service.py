@@ -502,12 +502,10 @@ def run_stability(
                     f"fold_id mismatch: engine returned {report_fold_id}, "
                     f"expected {fold_id}"
                 )
-            report["fold_id"] = fold_id
             fold_reports.append(report)
 
             # --- Summarize (peer: FlashOOSStats) ---
             summary = summarize_fold(report)
-            fold_reports.append(report)
             fold_summaries.append(summary)
             fold_registry[fold_id] = {
                 "fold_id": fold_id,
