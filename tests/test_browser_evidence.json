@@ -1,0 +1,96 @@
+{
+  "dashboard": {
+    "url": "/api/v1/dashboard?force=true",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "as_of",
+      "market_regime",
+      "regime_confidence",
+      "risk_appetite",
+      "themes",
+      "enabled_patterns",
+      "candidates_count",
+      "positions_summary",
+      "daily_pnl",
+      "alerts"
+    ],
+    "content_length": 604
+  },
+  "candidates": {
+    "url": "/api/v1/candidates?page=1&pattern=&regime=&sector=",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "trade_date",
+      "page",
+      "per_page",
+      "total",
+      "total_pages",
+      "items",
+      "filters_applied"
+    ],
+    "content_length": 369
+  },
+  "positions": {
+    "url": "/api/v1/positions",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "as_of",
+      "total_positions",
+      "total_market_value",
+      "available_cash",
+      "gross_pnl",
+      "gross_pnl_pct",
+      "positions"
+    ],
+    "content_length": 171
+  },
+  "backtest": {
+    "url": "/api/v1/backtest?pattern=&regime=&lifecycle=&from=&to=",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "total",
+      "results"
+    ],
+    "content_length": 24
+  },
+  "trade_detail": {
+    "url": "/api/v1/trades/0",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "round_trip_id",
+      "trade",
+      "events",
+      "event_count",
+      "metrics"
+    ],
+    "content_length": 77
+  },
+  "strategy_lab": {
+    "url": "/api/v1/strategy-lab?pattern=&regime=",
+    "status": 200,
+    "ok": true,
+    "keys": [
+      "comparison",
+      "total_families",
+      "total_runs"
+    ],
+    "content_length": 51
+  },
+  "trade_detail_invalid": {
+    "status": 200
+  },
+  "candidates_empty": {
+    "status": 200
+  },
+  "index_html": {
+    "status": 200,
+    "content_length": 11238,
+    "has_app_js": true,
+    "has_chinese_title": true
+  }
+}
