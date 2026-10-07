@@ -1,0 +1,30 @@
+{
+  "source_sha": "f9b38d7d9ba70126d26a9ce114c75af56fc8ee52",
+  "tested_sha": "f9b38d7d9ba70126d26a9ce114c75af56fc8ee52",
+  "branch": "master",
+  "tag": "f9b38d7",
+  "generated_at": "2026-10-07T09:07:02.799131+00:00",
+  "code_version": "0.7.7",
+  "config_hashes": {
+    "backtest.yaml": "cdfc3cfda342ba7a487e02844240ad0740a8cd67e2f9a7d1bde738d8cedcddb4",
+    "defaults.yaml": "3e3a5987c115fe78f569da8b706f0c20aa3652207bb16f9970fd45a9a50a6f60",
+    "improvement.yaml": "452d93487d508d5fd08540836a92e3feb804b9517802b51730bc32e521ddb0ae",
+    "logging.yaml": "7994fbdfa0179a54b1bb15976f0904a7330e6b3f72c8754a5292cff1d035646c",
+    "pattern_enablement.yaml": "49f0df26964b62aee3f31a529cd4751d2a99698ef20d48c7fae904324d8b6093",
+    "phase_permissions.yaml": "7788632834197b76a9ff51f6f0fbe0f896d6b07329ca8f14d125a785b3addb4f",
+    "research.yaml": "c9114823610808fd9c2cf5ad8592014012d4db65d4c8f781dd2144983dd5452f",
+    "runtime.yaml": "9617b9daa30d35ed4595b8c8aa060f4010f88b23007d0362dff9b51f93e1114e",
+    "schedule.yaml": "b0505dbe4a4b0a0591e67c36a55f1282fadd83df82dd31a81279be4e01260018",
+    "strategy_router.yaml": "18645aefb35191a2ea17d751ea6ab9deb55ee9610ef59d4b55d89502abcabbfe",
+    "walk_forward.yaml": "c62f0eddde7545bf9a6ee0fd385ef6349868a1c7779dc18aea7b76c707af3c37",
+    "walk_forward_optimized.yaml": "2ed360af5fbe5bde2abaa9a66ae6cd235135912f368544316fa10d303187b193",
+    "walk_forward_trial5.yaml": "967c9807bd98ab8834ad04bd50141ff95ed5fdc8f5c105ab01597d7f2c81a5aa",
+    "pyproject.toml": "9280236127ee7b02fad0a612247947dc432fd7ce85b70516fbba390411544d6a"
+  },
+  "smoke_results_sha": "20e141a298b864a7d366014aa67b8ed5f60e1293523fac3e37873bb1b4f1e6cb",
+  "oos_stability_sha": "ba70f170a609658390aa1b4a19a87ec27ac0464933baa9baa505afdfb3782b2e",
+  "test_results_sha": "d6d553c2ed11ac4fcb06318896751f7e2f6931b48f1b1769c1ed247a19fa2451",
+  "data_gates_sha": "f4df1c3d6e6154930a44be50406d7ed58229a858fd14ecd952f570ed185ec681",
+  "optimization_report_q3_sha": "7285270c7f6a037b3bf30c9724285f860a0eb366ff5cca6173e8980d0bec6d09",
+  "consumed_inputs_sha": "6566b7aec66cec8f299bd63134e63494e057f8df421541d64e0ca7f88f0d891f"
+}

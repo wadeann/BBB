@@ -1,0 +1,4524 @@
+{
+  "classification_summary": {
+    "INSUFFICIENT_DATA": 52,
+    "STABLE_CANDIDATE": 3,
+    "UNSTABLE": 5
+  },
+  "config_hash": "25f0839fd9b892b9daaadc64469e8f812e57747d42a347fea6e7117a7ee9da29",
+  "content_hash": "4ba235b506de8fbd753ebec3d45323b22b5d37e6702749004845492bbd8fe88a",
+  "generated_at": "2026-10-07T07:18:57.173981+00:00",
+  "input_manifest_binding": {
+    "artifact_path": "oos_stability.json",
+    "consumed_input_ledger_sha256": "235a5ab8ee0c4b1643147dde2269caa122eb61f06c3b23ff9b8e20719f724f05",
+    "generation_id": "de4b6148fbf545b78424b0d779c4c596",
+    "manifest_overall_status": "COMPLETED",
+    "manifest_run_id": "t5z_tc17",
+    "manifest_source_sha": "2583abd32cdf46913ed7d6cb5e9fbade48352306"
+  },
+  "keys": {
+    "BEAR::DISTRIBUTING::high_volume_breakout::1.0.0": {
+      "classification": "STABLE_CANDIDATE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.03641299907059993,
+          "fold_id": 0,
+          "median_trade_pct": -0.00036908221691709617,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 2.5513910138794187
+        },
+        {
+          "expectancy_pct": -0.0058002917008110385,
+          "fold_id": 1,
+          "median_trade_pct": -0.002118034064112731,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.8116760436324464
+        },
+        {
+          "expectancy_pct": 0.02158894502130148,
+          "fold_id": 2,
+          "median_trade_pct": 0.0019688110422906775,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 10.842886805845753
+        },
+        {
+          "expectancy_pct": -0.02530106800739329,
+          "fold_id": 3,
+          "median_trade_pct": -0.02815416654469523,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.2509474457076641
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "DISTRIBUTING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 21,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "BEAR::DISTRIBUTING::ma60_breakout_retest::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.022950642956302423,
+          "fold_id": 0,
+          "median_trade_pct": -0.022950642956302423,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.032834048805795865,
+          "fold_id": 1,
+          "median_trade_pct": 0.032834048805795865,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "DISTRIBUTING",
+        "ma60_breakout_retest",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "2",
+        "3"
+      ]
+    },
+    "BEAR::DISTRIBUTING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.0025232176770442413,
+          "fold_id": 0,
+          "median_trade_pct": 0.0025232176770442413,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.02932773377344562,
+          "fold_id": 1,
+          "median_trade_pct": -0.02932773377344562,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "DISTRIBUTING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 3,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "2",
+        "3"
+      ]
+    },
+    "BEAR::DISTRIBUTING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.013282927918279955,
+          "fold_id": 0,
+          "median_trade_pct": -0.013282927918279955,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.13245199079573078,
+          "fold_id": 1,
+          "median_trade_pct": -0.13245199079573078,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.31783587905083377,
+          "fold_id": 2,
+          "median_trade_pct": 0.31783587905083377,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.06538321564709361,
+          "fold_id": 3,
+          "median_trade_pct": -0.06538321564709361,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "DISTRIBUTING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 4,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.039333 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.132452 < -0.05"
+      },
+      "zero_trade_fold_ids": []
+    },
+    "BEAR::DISTRIBUTING::triple_golden_cross::1.0.0": {
+      "classification": "STABLE_CANDIDATE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.008068174261299807,
+          "fold_id": 0,
+          "median_trade_pct": -0.009427660941242217,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.9382414508918206
+        },
+        {
+          "expectancy_pct": -0.030534115848901595,
+          "fold_id": 1,
+          "median_trade_pct": -0.030534115848901595,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.019548590714685638,
+          "fold_id": 2,
+          "median_trade_pct": 0.019548590714685638,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.007594515857468938,
+          "fold_id": 3,
+          "median_trade_pct": -0.003475696602800913,
+          "n_censored": 0,
+          "n_closed": 9,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 2.114267728863106
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "DISTRIBUTING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 17,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "BEAR::EMERGING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.0048514880632925545,
+          "fold_id": 2,
+          "median_trade_pct": -0.0048514880632925545,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "EMERGING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "BEAR::EMERGING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.05825719925824211,
+          "fold_id": 0,
+          "median_trade_pct": -0.05825719925824211,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "EMERGING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.058257 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.058257 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BEAR::EMERGING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.0230940576519122,
+          "fold_id": 0,
+          "median_trade_pct": -0.0230940576519122,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.013140044230606851,
+          "fold_id": 2,
+          "median_trade_pct": -0.013140044230606851,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.06277925153608008
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "EMERGING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 4,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "3"
+      ]
+    },
+    "BEAR::FADING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.12236119863074031,
+          "fold_id": 0,
+          "median_trade_pct": 0.12236119863074031,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.002256767237865086,
+          "fold_id": 2,
+          "median_trade_pct": -0.002256767237865086,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.6719812756855006
+        },
+        {
+          "expectancy_pct": -0.02659366625982514,
+          "fold_id": 3,
+          "median_trade_pct": -0.02115644505421743,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "FADING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 6,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.929742 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1"
+      ]
+    },
+    "BEAR::FADING::ma60_breakout_retest::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.03055649270487044,
+          "fold_id": 3,
+          "median_trade_pct": -0.03055649270487044,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "FADING",
+        "ma60_breakout_retest",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.030556 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "BEAR::FADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.006823685988786599,
+          "fold_id": 0,
+          "median_trade_pct": -0.006823685988786599,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.01507889861546205,
+          "fold_id": 3,
+          "median_trade_pct": 0.006964445241132785,
+          "n_censored": 0,
+          "n_closed": 8,
+          "n_open": 1,
+          "pf_reason": "FINITE",
+          "profit_factor": 3.7201573084580195
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BEAR",
+        "FADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 9,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2"
+      ]
+    },
+    "BULL_TREND::ACCELERATING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.02589909003484695,
+          "fold_id": 1,
+          "median_trade_pct": -0.02589909003484695,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.004252352138992568,
+          "fold_id": 2,
+          "median_trade_pct": 0.004998515365920938,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 2.5196345255792325
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "ACCELERATING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 6,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "3"
+      ]
+    },
+    "BULL_TREND::ACCELERATING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.0017428808589212905,
+          "fold_id": 2,
+          "median_trade_pct": -0.0017428808589212905,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.9016201835678314
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "ACCELERATING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "BULL_TREND::ACCELERATING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.10054542466001609,
+          "fold_id": 0,
+          "median_trade_pct": -0.10054542466001609,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.09069606910327496,
+          "fold_id": 1,
+          "median_trade_pct": 0.09069606910327496,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.01853772422895803,
+          "fold_id": 2,
+          "median_trade_pct": -0.0168197941515659,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "ACCELERATING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 8,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.100545 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "3"
+      ]
+    },
+    "BULL_TREND::ACCELERATING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.004331904445965467,
+          "fold_id": 0,
+          "median_trade_pct": -0.004331904445965467,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.6045772870124655
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.08007928076918636,
+          "fold_id": 2,
+          "median_trade_pct": -0.08007928076918636,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "ACCELERATING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 3,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.042206 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.080079 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "3"
+      ]
+    },
+    "BULL_TREND::DISTRIBUTING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.023427744263846063,
+          "fold_id": 0,
+          "median_trade_pct": 0.023427744263846063,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "DISTRIBUTING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_TREND::DISTRIBUTING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.005998276601117156,
+          "fold_id": 0,
+          "median_trade_pct": 0.005998276601117156,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.2978856419541183
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "DISTRIBUTING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_TREND::EMERGING::high_volume_breakout::1.0.0": {
+      "classification": "UNSTABLE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.008255758148838945,
+          "fold_id": 0,
+          "median_trade_pct": -0.0007755919574728029,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.2470137018977973
+        },
+        {
+          "expectancy_pct": 0.015878593058168695,
+          "fold_id": 1,
+          "median_trade_pct": -0.010782711047637174,
+          "n_censored": 0,
+          "n_closed": 19,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.8488929885391343
+        },
+        {
+          "expectancy_pct": -0.017682853358526603,
+          "fold_id": 2,
+          "median_trade_pct": -0.017851648137122193,
+          "n_censored": 0,
+          "n_closed": 18,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.46245005076780277
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 40,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": "max_fold_drawdown=-0.321464 <= -0.25",
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "3"
+      ]
+    },
+    "BULL_TREND::EMERGING::ma5_momentum_pullback::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.031875945573135146,
+          "fold_id": 0,
+          "median_trade_pct": -0.031875945573135146,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "ma5_momentum_pullback",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.031876 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_TREND::EMERGING::ma60_breakout_retest::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.022595704053255113,
+          "fold_id": 1,
+          "median_trade_pct": -0.02464100116059978,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "ma60_breakout_retest",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 7,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.022596 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_TREND::EMERGING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.024756550306240292,
+          "fold_id": 0,
+          "median_trade_pct": -0.024756550306240292,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.0015886561814734423,
+          "fold_id": 1,
+          "median_trade_pct": -0.011964011175148014,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.8807768384141095
+        },
+        {
+          "expectancy_pct": -0.005967150513732443,
+          "fold_id": 2,
+          "median_trade_pct": -0.005967150513732443,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.3837299825637208
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 6,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.825726 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "3"
+      ]
+    },
+    "BULL_TREND::EMERGING::single_bull_hold::1.0.0": {
+      "classification": "UNSTABLE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.010757446167820825,
+          "fold_id": 0,
+          "median_trade_pct": -0.01942896135848424,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.23395128453108496
+        },
+        {
+          "expectancy_pct": -0.025580720428146974,
+          "fold_id": 1,
+          "median_trade_pct": -0.005553083860793908,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.05301214873468697
+        },
+        {
+          "expectancy_pct": 0.0059015847640338315,
+          "fold_id": 2,
+          "median_trade_pct": 0.013287210846908475,
+          "n_censored": 0,
+          "n_closed": 12,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.1453249753441037
+        },
+        {
+          "expectancy_pct": 0.03891078329769107,
+          "fold_id": 3,
+          "median_trade_pct": 0.03891078329769107,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 3.140727106694974
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 22,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.809683 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": "max_fold_drawdown=-0.275223 <= -0.25",
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "BULL_TREND::EMERGING::triple_golden_cross::1.0.0": {
+      "classification": "UNSTABLE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.02652925788063865,
+          "fold_id": 0,
+          "median_trade_pct": -0.031000517608488837,
+          "n_censored": 0,
+          "n_closed": 6,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.02155273036274708
+        },
+        {
+          "expectancy_pct": -0.0122615071033816,
+          "fold_id": 1,
+          "median_trade_pct": -0.017250395029272746,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.47593593226813635
+        },
+        {
+          "expectancy_pct": -0.018320986243163542,
+          "fold_id": 2,
+          "median_trade_pct": -0.020395279131291584,
+          "n_censored": 0,
+          "n_closed": 8,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.1597010200599942
+        },
+        {
+          "expectancy_pct": 0.00819574714404572,
+          "fold_id": 3,
+          "median_trade_pct": 0.00819574714404572,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 5.58256477211583
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "EMERGING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 3,
+      "n_total_closed": 23,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "BULL_TREND::LEADING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.042404266614770016,
+          "fold_id": 2,
+          "median_trade_pct": -0.042404266614770016,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.10048532295168643
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "LEADING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.042404 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "BULL_TREND::LEADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.04824883054290063,
+          "fold_id": 2,
+          "median_trade_pct": -0.04824883054290063,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "LEADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.048249 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "BULL_TREND::MATURE::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.027338796917899786,
+          "fold_id": 0,
+          "median_trade_pct": -0.027338796917899786,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "MATURE",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.027339 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_TREND::MATURE::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.011595823499185523,
+          "fold_id": 0,
+          "median_trade_pct": 0.008510879618137355,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_TREND",
+        "MATURE",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 3,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "BULL_VOLATILE::FADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.0024660110370067424,
+          "fold_id": 3,
+          "median_trade_pct": -0.0024660110370067424,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "BULL_VOLATILE",
+        "FADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "PANIC::DISTRIBUTING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.007651362964575055,
+          "fold_id": 3,
+          "median_trade_pct": -0.005909405183221153,
+          "n_censored": 0,
+          "n_closed": 6,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.025415117440286975
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "PANIC",
+        "DISTRIBUTING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 6,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "PANIC::DISTRIBUTING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.03284229459424398,
+          "fold_id": 3,
+          "median_trade_pct": -0.03284229459424398,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "PANIC",
+        "DISTRIBUTING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.032842 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "PANIC::FADING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.007054217057313279,
+          "fold_id": 3,
+          "median_trade_pct": 0.007054217057313279,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 3.1086277947612775
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "PANIC",
+        "FADING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "PANIC::FADING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 1,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "PANIC",
+        "FADING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 0,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "PANIC::FADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.002469699693028741,
+          "fold_id": 3,
+          "median_trade_pct": 0.002469699693028741,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 1,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.103956198046401
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "PANIC",
+        "FADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "ROTATION::DISTRIBUTING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.0032061280260909475,
+          "fold_id": 0,
+          "median_trade_pct": -0.0032061280260909475,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.29831045208728524
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.021259363299330862,
+          "fold_id": 2,
+          "median_trade_pct": 0.021259363299330862,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 2.9341816433888814
+        },
+        {
+          "expectancy_pct": -0.08474755518997251,
+          "fold_id": 3,
+          "median_trade_pct": -0.08474755518997251,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 1,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "DISTRIBUTING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 6,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.959450 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.084748 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "1"
+      ]
+    },
+    "ROTATION::DISTRIBUTING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.036163418784278034,
+          "fold_id": 2,
+          "median_trade_pct": -0.036163418784278034,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": 0.08354797738937769,
+          "fold_id": 3,
+          "median_trade_pct": 0.08354797738937769,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 19.172062877299968
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "DISTRIBUTING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 3,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1"
+      ]
+    },
+    "ROTATION::DISTRIBUTING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.041388743675301445,
+          "fold_id": 0,
+          "median_trade_pct": 0.041388743675301445,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.03361631794658357,
+          "fold_id": 1,
+          "median_trade_pct": -0.03361631794658357,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.041394771938769226,
+          "fold_id": 2,
+          "median_trade_pct": -0.041394771938769226,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.020686877539398164,
+          "fold_id": 3,
+          "median_trade_pct": -0.011699891075842732,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.049592044275542736
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "DISTRIBUTING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 12,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.845621 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.027152 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "ROTATION::EMERGING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.01896387683916023,
+          "fold_id": 0,
+          "median_trade_pct": -0.023089147254484035,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.18428631717271113,
+          "fold_id": 2,
+          "median_trade_pct": 0.18428631717271113,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.04299256655470346,
+          "fold_id": 3,
+          "median_trade_pct": 0.04299256655470346,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "EMERGING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 7,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.810838 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1"
+      ]
+    },
+    "ROTATION::EMERGING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.0446278706499011,
+          "fold_id": 0,
+          "median_trade_pct": 0.0446278706499011,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.04851600924735743,
+          "fold_id": 2,
+          "median_trade_pct": 0.04851600924735743,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 3.1015081343932125
+        },
+        {
+          "expectancy_pct": -0.008661522365331704,
+          "fold_id": 3,
+          "median_trade_pct": -0.008661522365331704,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "EMERGING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 4,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.762406 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1"
+      ]
+    },
+    "ROTATION::EMERGING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.06615088385433161,
+          "fold_id": 0,
+          "median_trade_pct": -0.07176668170528654,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.02407363287458316,
+          "fold_id": 2,
+          "median_trade_pct": -0.02407363287458316,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "EMERGING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 4,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.045112 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.066151 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "3"
+      ]
+    },
+    "ROTATION::EMERGING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.002942792492770943,
+          "fold_id": 0,
+          "median_trade_pct": -0.009110590714048544,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.6968221276007149
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.012756755448567407,
+          "fold_id": 2,
+          "median_trade_pct": -0.025005809890199487,
+          "n_censored": 0,
+          "n_closed": 8,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.47232604601097367
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "EMERGING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 12,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.771505 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "3"
+      ]
+    },
+    "ROTATION::FADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.005114676604460489,
+          "fold_id": 0,
+          "median_trade_pct": -0.005114676604460489,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "ROTATION",
+        "FADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "SIDEWAYS::ACCELERATING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.008743266245393597,
+          "fold_id": 3,
+          "median_trade_pct": 0.008743266245393597,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "ACCELERATING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "SIDEWAYS::DISTRIBUTING::high_volume_breakout::1.0.0": {
+      "classification": "STABLE_CANDIDATE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.06361010370524961,
+          "fold_id": 0,
+          "median_trade_pct": 0.06361010370524961,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 3.9101273028618473
+        },
+        {
+          "expectancy_pct": -0.005854456974611462,
+          "fold_id": 1,
+          "median_trade_pct": -0.007462580793600534,
+          "n_censored": 0,
+          "n_closed": 16,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.6033845172215383
+        },
+        {
+          "expectancy_pct": 0.01743876953577369,
+          "fold_id": 2,
+          "median_trade_pct": -0.02267910907616035,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.5602679078006578
+        },
+        {
+          "expectancy_pct": -0.019142802872364587,
+          "fold_id": 3,
+          "median_trade_pct": -0.0009057682304945307,
+          "n_censored": 0,
+          "n_closed": 10,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.33066036593247833
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "DISTRIBUTING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 32,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "SIDEWAYS::DISTRIBUTING::ma60_breakout_retest::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.03012599600161048,
+          "fold_id": 3,
+          "median_trade_pct": -0.030209594596023206,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "DISTRIBUTING",
+        "ma60_breakout_retest",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 4,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.030126 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "SIDEWAYS::DISTRIBUTING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.0019133025309196932,
+          "fold_id": 0,
+          "median_trade_pct": -0.0019133025309196932,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.40561002165872573
+        },
+        {
+          "expectancy_pct": 0.013538021959983097,
+          "fold_id": 1,
+          "median_trade_pct": 0.013538021959983097,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.024673010142199473,
+          "fold_id": 3,
+          "median_trade_pct": 0.026434074138383615,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 11.57755429479536
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "DISTRIBUTING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 8,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.784421 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "2"
+      ]
+    },
+    "SIDEWAYS::DISTRIBUTING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.0037602865114217225,
+          "fold_id": 0,
+          "median_trade_pct": 0.0037602865114217225,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.014634775938937734,
+          "fold_id": 1,
+          "median_trade_pct": -0.00798144120655162,
+          "n_censored": 0,
+          "n_closed": 6,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.14481624145404076
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "DISTRIBUTING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 7,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.798157 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "2",
+        "3"
+      ]
+    },
+    "SIDEWAYS::DISTRIBUTING::triple_golden_cross::1.0.0": {
+      "classification": "UNSTABLE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.018099243992479228,
+          "fold_id": 1,
+          "median_trade_pct": -0.010804802361221836,
+          "n_censored": 0,
+          "n_closed": 18,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.22607427644111974
+        },
+        {
+          "expectancy_pct": -0.03402083027021853,
+          "fold_id": 2,
+          "median_trade_pct": -0.031331374809298304,
+          "n_censored": 0,
+          "n_closed": 8,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.22364191709156583
+        },
+        {
+          "expectancy_pct": -0.014661578972552056,
+          "fold_id": 3,
+          "median_trade_pct": -0.011594323237029075,
+          "n_censored": 0,
+          "n_closed": 15,
+          "n_open": 1,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.24616515081384913
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "DISTRIBUTING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 3,
+      "n_total_closed": 41,
+      "reasons": {
+        "concentration_reason": null,
+        "coverage_reason": null,
+        "drawdown_reason": "max_fold_drawdown=-0.308380 <= -0.25",
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0"
+      ]
+    },
+    "SIDEWAYS::EMERGING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.0218270988529006,
+          "fold_id": 0,
+          "median_trade_pct": -0.015502441952969298,
+          "n_censored": 0,
+          "n_closed": 15,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.058326032472978996
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.1417226227115116,
+          "fold_id": 2,
+          "median_trade_pct": -0.1417226227115116,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.0365063998923407,
+          "fold_id": 3,
+          "median_trade_pct": -0.010298092874619422,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "EMERGING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 19,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": "max_fold_drawdown=-0.285192 <= -0.25",
+        "expectancy_reason": "fold_median_expectancy=-0.036506 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.141723 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "1"
+      ]
+    },
+    "SIDEWAYS::EMERGING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.012161252550914325,
+          "fold_id": 0,
+          "median_trade_pct": -0.021323460834330194,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.3872067013259514
+        },
+        {
+          "expectancy_pct": -0.06318620738409231,
+          "fold_id": 1,
+          "median_trade_pct": -0.06306809883583615,
+          "n_censored": 0,
+          "n_closed": 3,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.0071632063240333055,
+          "fold_id": 2,
+          "median_trade_pct": -0.0071632063240333055,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "EMERGING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 9,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.063186 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "3"
+      ]
+    },
+    "SIDEWAYS::EMERGING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.0008293707452803924,
+          "fold_id": 0,
+          "median_trade_pct": -0.04425760022158642,
+          "n_censored": 0,
+          "n_closed": 7,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.0153201401988665
+        },
+        {
+          "expectancy_pct": -0.11355934891762388,
+          "fold_id": 1,
+          "median_trade_pct": -0.11355934891762388,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.00022731033918149218,
+          "fold_id": 2,
+          "median_trade_pct": -0.00022731033918149218,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": -0.13401404086075833,
+          "fold_id": 3,
+          "median_trade_pct": -0.13401404086075833,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "EMERGING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 10,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.056893 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.134014 < -0.05"
+      },
+      "zero_trade_fold_ids": []
+    },
+    "SIDEWAYS::EMERGING::triple_golden_cross::1.0.0": {
+      "classification": "UNSTABLE",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.02273202694879957,
+          "fold_id": 0,
+          "median_trade_pct": -0.017230451260428173,
+          "n_censored": 0,
+          "n_closed": 6,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.01837346873079607
+        },
+        {
+          "expectancy_pct": -0.019121064546476673,
+          "fold_id": 1,
+          "median_trade_pct": -0.01389560500096335,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.17901946546322792
+        },
+        {
+          "expectancy_pct": 0.008584915727948372,
+          "fold_id": 2,
+          "median_trade_pct": -0.007150087217382025,
+          "n_censored": 0,
+          "n_closed": 8,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 2.1054203090464934
+        },
+        {
+          "expectancy_pct": -0.03190021429389534,
+          "fold_id": 3,
+          "median_trade_pct": -0.05168144639355772,
+          "n_censored": 0,
+          "n_closed": 4,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.17978344372044822
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "EMERGING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 2,
+      "n_total_closed": 22,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.734846 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.020927 <= -0.02",
+        "pf_reason": null,
+        "sample_size_reason": null,
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": []
+    },
+    "SIDEWAYS::FADING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.034934659345346286,
+          "fold_id": 1,
+          "median_trade_pct": 0.034934659345346286,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.0742316530707894,
+          "fold_id": 3,
+          "median_trade_pct": 0.0742316530707894,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "FADING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 3,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.809514 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "2"
+      ]
+    },
+    "SIDEWAYS::FADING::ma60_breakout_retest::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": -0.018784121177864488,
+          "fold_id": 0,
+          "median_trade_pct": -0.018784121177864488,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.007919831865420009,
+          "fold_id": 3,
+          "median_trade_pct": 0.007919831865420009,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "FADING",
+        "ma60_breakout_retest",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 2,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "1",
+        "2"
+      ]
+    },
+    "SIDEWAYS::FADING::ma_convergence_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": 0.012408095819764235,
+          "fold_id": 3,
+          "median_trade_pct": 0.012408095819764235,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "FADING",
+        "ma_convergence_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "max_concentration=1.000000 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=0 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "SIDEWAYS::FADING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.12182525474394165,
+          "fold_id": 3,
+          "median_trade_pct": -0.12182525474394165,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "FADING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.121825 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.121825 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "SIDEWAYS::FADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": 0.004092583284802797,
+          "fold_id": 0,
+          "median_trade_pct": 0.004092583284802797,
+          "n_censored": 0,
+          "n_closed": 2,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 1.6191822712162687
+        },
+        {
+          "expectancy_pct": 0.0017646763979236044,
+          "fold_id": 1,
+          "median_trade_pct": 0.0017646763979236044,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "NO_LOSSES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.022484842435333108,
+          "fold_id": 3,
+          "median_trade_pct": -0.023010523769654824,
+          "n_censored": 0,
+          "n_closed": 5,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "FADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 1,
+      "n_total_closed": 8,
+      "reasons": {
+        "concentration_reason": "max_concentration=0.923835 > 0.7",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": null,
+        "sample_size_reason": "informative_folds=1 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "2"
+      ]
+    },
+    "SIDEWAYS::LEADING::high_volume_breakout::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.13509874986945536,
+          "fold_id": 2,
+          "median_trade_pct": -0.13509874986945536,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "LEADING",
+        "high_volume_breakout",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.135099 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.135099 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "SIDEWAYS::LEADING::single_bull_hold::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.11653960105616377,
+          "fold_id": 2,
+          "median_trade_pct": -0.11653960105616377,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "LEADING",
+        "single_bull_hold",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": "fold_median_expectancy=-0.116540 <= -0.02",
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": "worst_fold_expectancy=-0.116540 < -0.05"
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "SIDEWAYS::LEADING::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.014068716290889863,
+          "fold_id": 2,
+          "median_trade_pct": -0.014068716290889863,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 3,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "LEADING",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "3"
+      ]
+    },
+    "SIDEWAYS::MATURE::triple_golden_cross::1.0.0": {
+      "classification": "INSUFFICIENT_DATA",
+      "fold_summaries": [
+        {
+          "expectancy_pct": null,
+          "fold_id": 0,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 1,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": null,
+          "fold_id": 2,
+          "median_trade_pct": null,
+          "n_censored": 0,
+          "n_closed": 0,
+          "n_open": 0,
+          "pf_reason": "NO_TRADES",
+          "profit_factor": null
+        },
+        {
+          "expectancy_pct": -0.018048894253985866,
+          "fold_id": 3,
+          "median_trade_pct": -0.018048894253985866,
+          "n_censored": 0,
+          "n_closed": 1,
+          "n_open": 0,
+          "pf_reason": "FINITE",
+          "profit_factor": 0.0
+        }
+      ],
+      "key_fields": [
+        "regime_at_signal",
+        "theme_lifecycle",
+        "pattern_id",
+        "pattern_version"
+      ],
+      "key_tuple": [
+        "SIDEWAYS",
+        "MATURE",
+        "triple_golden_cross",
+        "1.0.0"
+      ],
+      "n_failed_folds": 0,
+      "n_folds_observed": 4,
+      "n_folds_total": 4,
+      "n_informative_folds": 0,
+      "n_total_closed": 1,
+      "reasons": {
+        "concentration_reason": "NO_POSITIVE_RETURNS",
+        "coverage_reason": null,
+        "drawdown_reason": null,
+        "expectancy_reason": null,
+        "pf_reason": "finite_pf_folds=1 < 2",
+        "sample_size_reason": "informative_folds=0 < 2",
+        "worst_expectancy_reason": null
+      },
+      "zero_trade_fold_ids": [
+        "0",
+        "1",
+        "2"
+      ]
+    }
+  },
+  "n_keys": 60,
+  "producer": "oos_stability.per_key_oos_stability",
+  "rule_hashes": {
+    "context_sha256": "a3a74fa15c6e830453b42aa3a16056383c312b8b29a7436476abef5778788ad1",
+    "cost_source_sha256": "d9391aeb9c79d578f1526faa0fa95e5a438585beffc049fd6507ca632377f697",
+    "regime_sha256": "1c6debff7f5f4baac8a6c2fd0124ca4a3f1ffb52faec2b643295bd1250e656f5",
+    "router_sha256": "1aecc0f2c2faee7007153c34e00c2df4bc19eb6dca50be31c7d12453e8032c20",
+    "scanner_sha256": "f87f9e7910f6edc2cef7dbbdad125a3f8df64dbaf378a49ed018b1bc5605a824",
+    "scoring_sha256": "c7822946319a72e70e68455a6833e5037453d82192578bc726b02980afcd6384"
+  },
+  "run_id": "t5z_tc17",
+  "schema_version": "1.0",
+  "source_sha": "2583abd32cdf46913ed7d6cb5e9fbade48352306",
+  "wf_config_hash": "e11e31fffa70d39db4a46c0fd949b670170358ffedd39011d874e73c6c68cf97",
+  "_delivery_epoch": "2026-10-07T09:07:02.802920+00:00"
+}
