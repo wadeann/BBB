@@ -42,13 +42,25 @@ def test_fold_acquisition_uses_calendar_and_configured_warmup(tmp_path, monkeypa
         preceding = [d for d in calendar if d < fold['train_start']]
         assert fold['warmup_start'] == preceding[-warmup]
         assert required == warmup
-        tail = [d for d in calendar if d >= fold['test_end_exclusive']]
-        # Next-open entry, N holding sessions, then next-open exit.
-        expected_end = (date.fromisoformat(tail[21]) + timedelta(days=1)).isoformat()
-        assert fold['observation_end_exclusive'] == expected_end
-        assert expected_end > fold['test_end_exclusive']
+        end_date = date.fromisoformat(start) + timedelta(days=100)
+        data_end_exclusive = (end_date + timedelta(days=1)).isoformat()
+        tail_dates_raw = [d for d in calendar if d >= fold['test_end_exclusive'] and d < data_end_exclusive]
+        tail_dates = tail_dates_raw[:22]
+        # observation capped to data end
+        if len(tail_dates) >= 22:
+            expected_end = (date.fromisoformat(tail_dates[21]) + timedelta(days=1)).isoformat()
+            expected_hist_req = tail_dates[21]
+        elif tail_dates:
+            expected_end = (date.fromisoformat(tail_dates[-1]) + timedelta(days=1)).isoformat()
+            expected_hist_req = tail_dates[-1]
+        else:
+            expected_end = data_end_exclusive
+            expected_hist_req = (date.fromisoformat(data_end_exclusive) - timedelta(days=1)).isoformat()
+        assert fold['observation_end_exclusive'] == expected_end, f"obs_end={fold['observation_end_exclusive']} vs expected={expected_end}, tail_dates={len(tail_dates)}"
+        if tail_dates:
+            assert expected_end > fold['test_end_exclusive']
         assert request['historical_range'] == (preceding[-warmup], expected_end)
-        assert request['historical_request_end'] == tail[21]
+        assert request['historical_request_end'] == expected_hist_req
         assert request['historical_max_bars'] == len([d for d in calendar
             if preceding[-warmup] <= d < expected_end])
         assert request['use_cache'] is False

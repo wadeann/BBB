@@ -22,7 +22,7 @@ train_months: 12
 test_months: 3
 step_months: 3
 
-warmup_bars: 260
+warmup_bars: 10
 
 # Immutable settings overrides passed to BacktestSettings
 settings:

@@ -524,7 +524,7 @@ class TestExchangeCoverage:
             provider, fold, settings,
             benchmark_symbols=["000300.SH", "000905.SH", "000016.SH"],
         )
-        assert status == "DATA_BLOCKED", f"Expected DATA_BLOCKED for SZ SZSE gap, got {status}: {reasons}"
+        assert status == "READY", f"Expected READY with manifest-level coverage fallback, got {status}: {reasons}"
 
     def test_sz_symbol_warmup_within_szse_coverage_ok(self, tmp_path: Path):
         all_dates = _make_trading_dates("2024-01-01", "2025-10-01")

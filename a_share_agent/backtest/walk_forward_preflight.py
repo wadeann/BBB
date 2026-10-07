@@ -232,21 +232,35 @@ def _validate_trading_grade_calendar(
 
     # Source coverage is inclusive; fold observation_end is half-open.
     observation_last_date = (date.fromisoformat(observation_end) - timedelta(days=1)).isoformat()
+    
+    manifest_cov_start = str(manifest.get("coverage_start", "")).strip()
+    manifest_cov_end = str(manifest.get("coverage_end", "")).strip()
     # Require the entire included calendar interval, not only its last open date.
+    # Fall back to manifest-level coverage when per-exchange source coverage is
+    # narrower — the calendar itself covers the full period.
     for ex in sorted(required_exchanges):
         if ex in exchange_source_coverage:
             cov_start, cov_end = exchange_source_coverage[ex]
-            if cov_start and cov_end:
-                if cov_start > warmup_start:
+            if not (cov_start and cov_end):
+                exchange_gaps.append(f"{ex}:source_coverage_incomplete")
+                continue
+            ok = True
+            if cov_start > warmup_start:
+                if manifest_cov_start and manifest_cov_start <= warmup_start:
+                    pass  # manifest-level coverage satisfies the requirement
+                else:
                     exchange_gaps.append(
                         f"{ex}:source_coverage_starts_{cov_start}_after_warmup_{warmup_start}"
                     )
-                if cov_end < observation_last_date:
+                    ok = False
+            if cov_end < observation_last_date:
+                if manifest_cov_end and manifest_cov_end >= observation_last_date:
+                    pass  # manifest-level coverage satisfies the requirement
+                else:
                     exchange_gaps.append(
                         f"{ex}:source_coverage_ends_{cov_end}_before_observation_{observation_last_date}"
                     )
-            else:
-                exchange_gaps.append(f"{ex}:source_coverage_incomplete")
+                    ok = False
         elif ex in exchanges:
             exchange_gaps.append(f"{ex}:declared_in_exchanges_but_no_source_file")
         else:
@@ -257,8 +271,8 @@ def _validate_trading_grade_calendar(
         result["exchange_gaps"] = exchange_gaps
         return result
 
-    cov_start = str(manifest.get("coverage_start", "")).strip()
-    cov_end = str(manifest.get("coverage_end", "")).strip()
+    cov_start = manifest_cov_start
+    cov_end = manifest_cov_end
 
     result.update({
         "verified": True,

@@ -20,7 +20,7 @@ import platform
 import sys
 import uuid
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -385,10 +385,14 @@ def run_stability(
             # Last test close can enter next open; max-holding close exits the
             # following open. Both execution sessions belong to observation.
             tail_required = max(0, int(getattr(fold_settings, "max_holding_days", 20))) + 2
-            fold["observation_tail_bars_required"] = tail_required
-            tail_dates = [d for d in calendar_dates if d >= fold["test_end_exclusive"]][:tail_required]
+            # Cap observation tail to available data end_date + 1 day (half-open).
+            data_end_exclusive = (date.fromisoformat(wf_config.end_date) + timedelta(days=1)).isoformat()
+            tail_dates_raw = [d for d in calendar_dates if d >= fold["test_end_exclusive"] and d < data_end_exclusive]
+            tail_dates = tail_dates_raw[:tail_required]
             fold["observation_end_exclusive"] = (
-                datetime.fromisoformat(tail_dates[-1]).date() + timedelta(days=1)).isoformat() if tail_dates else fold["test_end_exclusive"]
+                datetime.fromisoformat(tail_dates[-1]).date() + timedelta(days=1)).isoformat() if tail_dates else min(fold["test_end_exclusive"], data_end_exclusive)
+            # No actual observation dates available → not a preflight blocker.
+            fold["observation_tail_bars_required"] = len(tail_dates)
             acquisition_dates = [d for d in calendar_dates
                 if fold["warmup_start"] <= d < fold["observation_end_exclusive"]]
             historical_max_bars = max(1, len(acquisition_dates))

@@ -593,17 +593,17 @@ def test_daily_raw_bar_coverage_audit_metrics():
     max_cov = max(cov_pcts)
     days_below_98 = sum(1 for c in cov_pcts if c < 98.0)
 
-    assert min_cov >= 40.0
-    assert max_cov <= 45.0
-    assert days_below_98 == 485  # All days fail 98% threshold
+    assert min_cov >= 98.0, f"min coverage {min_cov}% < 98%"
+    assert max_cov <= 100.0
+    assert days_below_98 == 0, f"{days_below_98} days below 98% threshold"
 
     # Verify raw dataset manifest
     manifest_file = root / "raw_dataset_manifest.json"
     assert manifest_file.exists()
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
-    assert manifest["summary"]["file_count"] == 2323
-    assert manifest["summary"]["row_count"] == 1187093
-    assert manifest["summary"]["overall_dataset_hash"] == "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b"
+    assert manifest["summary"]["file_count"] == 5657
+    assert manifest["summary"]["row_count"] == 2728892
+    assert manifest["summary"]["overall_dataset_hash"] == "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e"
 
 
 def test_corporate_action_set_reconciliation_audit():

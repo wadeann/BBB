@@ -1,8 +1,8 @@
 {
   "audit_version": "0.7.6",
-  "producer_git_commit": "536b82ad54a7847f8e4cf384f168f6b7651e189e",
+  "producer_git_commit": "cdcf6eaad351c8ff64c851c5edb0a2681432c4e5",
   "producer_code_version": "0.7.7",
-  "generated_at": "2026-10-03T01:10:43.085845+00:00",
+  "generated_at": "2026-10-07T00:19:53.277741+00:00",
   "universe": {
     "snapshot_count": 5,
     "legacy_schema_snapshots": 0,
@@ -18,12 +18,12 @@
   "raw_dataset": {
     "manifest_present": true,
     "mounted": true,
-    "expected_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
-    "actual_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
-    "expected_file_count": 2323,
-    "actual_file_count": 2323,
-    "expected_row_count": 1187093,
-    "actual_row_count": 1187093,
+    "expected_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "actual_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "expected_file_count": 5657,
+    "actual_file_count": 5657,
+    "expected_row_count": 2728892,
+    "actual_row_count": 2728892,
     "missing_files": [],
     "extra_files": [],
     "mismatched_files": [],
@@ -32,10 +32,10 @@
   "coverage_binding": {
     "coverage_manifest_present": true,
     "coverage_csv_present": true,
-    "source_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
-    "actual_raw_dataset_hash": "ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b",
-    "expected_coverage_csv_sha256": "dc4d224891bbe5339e85e07e8abfe86d2a75c003592d2a3c5fecb9adfc2e8f55",
-    "actual_coverage_csv_sha256": "dc4d224891bbe5339e85e07e8abfe86d2a75c003592d2a3c5fecb9adfc2e8f55",
+    "source_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "actual_raw_dataset_hash": "305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e",
+    "expected_coverage_csv_sha256": "b6650d4847ca3ee74d573038412eba502c22bec6bc191b3ede0356835258229b",
+    "actual_coverage_csv_sha256": "b6650d4847ca3ee74d573038412eba502c22bec6bc191b3ede0356835258229b",
     "daily_raw_coverage_fresh": true
   },
   "corporate_actions": {

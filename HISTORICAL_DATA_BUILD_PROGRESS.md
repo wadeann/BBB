@@ -1,6 +1,6 @@
 # Historical Data Build Progress
 
-Generated: 2026-10-03T01:10:43.085845+00:00
+Generated: 2026-10-07T00:19:53.277741+00:00
 
 ## Universe
 - Snapshots audited: 5
@@ -14,9 +14,9 @@ Generated: 2026-10-03T01:10:43.085845+00:00
 ## Raw OHLCV
 - Mounted: True
 - Hash match: True
-- Actual files: 2323
-- Actual rows: 1187093
-- Dataset hash: `ab5624c66081de18c37c425e195c9b44db814f4e37450bd73d97b5787341d93b`
+- Actual files: 5657
+- Actual rows: 2728892
+- Dataset hash: `305be2e1c791a043d29c4de56a93bde0fe16ef41a8a63e02e16e9d68fc66df1e`
 - Daily coverage fresh: True
 
 ## Corporate Actions
