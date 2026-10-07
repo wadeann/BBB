@@ -1,0 +1,18 @@
+{
+  "source_type": "INDEPENDENT_OFFICIAL_EXPORT",
+  "source_dataset_id": "intel_mcp_corporate_action_history",
+  "register_sha256": "dd9099a7419b5b3c0d18f9d525d5027fd94a30dbcc3fe2b9850a9d63d37ef996",
+  "event_count": 91,
+  "source_files": [
+    {
+      "source_id": "Official_Exchange_Disclosure_CNINFO",
+      "sha256": "527cd4b4f27040f2fbbcb330c8d3f1837a663b4950eafc1f78aa7ddc6fcc6931",
+      "file": "provenance_artifacts/ca/ca_Official_Exchange_Disclosure_CNINFO.json"
+    },
+    {
+      "source_id": "Eastmoney_Official_Disclosure_RPT_SHAREBONUS_DET",
+      "sha256": "c39378804c9170b46373bcf03c8762a22f83a1c8c656d58aabda1e01d2525b5f",
+      "file": "provenance_artifacts/ca/ca_Eastmoney_Official_Disclosure_RPT_SHAREBONUS_DET.json"
+    }
+  ]
+}
