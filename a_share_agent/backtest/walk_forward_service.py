@@ -452,6 +452,7 @@ def run_stability(
                 fold_settings,
                 benchmark_symbols=benchmark_symbols,
                 calendar_dates=None,
+                max_symbol_failure_ratio=wf_cfg.get('settings', {}).get('max_symbol_failure_ratio', 0.0),
             )
             preflight_status = str(preflight_status)
             preflight_commitments[fold_id] = preflight_inputs

@@ -353,8 +353,7 @@ class DeterministicSignalEngine:
 
     @staticmethod
     def build_registry() -> PatternRegistry:
-        """Create and return a ``PatternRegistry`` populated with all 14 known
-        patterns.  Each existing detection function is referenced by name so
+        """Create and return a ``PatternRegistry`` populated with all 18 known patterns (14 daily + 4 intraday).  Each existing detection function is referenced by name so
         the registry stays a thin catalog wrapper — no logic duplication.
         """
         reg = PatternRegistry()
@@ -499,6 +498,47 @@ class DeterministicSignalEngine:
             pattern_version="1.0.0",
             family="exit_defensive",
             required_features=["ma5", "ma10"],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        # === intraday momentum patterns (live MCP only) ===
+        reg.register(PatternSpec(
+            pattern_id="morning_surge",
+            pattern_version="1.0.0",
+            family="intraday_momentum",
+            required_features=[],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="vwap_hold",
+            pattern_version="1.0.0",
+            family="intraday_momentum",
+            required_features=[],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="afternoon_breakout",
+            pattern_version="1.0.0",
+            family="intraday_momentum",
+            required_features=[],
+            detect_func_name="",
+            entry_rule={},
+            invalidation_rule={},
+            exit_rule={},
+        ))
+        reg.register(PatternSpec(
+            pattern_id="vwap_break_warning",
+            pattern_version="1.0.0",
+            family="exit_defensive",
+            required_features=[],
             detect_func_name="",
             entry_rule={},
             invalidation_rule={},

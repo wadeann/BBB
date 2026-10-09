@@ -24,14 +24,34 @@ strategy_families:
     strategies: [shooting_star_high, volume_price_divergence, ma20_break, trendline_break, ma_bearish_cut]
 
 routes:
+  - id: RISK_ON_EMERGING
+    when:
+      market_regime: risk_on
+      sentiment_phase: emerging
+    allow: [trend_breakout, trend_pullback, exit_defensive]
+    block: [rebound_reversal, pattern_confirmation]
+    position_multiplier: 0.90
+    candidate_threshold_delta: 2
+    max_new_positions_override: null
+
+  - id: RISK_ON_ACCELERATING
+    when:
+      market_regime: risk_on
+      sentiment_phase: accelerating
+    allow: [trend_breakout, trend_pullback, exit_defensive]
+    block: [rebound_reversal, pattern_confirmation]
+    position_multiplier: 1.00
+    candidate_threshold_delta: 0
+    max_new_positions_override: null
+
   - id: RISK_ON_STRONG_SECTOR
     when:
       market_regime: risk_on
       sector_strength: strong
     allow: [trend_breakout, trend_pullback, rebound_reversal, pattern_confirmation, exit_defensive]
     block: []
-    position_multiplier: 1.00
-    candidate_threshold_delta: 0
+    position_multiplier: 0.90
+    candidate_threshold_delta: 1
     max_new_positions_override: null
 
   - id: RISK_ON_NEUTRAL_SECTOR
@@ -41,7 +61,7 @@ routes:
     allow: [trend_pullback, pattern_confirmation, exit_defensive]
     block: [rebound_reversal]
     conditional: [trend_breakout]
-    position_multiplier: 0.80
+    position_multiplier: 0.75
     candidate_threshold_delta: 3
     max_new_positions_override: 3
 
@@ -52,7 +72,7 @@ routes:
     allow: [trend_pullback, pattern_confirmation, exit_defensive]
     conditional: [trend_breakout, rebound_reversal]
     block: []
-    position_multiplier: 0.70
+    position_multiplier: 0.65
     candidate_threshold_delta: 5
     max_new_positions_override: 2
 
@@ -62,7 +82,7 @@ routes:
       sector_strength: neutral
     allow: [trend_pullback, pattern_confirmation, exit_defensive]
     block: [trend_breakout, rebound_reversal]
-    position_multiplier: 0.50
+    position_multiplier: 0.45
     candidate_threshold_delta: 5
     max_new_positions_override: 1
 
@@ -76,13 +96,35 @@ routes:
     candidate_threshold_delta: 6
     max_new_positions_override: 1
 
+  - id: BEAR_DISTRIBUTING
+    when:
+      market_regime: risk_off
+      sentiment_phase: distributing
+    allow: [trend_breakout, trend_pullback, exit_defensive]
+    block: [rebound_reversal, pattern_confirmation]
+    position_multiplier: 0.50
+    candidate_threshold_delta: 4
+    max_new_positions_override: 2
+
+  - id: SIDEWAYS_DISTRIBUTING
+    when:
+      market_regime: neutral
+      sentiment_phase: distributing
+      sector_strength: strong
+    allow: [trend_breakout, trend_pullback, exit_defensive]
+    conditional: [pattern_confirmation]
+    block: [rebound_reversal]
+    position_multiplier: 0.60
+    candidate_threshold_delta: 4
+    max_new_positions_override: 2
+
   - id: RISK_OFF
     when:
       market_regime: risk_off
     allow: [trend_pullback, exit_defensive]
     conditional: []
     block: [trend_breakout, rebound_reversal, pattern_confirmation]
-    position_multiplier: 0.30
+    position_multiplier: 0.25
     candidate_threshold_delta: 6
     max_new_positions_override: 1
 
@@ -94,13 +136,17 @@ routes:
     allow: [rebound_reversal, exit_defensive]
     conditional: [trend_pullback]
     block: [trend_breakout]
-    position_multiplier: 0.45
+    position_multiplier: 0.40
     candidate_threshold_delta: 8
     max_new_positions_override: 1
 
 precedence:
   - RISK_OFF
   - WEAK_SECTOR
+  - BEAR_DISTRIBUTING
+  - SIDEWAYS_DISTRIBUTING
+  - RISK_ON_EMERGING
+  - RISK_ON_ACCELERATING
   - PANIC_REBOUND_EXCEPTION
   - exact_market_sector_match
 

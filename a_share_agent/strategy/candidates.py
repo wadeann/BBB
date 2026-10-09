@@ -43,6 +43,11 @@ PATTERN_PRIORITY: dict[str, int] = {
     "shooting_star_high": 12,
     "ma20_break": 13,
     "ma_bearish_cut": 14,
+    # intraday momentum (live MCP only)
+    "morning_surge": 15,
+    "vwap_hold": 16,
+    "afternoon_breakout": 17,
+    "vwap_break_warning": 50,
 }
 
 DEFAULT_MIN_VOLUME: float = 50_000_000.0  # 50M CNY daily turnover

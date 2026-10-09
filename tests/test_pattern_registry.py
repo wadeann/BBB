@@ -90,29 +90,30 @@ def sample_bars() -> list[dict]:
 
 
 # ------------------------------------------------------------------
-# D01: All 14 patterns registered
+# D01: All 18 patterns registered (14 daily + 4 intraday)
 # ------------------------------------------------------------------
 
-PATTERN_IDS_14 = frozenset({
+PATTERN_IDS = frozenset({
     "triple_golden_cross", "ma_convergence_breakout", "high_volume_breakout",
     "ma60_breakout_retest", "single_bull_hold", "ma5_momentum_pullback",
     "low_volume_support_bull",
     "rebound_candidate", "rebound_confirmation",
     "long_bull_day7",
     "shooting_star_high", "volume_price_divergence", "ma20_break", "ma_bearish_cut",
+    "morning_surge", "vwap_hold", "afternoon_breakout", "vwap_break_warning",
 })
 
 FAMILIES = frozenset({
     "trend_breakout", "trend_pullback", "rebound_reversal",
-    "pattern_confirmation", "exit_defensive",
+    "pattern_confirmation", "exit_defensive", "intraday_momentum",
 })
 
 
-def test_all_14_patterns_registered(registry: PatternRegistry) -> None:
+def test_all_18_patterns_registered(registry: PatternRegistry) -> None:
     all_specs = registry.list()
     ids = {s.pattern_id for s in all_specs}
-    assert ids == PATTERN_IDS_14, f"Missing: {PATTERN_IDS_14 - ids}"
-    assert len(all_specs) == 14
+    assert ids == PATTERN_IDS, f"Missing: {PATTERN_IDS - ids} | Extra: {ids - PATTERN_IDS}"
+    assert len(all_specs) == 18
 
 
 def test_all_patterns_have_version_1_0_0(registry: PatternRegistry) -> None:
@@ -127,7 +128,7 @@ def test_all_patterns_have_family(registry: PatternRegistry) -> None:
 
 def test_family_counts(registry: PatternRegistry) -> None:
     counts = {"trend_breakout": 3, "trend_pullback": 4, "rebound_reversal": 2,
-              "pattern_confirmation": 1, "exit_defensive": 4}
+              "pattern_confirmation": 1, "exit_defensive": 5, "intraday_momentum": 3}
     for family, expected in counts.items():
         assert len(registry.list(family=family)) == expected, \
             f"{family} count mismatch: expected {expected}"
@@ -166,7 +167,7 @@ def test_get_exact_version(registry: PatternRegistry) -> None:
 
 def test_list_all(registry: PatternRegistry) -> None:
     all_specs = registry.list()
-    assert len(all_specs) == 14
+    assert len(all_specs) == 18
 
 
 def test_list_by_family(registry: PatternRegistry) -> None:
@@ -234,7 +235,7 @@ def test_yaml_pattern_metadata_valid() -> None:
         data = yaml.safe_load(f)
     patterns = data.get("patterns", [])
     yaml_ids = {p["pattern_id"] for p in patterns}
-    assert yaml_ids == PATTERN_IDS_14, f"YAML missing patterns: {PATTERN_IDS_14 - yaml_ids}"
+    assert yaml_ids == PATTERN_IDS, f"YAML missing patterns: {PATTERN_IDS - yaml_ids}"
 
 
 # ------------------------------------------------------------------

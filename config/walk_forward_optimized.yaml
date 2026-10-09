@@ -1,4 +1,8 @@
-# Walk-forward configuration — Optimized for STABLE_CANDIDATE (3 keys)
+# Walk-forward configuration — Optimized for STABLE_CANDIDATE (5 cross-validated keys)
+# 35-SZ universe: STABLE in BEAR::DISTRIBUTING (high_volume_breakout, triple_golden_cross)
+#                  and SIDEWAYS::DISTRIBUTING (high_volume_breakout)
+# 270-SH/SZ sweep: STABLE in BULL_TREND::EMERGING/ACCELERATING (triple_golden_cross)
+# Strategy router updated with phase-aware routes based on combined evidence.
 # Based on walk_forward_trial5.yaml with tuned parameters
 start_date: "2024-10-01"
 end_date: "2026-09-30"

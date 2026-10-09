@@ -547,6 +547,7 @@ def preflight_fold(
     settings: BacktestSettings,
     benchmark_symbols: list[str] | None = None,
     calendar_dates: list[str] | None = None,
+    max_symbol_failure_ratio: float = 0.0,
 ) -> tuple[str, bool, dict[str, Any], dict[str, Any]]:
     """Validate fold readiness before walk-forward execution.
 
@@ -555,7 +556,10 @@ def preflight_fold(
     status: "READY" or "DATA_BLOCKED"
     complete: True if all checks pass
     reasons: dict with blocking and non-blocking issues per category
-    inputs_info: dict with file manifests, coverage stats, calendar info
+➕
+    max_symbol_failure_ratio : float
+        Max fraction of universe that may fail without blocking the fold.
+        0.0 = block on any single failure (default).
     """
     reasons: dict[str, Any] = {
         "blocking": {},
@@ -690,7 +694,8 @@ def preflight_fold(
         "coverage_ratio": symbols_available / universe_size if universe_size > 0 else 0.0,
     }
 
-    if symbol_blockers:
+    fail_ratio = (universe_size - symbols_available) / universe_size if universe_size > 0 else 0.0
+    if symbol_blockers and fail_ratio > max_symbol_failure_ratio:
         reasons["blocking"]["symbols"] = symbol_blockers
     if symbol_warnings:
         reasons["warnings"]["symbols"] = symbol_warnings

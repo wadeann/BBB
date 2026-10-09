@@ -99,3 +99,24 @@ patterns:
     pattern_version: "1.0.0"
     family: exit_defensive
     required_features: [ma5, ma10]
+
+  # --- intraday_momentum (live MCP only, no backtest) ---
+  - pattern_id: morning_surge
+    pattern_version: "1.0.0"
+    family: intraday_momentum
+    required_features: []
+
+  - pattern_id: vwap_hold
+    pattern_version: "1.0.0"
+    family: intraday_momentum
+    required_features: []
+
+  - pattern_id: afternoon_breakout
+    pattern_version: "1.0.0"
+    family: intraday_momentum
+    required_features: []
+
+  - pattern_id: vwap_break_warning
+    pattern_version: "1.0.0"
+    family: exit_defensive
+    required_features: []
