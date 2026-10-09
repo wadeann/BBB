@@ -295,9 +295,21 @@ class BacktestEngine:
                     top=sorted(ranked,key=lambda kv:float(kv[1].get("sector_score",50.0)),reverse=True)[:10]
                     sector_heat_daily.append({"date":d,"top":[{"code":code,"name":ctx.get("sector"),"score":ctx.get("sector_score",50),"relative_percentile":ctx.get("relative_percentile"),"strength":ctx.get("sector_strength"),"lifecycle":ctx.get("sector_lifecycle")} for code,ctx in top]})
 
+            # 老兵: 回撤门 — 净值从高点回撤>max_drawdown_pct停止开新仓
+            if not hasattr(self, '_peak_equity'): self._peak_equity = 0.0
+            eq = portfolio.equity(current_prices)
+            self._peak_equity = max(self._peak_equity, eq)
+            dd = 1.0 - eq / self._peak_equity if self._peak_equity > 0 else 0.0
+            dd_block = self.s.max_drawdown_pct > 0 and dd > self.s.max_drawdown_pct
+            if dd_block:
+                if d not in getattr(self, '_dd_logged', set()):
+                    self._log(d, "DRAWDOWN_GATE", equity=eq, peak=self._peak_equity, drawdown=round(dd,4))
+                    if not hasattr(self, '_dd_logged'): self._dd_logged = set()
+                    self._dd_logged.add(d)
+
             # 1) Execute pending orders scheduled for today at today's open.
-            todays=[o for o in pending if o.execute_date==d]
-            pending=[o for o in pending if o.execute_date!=d]
+            todays=[o for o in pending if o.execute_date==d] if not dd_block else []
+            pending=[o for o in pending if o.execute_date!=d] if not dd_block else pending
             for o in todays:
                 if not ensure_symbol(o.symbol):
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"NO_EXECUTION_BAR","order":o.to_dict()}); continue
@@ -362,6 +374,14 @@ class BacktestEngine:
                     continue
                 if len(portfolio.positions)>=self.s.max_positions:
                     self.rejections.append({"date":d,"symbol":o.symbol,"reason":"MAX_POSITIONS","order":o.to_dict()}); continue
+                # 老兵: 板块集中度门 — 单板块>max_sector_exposure_pct则拒绝
+                if o.sector and self.s.max_sector_exposure_pct > 0:
+                    sec_mv = sum(portfolio.positions[p].quantity * float(current_prices.get(p, portfolio.positions[p].entry_price))
+                                 for p in portfolio.positions if portfolio.positions[p].sector == o.sector)
+                    total_e = portfolio.equity(current_prices)
+                    if total_e > 0 and sec_mv / total_e >= self.s.max_sector_exposure_pct / 100.0:
+                        self.rejections.append({"date":d,"symbol":o.symbol,"reason":"SECTOR_EXPOSURE","sector":o.sector,"ratio":round(sec_mv/total_e,3),"order":o.to_dict()})
+                        continue
                 equity=portfolio.equity(current_prices); mv=portfolio.market_value(current_prices)
                 raw=float(raw_bar["open"])
                 stop=float(o.stop_price or raw*.95)
@@ -397,6 +417,12 @@ class BacktestEngine:
                 raw_b=raw_map_by_symbol.get(sym,{}).get(d)
                 if not raw_b: continue
                 pos.highest_price=max(pos.highest_price,float(raw_b["high"])); pos.lowest_price=min(pos.lowest_price or pos.entry_price,float(raw_b["low"]));
+                # 老兵: 移动止损(trailing) — 涨幅>2%后启动, ATR*2或4%追随
+                if d>pos.entry_date and pos.highest_price>pos.entry_price*1.02:
+                    atr14=_atr(hist_to(sym,d,14),14)
+                    trail=atr14*2 if atr14>0 else pos.highest_price*0.04
+                    new_stop=max(pos.highest_price-trail,pos.entry_price*0.98)
+                    pos.stop_price=max(pos.stop_price,new_stop)
                 if d>pos.entry_date: pos.holding_days += 1
                 if d>pos.entry_date and float(raw_b["low"]) <= pos.stop_price:
                     if evaluation_window is not None:
@@ -426,8 +452,11 @@ class BacktestEngine:
                     self._log(d,"EXIT_SIGNAL",symbol=sym,reason=reason,execute_date=next_d)
 
             # 4) Full-market entry scan over this date's PIT universe.
-            _in_entry_window = evaluation_window is None or d < evaluation_window["entry_end_exclusive"]
-            daily_candidates=[]
+            if dd_block:
+                daily_candidates = []
+            else:
+                _in_entry_window = evaluation_window is None or d < evaluation_window["entry_end_exclusive"]
+                daily_candidates=[]
             for sym in active_symbols:
                 if sym in portfolio.positions or any(o.symbol==sym and o.direction=="BUY" for o in pending): continue
                 # Candidate Eligibility Pre-filter:

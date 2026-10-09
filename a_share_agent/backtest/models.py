@@ -45,6 +45,8 @@ class BacktestSettings:
     llm_filter_accept: list[str] = field(default_factory=lambda: ["PASS"])
     llm_filter_anonymize_symbol: bool = True
     research_tag: str = "baseline"
+    max_drawdown_pct: float = 0.0  # 0=disable. 净值回撤>pct则停止开新仓
+    max_sector_exposure_pct: float = 0.0  # 0=disable. 单板块仓位上限%
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
